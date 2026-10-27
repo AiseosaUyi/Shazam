@@ -183,13 +183,30 @@ export default function CoWorkStudioPage() {
       let generatedArtifact: CoWorkArtifact | undefined = undefined;
 
       if (skillType === 'email') {
+        const emailMatch = textToRun.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+        const recipient = emailMatch ? emailMatch[0] : 'team@zoqo.io';
+
+        let subject = 'Project Update & Launch Timeline';
+        const subjectMatch =
+          textToRun.match(/subject[:\s]+(["']?)([^"'\n]+)\1/i) ||
+          textToRun.match(/about[:\s]+(["']?)([^"'\n]+)\1/i);
+        if (subjectMatch) {
+          subject = subjectMatch[2].trim();
+        } else if (textToRun.toLowerCase().includes('q4')) {
+          subject = 'Q4 Launch Deliverables & Partnership Update';
+        } else if (textToRun.toLowerCase().includes('partner')) {
+          subject = 'Partnership Opportunity & Next Steps';
+        }
+
         generatedArtifact = {
           type: 'email',
-          title: 'Draft Email to Team',
+          title: `Draft Email to ${recipient}`,
           data: {
-            to: 'team@zoqo.io',
-            subject: 'Project Update & Launch Timeline',
-            body: fullOutput || 'Hi Team,\n\nHere is our updated project status and launch timeline. Please review the attached deliverables.\n\nBest,\nAise',
+            to: recipient,
+            subject,
+            body:
+              fullOutput ||
+              `Hi,\n\nI am writing to share an update regarding our recent progress and deliverables.\n\nPlease let me know if you have any questions or feedback.\n\nBest regards,\nAise`,
           },
         };
       } else if (skillType === 'notion') {
@@ -264,7 +281,17 @@ export default function CoWorkStudioPage() {
 
   function handleSendEmail() {
     setEmailSent(true);
-    setTimeout(() => setEmailSent(false), 3000);
+    if (activeArtifact?.type === 'email' && activeArtifact.data?.to) {
+      const mailtoUrl = `mailto:${activeArtifact.data.to}?subject=${encodeURIComponent(
+        activeArtifact.data.subject || ''
+      )}&body=${encodeURIComponent(activeArtifact.data.body || '')}`;
+      try {
+        window.open(mailtoUrl, '_blank');
+      } catch {
+        // ignore
+      }
+    }
+    setTimeout(() => setEmailSent(false), 3500);
   }
 
   function handleCopyArtifact() {
