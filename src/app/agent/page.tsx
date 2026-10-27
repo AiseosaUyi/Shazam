@@ -360,7 +360,47 @@ export default function ClaudeCoWorkStudio() {
     }
   }
 
-  // Native Mac folder picker to bind local folder
+  // Helper to read files recursively from a directory handle
+  async function readFilesFromDirectory(dirHandle: any, currentPath = ''): Promise<Array<{ path: string; content: string }>> {
+    const IGNORED = ['.git', 'node_modules', '.next', '.open-next', 'dist', 'build', '.gemini', 'coverage', '.DS_Store'];
+    const ALLOWED_EXT = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', '.py', '.html', '.css', '.yaml', '.yml', '.toml', '.sql', '.env.example'];
+
+    let results: Array<{ path: string; content: string }> = [];
+
+    for await (const entry of dirHandle.values()) {
+      if (IGNORED.includes(entry.name) || entry.name.startsWith('.')) continue;
+
+      const relPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+
+      if (entry.kind === 'file') {
+        const ext = entry.name.includes('.') ? `.${entry.name.split('.').pop()}` : '';
+        if (ALLOWED_EXT.includes(ext.toLowerCase())) {
+          try {
+            const file = await entry.getFile();
+            if (file.size < 128 * 1024) {
+              const content = await file.text();
+              results.push({ path: relPath, content });
+            }
+          } catch {
+            // ignore
+          }
+        }
+      } else if (entry.kind === 'directory') {
+        try {
+          const subFiles = await readFilesFromDirectory(entry, relPath);
+          results = results.concat(subFiles);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (results.length >= 40) break;
+    }
+
+    return results;
+  }
+
+  // Native Mac folder picker to bind local folder AND ingest real files
   async function handleConnectLocalFolder() {
     if (!('showDirectoryPicker' in window)) {
       alert('Your browser does not support local folder selection. You can create projects directly in the cloud.');
@@ -371,17 +411,34 @@ export default function ClaudeCoWorkStudio() {
       const dirHandle = await (window as any).showDirectoryPicker();
       const folderName = dirHandle.name;
 
+      // 1. Create or get project record
       const res = await fetch('/api/v1/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: folderName, rootDir: `~/${folderName}` }),
       });
       const data = await res.json();
-      if (data.project) {
-        setProjects((prev) => [data.project, ...prev]);
-        setCurrentProject(data.project);
-        setExpandedProjects((prev) => ({ ...prev, [data.project.id]: true }));
-        handleNewConversationInProject(data.project.id);
+      const proj = data.project;
+
+      if (proj) {
+        setProjects((prev) => [proj, ...prev.filter((p) => p.id !== proj.id)]);
+        setCurrentProject(proj);
+        setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+
+        // 2. Read real files from the directory handle!
+        const ingestedFiles = await readFilesFromDirectory(dirHandle);
+
+        if (ingestedFiles.length > 0) {
+          // 3. Bulk ingest files into Cloudflare D1
+          await fetch(`/api/v1/projects/${proj.id}/files/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: ingestedFiles }),
+          });
+          setProjectFiles(ingestedFiles);
+        }
+
+        handleNewConversationInProject(proj.id);
       }
     } catch {
       // user cancelled
@@ -412,19 +469,43 @@ export default function ClaudeCoWorkStudio() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // Contextual prompt with real project files
+    let contextualPrompt = textToSend;
+    if (currentProject) {
+      if (projectFiles.length > 0) {
+        const fileSnippets = projectFiles
+          .slice(0, 15)
+          .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 2500)}\n\`\`\``)
+          .join('\n\n');
+
+        contextualPrompt = `You are an AI assistant working on the user's project "${currentProject.name}".
+Here are the project's actual workspace files:
+
+${fileSnippets}
+
+User Request:
+${textToSend}`;
+      } else {
+        contextualPrompt = `[Project: ${currentProject.name} (No local files indexed yet)]\n${textToSend}`;
+      }
+    }
+
     try {
       const res = await fetch('/api/v1/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: currentProject ? `[Project: ${currentProject.name}]\n${textToSend}` : textToSend,
+          prompt: contextualPrompt,
           conversationId: currentConversationId || undefined,
           taskClassOverride: 'coding',
         }),
         signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error('Failed to run task.');
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to dispatch task.');
+      }
 
       const reader = res.body?.getReader();
       if (!reader) return;
@@ -510,8 +591,17 @@ export default function ClaudeCoWorkStudio() {
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      // cancelled or error
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        const errMsg = err.message || 'Execution failed.';
+        const failMsg: CoWorkMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `⚠️ **Unable to complete task:** ${errMsg}\n\nPlease check your AI provider key under Settings or verify model routing policies.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, failMsg]);
+      }
     } finally {
       setIsStreaming(false);
       setStreamingOutput('');
@@ -895,20 +985,22 @@ export default function ClaudeCoWorkStudio() {
 
               {/* Streaming Output Indicator */}
               {isStreaming && (
-                <div className="space-y-3 animate-in fade-in duration-200">
-                  {streamingThought && (
-                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-xs text-zinc-400">
-                      <div className="flex items-center gap-1.5 font-medium text-amber-400 mb-1">
-                        <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                        <span>Planning changes...</span>
-                      </div>
-                      <p className="line-clamp-2">{streamingThought}</p>
-                    </div>
-                  )}
+                <div className="space-y-3 pt-2 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2.5 text-xs text-amber-400 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                    <span className="animate-pulse">
+                      {streamingThought || `Reading project context & reasoning in ${currentProject?.name || 'workspace'}...`}
+                    </span>
+                  </div>
 
-                  {streamingOutput && (
+                  {streamingOutput ? (
                     <div className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
                       {streamingOutput}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-zinc-400 text-xs py-1">
+                      <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse rounded-sm" />
+                      <span>Reading files and formulating response...</span>
                     </div>
                   )}
                 </div>
@@ -946,11 +1038,14 @@ export default function ClaudeCoWorkStudio() {
                 <button
                   type="button"
                   onClick={handleConnectLocalFolder}
-                  className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 text-[11px] font-medium text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 transition"
-                  title="Bind Local Project Folder"
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[11px] font-medium text-amber-300 hover:text-amber-200 flex items-center gap-1.5 transition shadow-sm"
+                  title="Connected Project Folder (click to re-sync or change)"
                 >
-                  <FolderOpen className="w-3 h-3 text-amber-400" />
-                  <span>Bind Local Folder</span>
+                  <Folder className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="font-semibold">{currentProject ? currentProject.name : 'Connect Local Folder'}</span>
+                  {projectFiles.length > 0 && (
+                    <span className="text-[10px] text-zinc-400 font-mono">({projectFiles.length} files)</span>
+                  )}
                 </button>
               </div>
 

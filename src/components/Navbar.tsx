@@ -57,8 +57,9 @@ export function Navbar() {
   }
 
   const primaryTabs = [
-    { href: '/', label: 'Workspace', icon: MessageSquare },
-    { href: '/agent', label: 'Co-Work Studio', icon: Code2 },
+    { href: '/', label: 'Chat', icon: MessageSquare },
+    { href: '/cowork', label: 'Co-Work', icon: Zap },
+    { href: '/agent', label: 'Code', icon: Code2 },
     { href: '/models', label: 'Models', icon: Cpu },
   ];
 

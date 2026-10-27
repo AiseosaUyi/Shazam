@@ -46,13 +46,15 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
   if (conversationId) {
     const conv = await repo.getConversation(user.id, conversationId);
     if (!conv) {
-      throw new Error(`Conversation not found: ${conversationId}`);
+      const title = prompt.trim().slice(0, 45) || 'New Conversation';
+      await repo.createConversation(user.id, conversationId, title);
+    } else {
+      const msgs = await repo.getMessages(user.id, conversationId);
+      history = msgs.slice(-20).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
     }
-    const msgs = await repo.getMessages(user.id, conversationId);
-    history = msgs.slice(-20).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
   } else {
     conversationId = crypto.randomUUID();
     const title = prompt.trim().slice(0, 45) || 'New Conversation';
