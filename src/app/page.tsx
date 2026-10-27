@@ -563,35 +563,35 @@ export default function WorkspacePage() {
 
               <div className="space-y-2">
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-                  What can we build today?
+                  What would you like to build?
                 </h2>
                 <p className="text-sm text-zinc-400 max-w-md mx-auto leading-relaxed">
-                  Ask anything or describe a task. Shazam automatically assigns the highest-quality eligible model with zero rate-limit anxiety.
+                  Describe what you want in plain English. Shazam plans, designs, and builds it for you with zero setup required.
                 </p>
               </div>
 
-              {/* 4 Apple-grade Prompt Capsules */}
+              {/* 4 Creator-friendly Prompt Capsules */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-3">
                 {[
                   {
-                    icon: <Code2 className="w-4 h-4 text-amber-400" />,
-                    title: 'Code Architecture',
-                    prompt: 'Design a resilient rate limiter in TypeScript with Redis sliding windows',
+                    icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+                    title: 'Build a Web App',
+                    prompt: 'Build a modern SaaS landing page with pricing cards, FAQs, and a sleek dark theme',
                   },
                   {
                     icon: <Zap className="w-4 h-4 text-emerald-400" />,
-                    title: 'Debugging & Refactor',
-                    prompt: 'Explain the difference between optimistic locking and pessimistic locking with code examples',
+                    title: 'Add a Smart Feature',
+                    prompt: 'Detect user location and currency automatically via IP address, with fallback to Nigeria and NGN',
                   },
                   {
                     icon: <Compass className="w-4 h-4 text-blue-400" />,
-                    title: 'System Design',
-                    prompt: 'Compare Kafka vs RabbitMQ architectural trade-offs for high-throughput event logs',
+                    title: 'Redesign Interface',
+                    prompt: 'Make my checkout and account settings look clean, minimalist, and high-converting like Apple',
                   },
                   {
                     icon: <FileText className="w-4 h-4 text-purple-400" />,
-                    title: 'Product Strategy',
-                    prompt: 'Draft a concise, compelling announcement email for our product MVP launch',
+                    title: 'Plan & Launch Product',
+                    prompt: 'Draft an MVP launch plan with core features, user journey, and email announcement copy',
                   },
                 ].map((item, idx) => (
                   <button

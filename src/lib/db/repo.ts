@@ -347,40 +347,54 @@ export class DbRepo {
   // -------------------------------------------------------------
   // CONVERSATIONS & MESSAGES
   // -------------------------------------------------------------
-  async getConversations(userId: string): Promise<Array<{ id: string; title: string; createdAt: string; updatedAt: string }>> {
-    const { results } = await this.db
-      .prepare('SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC')
-      .bind(userId)
-      .all<any>();
+  async getConversations(userId: string, projectId?: string | null): Promise<Array<{ id: string; projectId?: string | null; title: string; createdAt: string; updatedAt: string }>> {
+    let query = 'SELECT id, project_id, title, created_at, updated_at FROM conversations WHERE user_id = ?';
+    const params: any[] = [userId];
+
+    if (projectId !== undefined) {
+      if (projectId === null) {
+        query += ' AND project_id IS NULL';
+      } else {
+        query += ' AND project_id = ?';
+        params.push(projectId);
+      }
+    }
+
+    query += ' ORDER BY updated_at DESC';
+
+    const stmt = this.db.prepare(query);
+    const { results } = await stmt.bind(...params).all<any>();
     return results.map((r) => ({
       id: r.id,
+      projectId: r.project_id || null,
       title: r.title,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
   }
 
-  async listConversations(userId: string): Promise<Array<{ id: string; title: string; createdAt: string; updatedAt: string }>> {
-    return this.getConversations(userId);
+  async listConversations(userId: string, projectId?: string | null): Promise<Array<{ id: string; projectId?: string | null; title: string; createdAt: string; updatedAt: string }>> {
+    return this.getConversations(userId, projectId);
   }
 
-  async createConversation(userId: string, id: string, title: string): Promise<{ id: string; title: string; createdAt: string; updatedAt: string }> {
+  async createConversation(userId: string, id: string, title: string, projectId?: string | null): Promise<{ id: string; projectId?: string | null; title: string; createdAt: string; updatedAt: string }> {
     const now = new Date().toISOString();
     await this.db
-      .prepare('INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, userId, title, now, now)
+      .prepare('INSERT INTO conversations (id, user_id, project_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, userId, projectId || null, title, now, now)
       .run();
-    return { id, title, createdAt: now, updatedAt: now };
+    return { id, projectId: projectId || null, title, createdAt: now, updatedAt: now };
   }
 
-  async getConversation(userId: string, id: string): Promise<{ id: string; title: string; createdAt: string; updatedAt: string } | null> {
+  async getConversation(userId: string, id: string): Promise<{ id: string; projectId?: string | null; title: string; createdAt: string; updatedAt: string } | null> {
     const row = await this.db
-      .prepare('SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? AND id = ?')
+      .prepare('SELECT id, project_id, title, created_at, updated_at FROM conversations WHERE user_id = ? AND id = ?')
       .bind(userId, id)
       .first<any>();
     if (!row) return null;
     return {
       id: row.id,
+      projectId: row.project_id || null,
       title: row.title,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -956,7 +970,8 @@ export class DbRepo {
   }
 
   async deleteProject(userId: string, projectId: string): Promise<boolean> {
-    // Delete files in project
+    // Delete conversations & files in project
+    await this.db.prepare('DELETE FROM conversations WHERE user_id = ? AND project_id = ?').bind(userId, projectId).run();
     await this.db.prepare('DELETE FROM workspace_files WHERE user_id = ? AND project_id = ?').bind(userId, projectId).run();
     const res = await this.db.prepare('DELETE FROM projects WHERE user_id = ? AND id = ?').bind(userId, projectId).run();
     return (res?.meta?.changes ?? 0) > 0;

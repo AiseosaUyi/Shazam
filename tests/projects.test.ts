@@ -85,4 +85,53 @@ describe('Project Workspace & Isolation Tests', () => {
     const alphaFilesStillThere = await repo.getProjectFiles(userA, 'proj_alpha');
     assert.strictEqual(alphaFilesStillThere.length, 1);
   });
+
+  it('strictly isolates conversations by project (Antigravity standard)', async () => {
+    const repo = createTestRepo();
+    await seedUsers(repo);
+
+    await repo.createProject(userA, { id: 'proj_zoqo', name: 'Zoqo' });
+    await repo.createProject(userA, { id: 'proj_shazam', name: 'Shazam' });
+
+    // Create conversation in Zoqo
+    const convZoqo = await repo.createConversation(userA, 'conv_z1', 'Setup Local LLM', 'proj_zoqo');
+    assert.strictEqual(convZoqo.projectId, 'proj_zoqo');
+
+    // Create conversation in Shazam
+    const convShazam = await repo.createConversation(userA, 'conv_s1', 'Antigravity MVP', 'proj_shazam');
+    assert.strictEqual(convShazam.projectId, 'proj_shazam');
+
+    // Create unassigned conversation
+    await repo.createConversation(userA, 'conv_unassigned', 'Quick Scratchpad', null);
+
+    // List conversations specifically for Zoqo: ONLY conv_z1 should return
+    const zoqoConvs = await repo.getConversations(userA, 'proj_zoqo');
+    assert.strictEqual(zoqoConvs.length, 1);
+    assert.strictEqual(zoqoConvs[0].id, 'conv_z1');
+    assert.strictEqual(zoqoConvs[0].title, 'Setup Local LLM');
+
+    // List conversations specifically for Shazam: ONLY conv_s1 should return
+    const shazamConvs = await repo.getConversations(userA, 'proj_shazam');
+    assert.strictEqual(shazamConvs.length, 1);
+    assert.strictEqual(shazamConvs[0].id, 'conv_s1');
+    assert.strictEqual(shazamConvs[0].title, 'Antigravity MVP');
+
+    // List unassigned conversations (null project_id)
+    const unassignedConvs = await repo.getConversations(userA, null);
+    assert.strictEqual(unassignedConvs.length, 1);
+    assert.strictEqual(unassignedConvs[0].id, 'conv_unassigned');
+
+    // Cross-tenant check: userB cannot see userA's conversations even if querying userA's projectId
+    const bobZoqoConvs = await repo.getConversations(userB, 'proj_zoqo');
+    assert.strictEqual(bobZoqoConvs.length, 0);
+
+    // Deleting Zoqo cascades to delete its conversations
+    await repo.deleteProject(userA, 'proj_zoqo');
+    const zoqoConvsAfter = await repo.getConversations(userA, 'proj_zoqo');
+    assert.strictEqual(zoqoConvsAfter.length, 0);
+
+    // Shazam conversation still remains intact
+    const shazamConvsAfter = await repo.getConversations(userA, 'proj_shazam');
+    assert.strictEqual(shazamConvsAfter.length, 1);
+  });
 });

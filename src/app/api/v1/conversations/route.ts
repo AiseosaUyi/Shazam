@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/session';
 
 const CreateConversationSchema = z.object({
   title: z.string().min(1).max(100).default('New Conversation'),
+  projectId: z.string().optional().nullable(),
 });
 
 export async function GET(req: NextRequest) {
@@ -16,7 +17,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
 
-  const conversations = await repo.listConversations(user.id);
+  const { searchParams } = new URL(req.url);
+  const projectIdParam = searchParams.get('projectId');
+  const projectId = projectIdParam === 'none' ? null : projectIdParam || undefined;
+
+  const conversations = await repo.listConversations(user.id, projectId);
   return NextResponse.json({ conversations });
 }
 
@@ -38,9 +43,10 @@ export async function POST(req: NextRequest) {
 
   const parseResult = CreateConversationSchema.safeParse(body);
   const title = parseResult.success ? parseResult.data.title : 'New Conversation';
+  const projectId = parseResult.success ? parseResult.data.projectId : undefined;
 
   const id = crypto.randomUUID();
-  const conversation = await repo.createConversation(user.id, id, title);
+  const conversation = await repo.createConversation(user.id, id, title, projectId);
 
   return NextResponse.json({ conversation });
 }
