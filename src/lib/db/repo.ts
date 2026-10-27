@@ -881,4 +881,131 @@ export class DbRepo {
       createdAt: row.created_at,
     };
   }
+
+  // -------------------------------------------------------------
+  // PROJECTS & PROJECT-SCOPED WORKSPACES
+  // -------------------------------------------------------------
+  async createProject(userId: string, proj: {
+    id: string;
+    name: string;
+    description?: string | null;
+    rootDir?: string;
+    settings?: Record<string, unknown>;
+  }): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .prepare(
+        `INSERT INTO projects (id, user_id, name, description, root_dir, settings, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        proj.id,
+        userId,
+        proj.name,
+        proj.description ?? null,
+        proj.rootDir ?? '/',
+        JSON.stringify(proj.settings ?? {}),
+        now,
+        now
+      )
+      .run();
+  }
+
+  async getProjects(userId: string): Promise<Array<{
+    id: string;
+    userId: string;
+    name: string;
+    description: string | null;
+    rootDir: string;
+    settings: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+  }>> {
+    const { results } = await this.db
+      .prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC')
+      .bind(userId)
+      .all<any>();
+    return results.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      name: r.name,
+      description: r.description,
+      rootDir: r.root_dir,
+      settings: JSON.parse(r.settings || '{}'),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async getProject(userId: string, projectId: string) {
+    const row = await this.db
+      .prepare('SELECT * FROM projects WHERE user_id = ? AND id = ?')
+      .bind(userId, projectId)
+      .first<any>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      description: row.description,
+      rootDir: row.root_dir,
+      settings: JSON.parse(row.settings || '{}'),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async deleteProject(userId: string, projectId: string): Promise<boolean> {
+    // Delete files in project
+    await this.db.prepare('DELETE FROM workspace_files WHERE user_id = ? AND project_id = ?').bind(userId, projectId).run();
+    const res = await this.db.prepare('DELETE FROM projects WHERE user_id = ? AND id = ?').bind(userId, projectId).run();
+    return (res?.meta?.changes ?? 0) > 0;
+  }
+
+  async getProjectFiles(userId: string, projectId: string): Promise<Array<{ path: string; content: string; updatedAt: string }>> {
+    const { results } = await this.db
+      .prepare('SELECT path, content, updated_at FROM workspace_files WHERE user_id = ? AND project_id = ? ORDER BY path ASC')
+      .bind(userId, projectId)
+      .all<any>();
+    return results.map((r) => ({ path: r.path, content: r.content, updatedAt: r.updated_at }));
+  }
+
+  async putProjectFile(userId: string, projectId: string, filePath: string, content: string): Promise<void> {
+    const now = new Date().toISOString();
+    // Update project updated_at
+    await this.db.prepare('UPDATE projects SET updated_at = ? WHERE user_id = ? AND id = ?').bind(now, userId, projectId).run();
+    await this.db
+      .prepare(
+        `INSERT INTO workspace_files (user_id, project_id, path, content, updated_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, path) DO UPDATE SET project_id = excluded.project_id, content = excluded.content, updated_at = excluded.updated_at`
+      )
+      .bind(userId, projectId, filePath, content, now)
+      .run();
+  }
+
+  async deleteProjectFile(userId: string, projectId: string, filePath: string): Promise<boolean> {
+    const res = await this.db
+      .prepare('DELETE FROM workspace_files WHERE user_id = ? AND project_id = ? AND path = ?')
+      .bind(userId, projectId, filePath)
+      .run();
+    return (res?.meta?.changes ?? 0) > 0;
+  }
+
+  async putProjectFilesBulk(userId: string, projectId: string, files: Array<{ path: string; content: string }>): Promise<number> {
+    const now = new Date().toISOString();
+    let count = 0;
+    for (const file of files) {
+      await this.db
+        .prepare(
+          `INSERT INTO workspace_files (user_id, project_id, path, content, updated_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, path) DO UPDATE SET project_id = excluded.project_id, content = excluded.content, updated_at = excluded.updated_at`
+        )
+        .bind(userId, projectId, file.path, file.content, now)
+        .run();
+      count++;
+    }
+    await this.db.prepare('UPDATE projects SET updated_at = ? WHERE user_id = ? AND id = ?').bind(now, userId, projectId).run();
+    return count;
+  }
 }
+

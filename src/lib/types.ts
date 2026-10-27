@@ -242,3 +242,22 @@ export type TaskEvent =
   | { type: 'fallback'; fromRouteId: string; toRouteId: string; toModelName: string; reason: string; errorType: ProviderErrorType }
   | { type: 'done'; task: TaskRecord }
   | { type: 'error'; error: ProviderError; task?: TaskRecord; hint?: string };
+
+export interface Project {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string | null;
+  rootDir: string;
+  settings: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectFile {
+  path: string;
+  content: string;
+  updatedAt: string;
+  projectId?: string;
+}
+
