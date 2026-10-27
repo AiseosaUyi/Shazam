@@ -166,33 +166,33 @@ export default function AgentPage() {
 
   return (
     <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#232736] pb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-white font-mono">Coding Agent Workspace</h1>
-            <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-800 text-zinc-300 border border-zinc-700">
-              D1 Tenant Isolated
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.07] pb-6">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-white">Coding Studio</h1>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tracking-wide uppercase">
+              Isolated Workspace
             </span>
           </div>
-          <p className="text-sm text-zinc-400 mt-1">
-            Safe file proposals, unified diff inspection, and atomic checkpoints without arbitrary host execution.
+          <p className="text-sm text-zinc-400">
+            Safe multi-file code proposals, visual unified diff reviews, and instant rollback snapshots.
           </p>
         </div>
 
         {/* Safety Container Banner */}
-        <div className="p-2.5 rounded-lg bg-[#141824] border border-[#232736] flex items-center gap-2 text-xs text-zinc-400">
-          <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
-          <span>Running code needs an isolated container, not available in this deployment</span>
+        <div className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 flex items-center gap-2 text-xs text-zinc-400">
+          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>Non-destructive diff sandbox active</span>
         </div>
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+        <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/20 text-red-300 text-xs flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
             <span>{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="text-red-400 hover:text-white">
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-white p-1">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -203,14 +203,14 @@ export default function AgentPage() {
         {/* Left: File Tree & Checkpoints */}
         <div className="lg:col-span-1 space-y-6">
           {/* Files Panel */}
-          <div className="bg-[#10131d] border border-[#232736] rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-[#1e2333]">
-              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                <FolderTree className="w-3.5 h-3.5" /> Workspace Files ({files.length})
+          <div className="bg-white/[0.02] border border-white/[0.07] rounded-2xl p-4 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <FolderTree className="w-3.5 h-3.5 text-amber-400" /> Files ({files.length})
               </span>
               <button
                 onClick={() => setCreatingFile(!creatingFile)}
-                className="p-1 rounded bg-[#1e2333] hover:bg-zinc-700 text-zinc-300 transition"
+                className="p-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 transition"
                 title="New file"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -218,32 +218,32 @@ export default function AgentPage() {
             </div>
 
             {creatingFile && (
-              <form onSubmit={handleCreateFile} className="space-y-2 p-2 bg-[#151926] rounded-lg border border-[#232736]">
+              <form onSubmit={handleCreateFile} className="space-y-2 p-3 bg-black/40 rounded-xl border border-white/10">
                 <input
                   type="text"
                   placeholder="src/index.ts"
                   value={newFilePath}
                   onChange={(e) => setNewFilePath(e.target.value)}
-                  className="w-full px-2 py-1 bg-[#090b10] border border-[#232736] rounded text-xs text-zinc-200 font-mono"
+                  className="w-full px-2.5 py-1.5 bg-white/[0.03] border border-white/10 rounded-lg text-xs text-zinc-200 font-mono focus:outline-none focus:border-amber-500/50"
                   required
                 />
                 <textarea
                   placeholder="File content..."
                   value={newFileContent}
                   onChange={(e) => setNewFileContent(e.target.value)}
-                  className="w-full px-2 py-1 bg-[#090b10] border border-[#232736] rounded text-xs text-zinc-200 font-mono h-20"
+                  className="w-full px-2.5 py-1.5 bg-white/[0.03] border border-white/10 rounded-lg text-xs text-zinc-200 font-mono h-20 focus:outline-none focus:border-amber-500/50"
                 />
-                <div className="flex justify-end gap-1.5">
+                <div className="flex justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setCreatingFile(false)}
-                    className="px-2 py-1 text-[10px] text-zinc-400 hover:text-white"
+                    className="px-2.5 py-1 text-xs text-zinc-400 hover:text-white"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-2.5 py-1 text-[10px] bg-amber-500 text-zinc-950 font-semibold rounded"
+                    className="px-3 py-1 text-xs bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-lg"
                   >
                     Create
                   </button>
@@ -252,21 +252,21 @@ export default function AgentPage() {
             )}
 
             {files.length === 0 ? (
-              <div className="text-center py-6 text-zinc-500 text-xs">No files yet. Add one above.</div>
+              <div className="text-center py-8 text-zinc-500 text-xs">No files yet. Add one above.</div>
             ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
                 {files.map((file) => (
                   <div
                     key={file.path}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono transition cursor-pointer ${
+                    className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-mono transition cursor-pointer ${
                       selectedFile?.path === file.path
-                        ? 'bg-[#1e2436] text-amber-400 font-semibold'
-                        : 'text-zinc-300 hover:bg-[#151926]'
+                        ? 'bg-amber-500/10 text-amber-300 font-semibold border border-amber-500/20'
+                        : 'text-zinc-300 hover:bg-white/[0.04] border border-transparent'
                     }`}
                     onClick={() => setSelectedFile(file)}
                   >
-                    <span className="truncate flex items-center gap-1.5">
-                      <FileCode className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate flex items-center gap-2">
+                      <FileCode className="w-3.5 h-3.5 shrink-0 opacity-70" />
                       {file.path}
                     </span>
                     <button
@@ -275,7 +275,7 @@ export default function AgentPage() {
                         e.stopPropagation();
                         handleDeleteFile(file.path);
                       }}
-                      className="text-zinc-500 hover:text-red-400 p-1"
+                      className="text-zinc-500 hover:text-red-400 p-1 rounded"
                       title="Delete file"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -287,46 +287,46 @@ export default function AgentPage() {
           </div>
 
           {/* Checkpoints Panel */}
-          <div className="bg-[#10131d] border border-[#232736] rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-[#1e2333]">
-              <span className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                <History className="w-3.5 h-3.5" /> Checkpoints
+          <div className="bg-white/[0.02] border border-white/[0.07] rounded-2xl p-4 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between pb-2.5 border-b border-white/[0.06]">
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 text-amber-400" /> Snapshots
               </span>
             </div>
 
-            <form onSubmit={handleCreateCheckpoint} className="flex gap-1.5">
+            <form onSubmit={handleCreateCheckpoint} className="flex gap-2">
               <input
                 type="text"
-                placeholder="Checkpoint label..."
+                placeholder="Snapshot label..."
                 value={checkpointDesc}
                 onChange={(e) => setCheckpointDesc(e.target.value)}
-                className="flex-1 px-2 py-1 bg-[#090b10] border border-[#232736] rounded text-xs text-zinc-200"
+                className="flex-1 px-3 py-1.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500/50"
               />
               <button
                 type="submit"
-                className="px-2.5 py-1 bg-[#1e2333] hover:bg-zinc-700 text-zinc-200 text-xs rounded font-medium"
+                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 text-xs rounded-xl font-medium transition"
               >
-                Snapshot
+                Save
               </button>
             </form>
 
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {checkpoints.length === 0 ? (
-                <div className="text-center py-4 text-zinc-500 text-xs">No snapshots saved.</div>
+                <div className="text-center py-6 text-zinc-500 text-xs">No snapshots saved.</div>
               ) : (
                 checkpoints.map((cp) => (
                   <div
                     key={cp.id}
-                    className="p-2 rounded bg-[#141824] border border-[#202538] flex items-center justify-between text-xs"
+                    className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-between text-xs"
                   >
                     <div className="truncate">
-                      <p className="font-semibold text-zinc-200 truncate">{cp.description}</p>
+                      <p className="font-medium text-zinc-200 truncate">{cp.description}</p>
                       <p className="text-[10px] text-zinc-500">{new Date(cp.createdAt).toLocaleTimeString()}</p>
                     </div>
                     <button
                       onClick={() => handleRestoreCheckpoint(cp.id)}
                       title="Restore snapshot"
-                      className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-[#1e2333]"
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-white/5 transition"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
@@ -339,53 +339,53 @@ export default function AgentPage() {
 
         {/* Center: File Viewer */}
         <div className="lg:col-span-3 space-y-6">
-          <div className="bg-[#10131d] border border-[#232736] rounded-xl overflow-hidden flex flex-col h-[400px]">
-            <div className="px-4 py-2.5 bg-[#141824] border-b border-[#232736] flex items-center justify-between">
+          <div className="bg-white/[0.02] border border-white/[0.07] rounded-2xl overflow-hidden flex flex-col h-[400px] shadow-sm">
+            <div className="px-4 py-3 bg-white/[0.02] border-b border-white/[0.06] flex items-center justify-between">
               <span className="font-mono text-xs text-zinc-300 font-semibold flex items-center gap-2">
-                <FileCode className="w-4 h-4 text-amber-500" />
+                <FileCode className="w-4 h-4 text-amber-400" />
                 {selectedFile ? selectedFile.path : 'No file selected'}
               </span>
               {selectedFile && (
-                <span className="text-[10px] text-zinc-500">
+                <span className="text-[11px] text-zinc-500">
                   Updated {new Date(selectedFile.updatedAt).toLocaleTimeString()}
                 </span>
               )}
             </div>
-            <div className="flex-1 p-4 font-mono text-xs overflow-auto bg-[#0a0d14] text-zinc-200 whitespace-pre">
+            <div className="flex-1 p-4 font-mono text-xs overflow-auto bg-[#0a0d14]/70 text-zinc-200 whitespace-pre leading-relaxed">
               {selectedFile ? selectedFile.content : '// Select or create a file from the left sidebar'}
             </div>
           </div>
 
           {/* Bottom: Proposals Review */}
-          <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-              <Code2 className="w-4 h-4 text-amber-500" /> Pending Model Proposals ({proposals.filter(p => p.status === 'pending').length})
+          <div className="bg-white/[0.02] border border-white/[0.07] rounded-2xl p-5 space-y-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Code2 className="w-4 h-4 text-amber-400" /> Pending Code Proposals ({proposals.filter(p => p.status === 'pending').length})
             </h2>
 
             {proposals.filter((p) => p.status === 'pending').length === 0 ? (
-              <div className="text-center py-6 text-zinc-500 text-xs border border-dashed border-[#232736] rounded-lg">
+              <div className="text-center py-8 text-zinc-500 text-xs border border-dashed border-white/10 rounded-2xl">
                 No pending proposals. Ask a coding task in the Workspace to propose file modifications.
               </div>
             ) : (
               proposals
                 .filter((p) => p.status === 'pending')
                 .map((proposal) => (
-                  <div key={proposal.id} className="p-4 rounded-lg bg-[#141824] border border-[#232736] space-y-3">
+                  <div key={proposal.id} className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07] space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h4 className="text-xs font-bold text-zinc-100">{proposal.summary}</h4>
+                        <h4 className="text-xs font-semibold text-zinc-100">{proposal.summary}</h4>
                         <p className="text-[11px] text-zinc-400 mt-0.5">{proposal.instruction}</p>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleDecideProposal(proposal.id, 'applied')}
-                          className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1 shadow-sm transition"
+                          className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold text-xs flex items-center gap-1.5 shadow-sm transition"
                         >
                           <Check className="w-3.5 h-3.5" /> Apply
                         </button>
                         <button
                           onClick={() => handleDecideProposal(proposal.id, 'rejected')}
-                          className="px-3 py-1.5 rounded-md bg-red-950 border border-red-800 text-red-300 hover:bg-red-900 font-semibold text-xs flex items-center gap-1 transition"
+                          className="px-3.5 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20 font-semibold text-xs flex items-center gap-1.5 transition"
                         >
                           <X className="w-3.5 h-3.5" /> Reject
                         </button>
@@ -395,12 +395,12 @@ export default function AgentPage() {
                     {/* Diff Viewer */}
                     <div className="space-y-2">
                       {proposal.changes.map((change, idx) => (
-                        <div key={idx} className="rounded border border-[#1e2333] overflow-hidden">
-                          <div className="px-3 py-1 bg-[#181d2c] text-[11px] font-mono font-semibold text-zinc-300 flex items-center justify-between">
+                        <div key={idx} className="rounded-xl border border-white/10 overflow-hidden">
+                          <div className="px-3 py-1.5 bg-white/[0.04] text-[11px] font-mono font-semibold text-zinc-300 flex items-center justify-between">
                             <span>{change.action.toUpperCase()}: {change.path}</span>
                           </div>
                           {change.diff && (
-                            <pre className="p-3 bg-[#0a0d14] text-[11px] font-mono overflow-x-auto text-zinc-300 whitespace-pre">
+                            <pre className="p-3 bg-black/40 text-[11px] font-mono overflow-x-auto text-zinc-300 whitespace-pre">
                               {change.diff}
                             </pre>
                           )}
@@ -416,3 +416,4 @@ export default function AgentPage() {
     </div>
   );
 }
+
