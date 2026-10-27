@@ -1007,5 +1007,86 @@ export class DbRepo {
     await this.db.prepare('UPDATE projects SET updated_at = ? WHERE user_id = ? AND id = ?').bind(now, userId, projectId).run();
     return count;
   }
+
+  // -------------------------------------------------------------
+  // MODEL CONTEXT PROTOCOL (MCP) INTEGRATIONS
+  // -------------------------------------------------------------
+  async createMcpServer(userId: string, data: {
+    id: string;
+    name: string;
+    url: string;
+    transport?: string;
+    encryptedAuth?: string;
+    toolsCache?: any[];
+  }): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .prepare(
+        `INSERT INTO mcp_servers (id, user_id, name, url, transport, encrypted_auth, status, tools_cache, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`
+      )
+      .bind(
+        data.id,
+        userId,
+        data.name,
+        data.url,
+        data.transport || 'sse',
+        data.encryptedAuth || null,
+        JSON.stringify(data.toolsCache || []),
+        now,
+        now
+      )
+      .run();
+  }
+
+  async getMcpServers(userId: string): Promise<Array<{
+    id: string;
+    userId: string;
+    name: string;
+    url: string;
+    transport: string;
+    status: 'active' | 'disabled' | 'error';
+    tools: any[];
+    createdAt: string;
+    updatedAt: string;
+  }>> {
+    const { results } = await this.db
+      .prepare('SELECT * FROM mcp_servers WHERE user_id = ? ORDER BY updated_at DESC')
+      .bind(userId)
+      .all<any>();
+    return results.map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      name: r.name,
+      url: r.url,
+      transport: r.transport,
+      status: r.status,
+      tools: JSON.parse(r.tools_cache || '[]'),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async deleteMcpServer(userId: string, id: string): Promise<boolean> {
+    const res = await this.db.prepare('DELETE FROM mcp_servers WHERE user_id = ? AND id = ?').bind(userId, id).run();
+    return (res?.meta?.changes ?? 0) > 0;
+  }
+
+  async updateMcpServerStatus(userId: string, id: string, status: 'active' | 'disabled' | 'error', toolsCache?: any[]): Promise<boolean> {
+    const now = new Date().toISOString();
+    let res;
+    if (toolsCache) {
+      res = await this.db
+        .prepare('UPDATE mcp_servers SET status = ?, tools_cache = ?, updated_at = ? WHERE user_id = ? AND id = ?')
+        .bind(status, JSON.stringify(toolsCache), now, userId, id)
+        .run();
+    } else {
+      res = await this.db
+        .prepare('UPDATE mcp_servers SET status = ?, updated_at = ? WHERE user_id = ? AND id = ?')
+        .bind(status, now, userId, id)
+        .run();
+    }
+    return (res?.meta?.changes ?? 0) > 0;
+  }
 }
 
