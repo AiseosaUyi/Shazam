@@ -409,6 +409,14 @@ export class DbRepo {
     return (res?.meta?.changes ?? 0) > 0;
   }
 
+  async setConversationProject(userId: string, id: string, projectId: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .prepare('UPDATE conversations SET project_id = ?, updated_at = ? WHERE user_id = ? AND id = ?')
+      .bind(projectId, now, userId, id)
+      .run();
+  }
+
   async touchConversation(userId: string, id: string, title?: string): Promise<void> {
     const now = new Date().toISOString();
     if (title) {

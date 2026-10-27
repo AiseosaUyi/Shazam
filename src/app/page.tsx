@@ -521,7 +521,7 @@ export default function WorkspacePage() {
     : 'Auto · Free Tier';
 
   return (
-    <div className="flex-1 flex overflow-hidden ambient-glow relative font-sans">
+    <div className="flex-1 h-full min-h-0 min-w-0 flex overflow-hidden ambient-glow relative font-sans">
       {/* Hidden file input for document attachments */}
       <input
         ref={fileInputRef}
@@ -656,7 +656,7 @@ export default function WorkspacePage() {
       {/* ========================================================================= */}
       {/* Main Conversational Workspace                                             */}
       {/* ========================================================================= */}
-      <div className="flex-1 flex flex-col h-[calc(100vh-60px)] overflow-hidden relative bg-[#0b0d13]">
+      <div className="flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden relative bg-[#0b0d13]">
         {/* Subtle Top Mobile Bar */}
         <div className="md:hidden border-b border-white/[0.06] bg-[#090a0f]/80 backdrop-blur-md px-4 py-2 flex items-center justify-between">
           <button
@@ -697,7 +697,7 @@ export default function WorkspacePage() {
         )}
 
         {/* Message Thread or Warm Greeting Hero */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
           {messages.length === 0 && !isStreaming ? (
             /* Warm, Open Greeting Hero Matching Screenshot */
             <div className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-8 pt-10 pb-20">

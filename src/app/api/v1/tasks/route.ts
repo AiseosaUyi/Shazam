@@ -8,6 +8,7 @@ import type { CostPolicy, TaskClass } from '@/lib/types';
 const CreateTaskSchema = z.object({
   prompt: z.string().min(1, 'Prompt cannot be empty').max(32000),
   conversationId: z.string().optional(),
+  projectId: z.string().optional(),
   costPolicy: z
     .enum(['free_only', 'lowest_cost', 'balanced', 'best_quality', 'manual_pin'])
     .optional(),
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { prompt, conversationId, costPolicy, taskClassOverride, pinnedModelName } = parseResult.data;
+  const { prompt, conversationId, projectId, costPolicy, taskClassOverride, pinnedModelName } = parseResult.data;
 
   // Single SSE stream response
   const encoder = new TextEncoder();
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
           user,
           prompt,
           conversationId,
+          projectId,
           costPolicy: costPolicy as CostPolicy | undefined,
           taskClassOverride: taskClassOverride as TaskClass | undefined,
           pinnedModelName,

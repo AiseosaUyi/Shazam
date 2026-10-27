@@ -18,6 +18,7 @@ export interface RunTaskOptions {
   user: User;
   prompt: string;
   conversationId?: string;
+  projectId?: string;
   costPolicy?: CostPolicy;
   taskClassOverride?: TaskClass;
   pinnedModelName?: string;
@@ -33,33 +34,83 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
     costPolicy: requestedCostPolicy,
     taskClassOverride,
     pinnedModelName,
+    projectId,
     signal,
     onEvent,
   } = options;
 
   const repo = options.repo || new DbRepo();
 
-  // 1. Resolve or create conversation
+  // 1. Resolve or create conversation & attach project context
   let conversationId = options.conversationId;
   let history: ChatMessage[] = [];
+  let projectContextBlock = '';
 
   if (conversationId) {
-    const conv = await repo.getConversation(user.id, conversationId);
+    let conv = await repo.getConversation(user.id, conversationId);
     if (!conv) {
       const title = prompt.trim().slice(0, 45) || 'New Conversation';
-      await repo.createConversation(user.id, conversationId, title);
-    } else {
+      await repo.createConversation(user.id, conversationId, title, projectId);
+      conv = await repo.getConversation(user.id, conversationId);
+    } else if (projectId && !conv.projectId) {
+      await repo.setConversationProject(user.id, conversationId, projectId);
+      conv.projectId = projectId;
+    }
+
+    if (conv) {
       const msgs = await repo.getMessages(user.id, conversationId);
       history = msgs.slice(-20).map((m) => ({
         role: m.role,
         content: m.content,
       }));
+
+      // If conversation is scoped to a project, inject real project files from D1
+      const activeProjId = conv.projectId || projectId;
+      if (activeProjId) {
+        try {
+          const project = await repo.getProject(user.id, activeProjId);
+          const files = await repo.getProjectFiles(user.id, activeProjId);
+          if (files && files.length > 0) {
+            const snippets = files
+              .slice(0, 25)
+              .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
+              .join('\n\n');
+            projectContextBlock = `[Project Context: ${project?.name || 'Workspace'}]\n${snippets}`;
+          } else if (project) {
+            projectContextBlock = `[Project Context: ${project.name}]\nProject Name: ${project.name}${project.description ? `\nDescription: ${project.description}` : ''}`;
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
   } else {
     conversationId = crypto.randomUUID();
     const title = prompt.trim().slice(0, 45) || 'New Conversation';
-    await repo.createConversation(user.id, conversationId, title);
+    await repo.createConversation(user.id, conversationId, title, projectId);
+    if (projectId) {
+      try {
+        const project = await repo.getProject(user.id, projectId);
+        const files = await repo.getProjectFiles(user.id, projectId);
+        if (files && files.length > 0) {
+          const snippets = files
+            .slice(0, 25)
+            .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
+            .join('\n\n');
+          projectContextBlock = `[Project Context: ${project?.name || 'Workspace'}]\n${snippets}`;
+        } else if (project) {
+          projectContextBlock = `[Project Context: ${project.name}]\nProject Name: ${project.name}${project.description ? `\nDescription: ${project.description}` : ''}`;
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
+
+  // Prepend project context if not already in prompt
+  const effectivePrompt = projectContextBlock && !prompt.includes('File: ')
+    ? `${projectContextBlock}\n\n[User Instruction]:\n${prompt}`
+    : prompt;
 
   // 2. User preferences & monthly budget calculation
   const preferences = await repo.getUserPreferences(user.id);
@@ -195,7 +246,7 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
       const result = await dispatchExecution({
         model: selectedModel,
         route: selectedRoute,
-        prompt,
+        prompt: effectivePrompt,
         history,
         apiKey,
         signal,

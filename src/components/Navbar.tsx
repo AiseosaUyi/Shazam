@@ -64,8 +64,8 @@ export function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#08090c]/80 backdrop-blur-xl px-4 sm:px-6 py-2.5">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
+    <header className="h-14 shrink-0 border-b border-white/[0.06] bg-[#08090c]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center z-50">
+      <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
         {/* Brand & Primary Navigation */}
         <div className="flex items-center gap-8">
           <Link

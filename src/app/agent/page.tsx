@@ -108,10 +108,15 @@ export default function ClaudeCoWorkStudio() {
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [projectFiles, setProjectFiles] = useState<Array<{ path: string; content: string }>>([]);
+  const [syncingFiles, setSyncingFiles] = useState(false);
+  const [syncBannerMessage, setSyncBannerMessage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const filesInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Initial Load: User, Projects, and Real Conversations
   useEffect(() => {
@@ -360,24 +365,29 @@ export default function ClaudeCoWorkStudio() {
     }
   }
 
-  // Helper to read files recursively from a directory handle
-  async function readFilesFromDirectory(dirHandle: any, currentPath = ''): Promise<Array<{ path: string; content: string }>> {
-    const IGNORED = ['.git', 'node_modules', '.next', '.open-next', 'dist', 'build', '.gemini', 'coverage', '.DS_Store'];
-    const ALLOWED_EXT = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', '.py', '.html', '.css', '.yaml', '.yml', '.toml', '.sql', '.env.example'];
+  const IGNORED_DIRS = ['.git', 'node_modules', '.next', '.open-next', 'dist', 'build', '.gemini', 'coverage', '.DS_Store', '.cache', '.turbo'];
+  const ALLOWED_FILE_EXT = [
+    '.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.txt', '.py', '.html', '.css',
+    '.yaml', '.yml', '.toml', '.sql', '.env.example', '.dart', '.rs', '.go',
+    '.java', '.kt', '.swift', '.c', '.cpp', '.h', '.sh', '.csv', '.graphql', '.prisma'
+  ];
+  const ALLOWED_EXACT_FILES = ['Dockerfile', 'Makefile', 'README', 'LICENSE', 'Procfile', '.env.example', 'pubspec.yaml', 'Cargo.toml', 'package.json'];
 
+  // Helper to read files recursively from a directory handle (Chrome / Edge)
+  async function readFilesFromDirectory(dirHandle: any, currentPath = ''): Promise<Array<{ path: string; content: string }>> {
     let results: Array<{ path: string; content: string }> = [];
 
     for await (const entry of dirHandle.values()) {
-      if (IGNORED.includes(entry.name) || entry.name.startsWith('.')) continue;
+      if (IGNORED_DIRS.includes(entry.name) || (entry.name.startsWith('.') && !ALLOWED_EXACT_FILES.includes(entry.name))) continue;
 
       const relPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
 
       if (entry.kind === 'file') {
         const ext = entry.name.includes('.') ? `.${entry.name.split('.').pop()}` : '';
-        if (ALLOWED_EXT.includes(ext.toLowerCase())) {
+        if (ALLOWED_FILE_EXT.includes(ext.toLowerCase()) || ALLOWED_EXACT_FILES.includes(entry.name)) {
           try {
             const file = await entry.getFile();
-            if (file.size < 128 * 1024) {
+            if (file.size < 256 * 1024) {
               const content = await file.text();
               results.push({ path: relPath, content });
             }
@@ -394,55 +404,186 @@ export default function ClaudeCoWorkStudio() {
         }
       }
 
-      if (results.length >= 40) break;
+      if (results.length >= 100) break;
     }
 
     return results;
   }
 
-  // Native Mac folder picker to bind local folder AND ingest real files
-  async function handleConnectLocalFolder() {
-    if (!('showDirectoryPicker' in window)) {
-      alert('Your browser does not support local folder selection. You can create projects directly in the cloud.');
+  // Helper to read files from a standard browser FileList (Safari, Firefox, Mobile, Drag-and-Drop)
+  async function readFilesFromFileList(fileList: FileList): Promise<Array<{ path: string; content: string }>> {
+    const results: Array<{ path: string; content: string }> = [];
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      const relPath = file.webkitRelativePath || file.name;
+      const isIgnored = IGNORED_DIRS.some((ig) => relPath.includes(`/${ig}/`) || relPath.startsWith(`${ig}/`));
+      if (isIgnored) continue;
+
+      const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : '';
+      if (ALLOWED_FILE_EXT.includes(ext.toLowerCase()) || ALLOWED_EXACT_FILES.includes(file.name)) {
+        if (file.size < 256 * 1024) {
+          try {
+            const content = await file.text();
+            results.push({ path: relPath, content });
+          } catch {
+            // ignore
+          }
+        }
+      }
+      if (results.length >= 100) break;
+    }
+
+    return results;
+  }
+
+  // Bulk ingest files directly into the target project in Cloudflare D1
+  async function ingestFilesIntoProject(targetProj: Project, files: Array<{ path: string; content: string }>) {
+    if (files.length === 0) {
+      alert('No supported source or text files found in the selected folder.');
       return;
     }
 
+    setSyncingFiles(true);
     try {
-      const dirHandle = await (window as any).showDirectoryPicker();
-      const folderName = dirHandle.name;
-
-      // 1. Create or get project record
-      const res = await fetch('/api/v1/projects', {
+      const res = await fetch(`/api/v1/projects/${targetProj.id}/files/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: folderName, rootDir: `~/${folderName}` }),
+        body: JSON.stringify({ files }),
       });
-      const data = await res.json();
-      const proj = data.project;
 
-      if (proj) {
-        setProjects((prev) => [proj, ...prev.filter((p) => p.id !== proj.id)]);
-        setCurrentProject(proj);
-        setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to save files.');
+      }
 
-        // 2. Read real files from the directory handle!
-        const ingestedFiles = await readFilesFromDirectory(dirHandle);
+      setProjectFiles(files);
+      setSyncBannerMessage(`✓ Successfully synced ${files.length} files from "${targetProj.name}" into cloud workspace!`);
+      setTimeout(() => setSyncBannerMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Sync failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setSyncingFiles(false);
+    }
+  }
 
-        if (ingestedFiles.length > 0) {
-          // 3. Bulk ingest files into Cloudflare D1
-          await fetch(`/api/v1/projects/${proj.id}/files/bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: ingestedFiles }),
-          });
-          setProjectFiles(ingestedFiles);
+  // Sync or bind local folder (Works across Chrome, Edge, Safari, Firefox)
+  async function handleConnectOrSyncFolder(targetProjectId?: string) {
+    const activeTargetProj = targetProjectId
+      ? projects.find((p) => p.id === targetProjectId) || currentProject
+      : currentProject;
+
+    // A. Native File System Access API (Chrome, Edge, Opera)
+    if ('showDirectoryPicker' in window) {
+      try {
+        const dirHandle = await (window as any).showDirectoryPicker();
+        const folderName = dirHandle.name;
+
+        let proj = activeTargetProj;
+
+        // If no active project or folder name differs and target isn't explicitly set, match or create
+        if (!proj || (!targetProjectId && proj.name !== folderName)) {
+          const existing = projects.find((p) => p.name.toLowerCase() === folderName.toLowerCase());
+          if (existing) {
+            proj = existing;
+          } else {
+            const res = await fetch('/api/v1/projects', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: folderName, rootDir: `~/${folderName}` }),
+            });
+            const data = await res.json();
+            const createdProj: Project | undefined = data.project;
+            if (createdProj) {
+              proj = createdProj;
+              setProjects((prev) => [createdProj, ...prev]);
+            }
+          }
         }
 
-        handleNewConversationInProject(proj.id);
+        if (proj) {
+          setCurrentProject(proj);
+          setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+
+          const files = await readFilesFromDirectory(dirHandle);
+          await ingestFilesIntoProject(proj, files);
+        }
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return; // User cancelled dialog
+        // Fallback to hidden HTML file input
       }
-    } catch {
-      // user cancelled
     }
+
+    // B. Universal Fallback via HTML5 webkitdirectory input (Safari, Firefox, Mobile)
+    folderInputRef.current?.click();
+  }
+
+  // Handle standard HTML folder input change
+  async function handleFolderInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    // Detect folder name from webkitRelativePath
+    const firstRel = files[0].webkitRelativePath || '';
+    const folderName = firstRel.split('/')[0] || currentProject?.name || 'Workspace';
+
+    let proj: Project | null = currentProject;
+    if (!proj || proj.name !== folderName) {
+      const existing = projects.find((p) => p.name.toLowerCase() === folderName.toLowerCase());
+      if (existing) {
+        proj = existing;
+      } else {
+        const res = await fetch('/api/v1/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: folderName, rootDir: `~/${folderName}` }),
+        });
+        const data = await res.json();
+        const createdProj: Project | undefined = data.project;
+        if (createdProj) {
+          proj = createdProj;
+          setProjects((prev) => [createdProj, ...prev]);
+        }
+      }
+    }
+
+    if (proj) {
+      setCurrentProject(proj);
+      setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+      const parsedFiles = await readFilesFromFileList(files);
+      await ingestFilesIntoProject(proj, parsedFiles);
+    }
+
+    // Reset input
+    e.target.value = '';
+  }
+
+  // Handle single/multi file upload input change
+  async function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !currentProject) return;
+
+    const parsedFiles = await readFilesFromFileList(files);
+    await ingestFilesIntoProject(currentProject, parsedFiles);
+    e.target.value = '';
+  }
+
+  // Handle Drag & Drop of files/folder
+  async function handleDropFiles(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+
+    if (!currentProject) {
+      alert('Please select or create a project first before dropping files.');
+      return;
+    }
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const parsedFiles = await readFilesFromFileList(files);
+    await ingestFilesIntoProject(currentProject, parsedFiles);
   }
 
   // Send message & stream response
@@ -474,19 +615,24 @@ export default function ClaudeCoWorkStudio() {
     if (currentProject) {
       if (projectFiles.length > 0) {
         const fileSnippets = projectFiles
-          .slice(0, 15)
-          .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 2500)}\n\`\`\``)
+          .slice(0, 25)
+          .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
           .join('\n\n');
 
         contextualPrompt = `You are an AI assistant working on the user's project "${currentProject.name}".
-Here are the project's actual workspace files:
+Here are the actual workspace files from the project:
 
 ${fileSnippets}
 
 User Request:
 ${textToSend}`;
       } else {
-        contextualPrompt = `[Project: ${currentProject.name} (No local files indexed yet)]\n${textToSend}`;
+        contextualPrompt = `You are an expert AI software engineer and product architect working with the user on their project "${currentProject.name}".
+The user has bound this project in Shazam.
+Provide a clear, high-level analysis of what "${currentProject.name}" represents, recommend architectural patterns and implementation steps, and invite the user to sync local files or upload specs whenever they want granular file-level edits.
+
+User Request:
+${textToSend}`;
       }
     }
 
@@ -497,6 +643,7 @@ ${textToSend}`;
         body: JSON.stringify({
           prompt: contextualPrompt,
           conversationId: currentConversationId || undefined,
+          projectId: currentProject?.id || undefined,
           taskClassOverride: 'coding',
         }),
         signal: controller.signal,
@@ -617,13 +764,55 @@ ${textToSend}`;
   }
 
   return (
-    <div className="flex-1 flex h-[calc(100vh-60px)] bg-[#0a0c10] text-zinc-100 overflow-hidden font-sans">
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setIsDragging(false);
+        }
+      }}
+      onDrop={handleDropFiles}
+      className="flex-1 h-full min-h-0 min-w-0 flex bg-[#0a0c10] text-zinc-100 overflow-hidden font-sans relative"
+    >
+      {/* Hidden File & Directory Inputs (Safari, Firefox, Chrome universal) */}
+      <input
+        ref={folderInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is standard across modern browsers
+        webkitdirectory=""
+        directory=""
+        multiple
+        className="hidden"
+        onChange={handleFolderInputChange}
+      />
+      <input
+        ref={filesInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
+
+      {/* Drag & Drop Visual Dropzone Overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center border-2 border-dashed border-amber-400 text-amber-300 space-y-3 pointer-events-none">
+          <FolderOpen className="w-14 h-14 text-amber-400 animate-bounce" />
+          <p className="text-base font-semibold text-white">Drop your files or folder to sync</p>
+          <p className="text-xs text-zinc-400">
+            Files will be parsed and indexed directly into {currentProject?.name || 'this workspace'}.
+          </p>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* 1. Left Antigravity-Style Project Tree Sidebar (Strictly Project Scoped) */}
       {/* ========================================================================= */}
-      <aside className="w-64 border-r border-white/[0.06] bg-[#07080c] flex flex-col shrink-0 select-none">
+      <aside className="w-64 h-full shrink-0 border-r border-white/[0.06] bg-[#07080c] flex flex-col select-none overflow-hidden z-20">
         {/* Top Actions: Search & + New Chat */}
-        <div className="p-3 space-y-2 border-b border-white/[0.05]">
+        <div className="p-3 space-y-2 border-b border-white/[0.05] shrink-0">
           <button
             onClick={() => setQuickSearchOpen(true)}
             className="w-full px-2.5 py-1.5 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 rounded-xl text-xs text-zinc-400 flex items-center justify-between transition"
@@ -647,7 +836,7 @@ ${textToSend}`;
         </div>
 
         {/* Projects Accordion Section (Antigravity Tree Hierarchy) */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-4">
           <div>
             <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold tracking-wider text-zinc-400 uppercase">
               <span className="flex items-center gap-1.5">
@@ -805,7 +994,7 @@ ${textToSend}`;
       {/* ========================================================================= */}
       {/* 2. Main Conversational Chat Canvas (Clean, Friendly, Non-Intimidating)   */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col min-w-0 bg-[#0b0d13] overflow-hidden relative">
+      <main className="flex-1 h-full min-h-0 min-w-0 flex flex-col bg-[#0b0d13] overflow-hidden relative">
         {/* Top Header Bar */}
         <header className="h-12 border-b border-white/[0.06] bg-[#08090e]/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center gap-2.5">
@@ -839,8 +1028,8 @@ ${textToSend}`;
           </div>
         </header>
 
-        {/* Chat Messages Scrollable Area */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
+        {/* Chat Messages Scrollable Area (min-h-0 ensures strictly this container scrolls) */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
           {loadingConv ? (
             <div className="h-full flex items-center justify-center text-xs text-zinc-500">
               Loading conversation...
@@ -1011,9 +1200,62 @@ ${textToSend}`;
           )}
         </div>
 
-        {/* Bottom Floating Prompt Input */}
-        <div className="p-4 sm:p-6 bg-gradient-to-t from-[#0a0c10] via-[#0a0c10]/90 to-transparent">
-          <div className="max-w-3xl mx-auto">
+        {/* Bottom Floating Prompt Input (shrink-0 ensures it stays permanently fixed at the bottom!) */}
+        <div className="shrink-0 p-4 sm:p-6 bg-gradient-to-t from-[#0a0c10] via-[#0a0c10]/95 to-transparent z-20">
+          <div className="max-w-3xl mx-auto space-y-2">
+            {/* Sync Feedback Alert */}
+            {syncBannerMessage && (
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between shadow-lg animate-in fade-in duration-150">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{syncBannerMessage}</span>
+                </div>
+                <button onClick={() => setSyncBannerMessage(null)} className="hover:text-white">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Zero-Files Helper Banner for Connected Project */}
+            {currentProject && projectFiles.length === 0 && !syncBannerMessage && (
+              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in duration-150">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                    <FolderOpen className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-zinc-100">
+                      Project <span className="text-amber-300 font-mono">&ldquo;{currentProject.name}&rdquo;</span> is connected
+                    </p>
+                    <p className="text-[11px] text-zinc-400">
+                      Sync your local folder or upload code files so Shazam can read and digest the codebase.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleConnectOrSyncFolder(currentProject.id)}
+                    disabled={syncingFiles}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Folder className="w-3.5 h-3.5" />
+                    <span>{syncingFiles ? 'Syncing...' : 'Sync Local Folder'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => filesInputRef.current?.click()}
+                    disabled={syncingFiles}
+                    className="px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-zinc-200 text-xs flex items-center gap-1.5 transition border border-white/10"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Upload Files</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="relative rounded-2xl bg-[#0f1118] border border-white/10 shadow-2xl focus-within:border-amber-500/50 transition">
               <textarea
                 ref={textareaRef}
@@ -1037,14 +1279,16 @@ ${textToSend}`;
               <div className="absolute left-3 bottom-3 flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleConnectLocalFolder}
+                  onClick={() => handleConnectOrSyncFolder(currentProject?.id)}
                   className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[11px] font-medium text-amber-300 hover:text-amber-200 flex items-center gap-1.5 transition shadow-sm"
                   title="Connected Project Folder (click to re-sync or change)"
                 >
                   <Folder className="w-3.5 h-3.5 text-amber-400" />
                   <span className="font-semibold">{currentProject ? currentProject.name : 'Connect Local Folder'}</span>
-                  {projectFiles.length > 0 && (
-                    <span className="text-[10px] text-zinc-400 font-mono">({projectFiles.length} files)</span>
+                  {projectFiles.length > 0 ? (
+                    <span className="text-[10px] text-emerald-400 font-mono">({projectFiles.length} files synced)</span>
+                  ) : (
+                    <span className="text-[10px] text-amber-400 font-mono">(Sync files)</span>
                   )}
                 </button>
               </div>
@@ -1067,7 +1311,7 @@ ${textToSend}`;
       {/* 3. Slide-Over File Preview Drawer (Slides in on file capsule click)      */}
       {/* ========================================================================= */}
       {inspectFile && (
-        <aside className="w-[480px] border-l border-white/[0.08] bg-[#0c0e14] flex flex-col shrink-0 z-30 animate-in slide-in-from-right duration-200 shadow-2xl">
+        <aside className="w-[480px] h-full shrink-0 border-l border-white/[0.08] bg-[#0c0e14] flex flex-col z-30 animate-in slide-in-from-right duration-200 shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="h-12 px-4 border-b border-white/[0.06] bg-black/40 flex items-center justify-between">
             <div className="flex items-center gap-2 truncate">

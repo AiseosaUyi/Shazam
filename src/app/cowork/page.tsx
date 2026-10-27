@@ -275,12 +275,12 @@ export default function CoWorkStudioPage() {
   }
 
   return (
-    <div className="flex-1 flex h-[calc(100vh-60px)] bg-[#0a0c10] text-zinc-100 overflow-hidden font-sans">
+    <div className="flex-1 h-full min-h-0 min-w-0 flex bg-[#0a0c10] text-zinc-100 overflow-hidden font-sans">
       {/* ========================================================================= */}
       {/* 1. Left Skills & Connectors Drawer                                        */}
       {/* ========================================================================= */}
-      <aside className="w-72 border-r border-white/[0.06] bg-[#07080c] flex flex-col shrink-0 select-none">
-        <div className="p-4 border-b border-white/[0.05]">
+      <aside className="w-72 h-full shrink-0 border-r border-white/[0.06] bg-[#07080c] flex flex-col select-none overflow-hidden z-20">
+        <div className="p-4 border-b border-white/[0.05] shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
               <Zap className="w-4 h-4" />
@@ -293,7 +293,7 @@ export default function CoWorkStudioPage() {
         </div>
 
         {/* Skills List with Live Toggles */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
           <div>
             <div className="flex items-center justify-between px-1 py-1 text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
               <span>Connected Skills</span>
@@ -402,7 +402,7 @@ export default function CoWorkStudioPage() {
       {/* ========================================================================= */}
       {/* 2. Center Co-Work Execution Stream                                        */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col min-w-0 bg-[#0b0d13] overflow-hidden relative">
+      <main className="flex-1 h-full min-h-0 min-w-0 flex flex-col bg-[#0b0d13] overflow-hidden relative">
         {/* Header */}
         <header className="h-12 border-b border-white/[0.06] bg-[#08090e]/80 backdrop-blur-md px-6 flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center gap-3">
@@ -426,7 +426,7 @@ export default function CoWorkStudioPage() {
         </header>
 
         {/* Execution Log & Conversation */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
           {messages.length === 0 && !isExecuting ? (
             /* Co-Work Welcome Screen */
             <div className="h-full flex flex-col items-center justify-center text-center max-w-xl mx-auto space-y-6 pt-8 pb-16">
@@ -548,8 +548,8 @@ export default function CoWorkStudioPage() {
           )}
         </div>
 
-        {/* Prompt Input */}
-        <div className="p-4 sm:p-6 bg-gradient-to-t from-[#0a0c10] via-[#0a0c10]/90 to-transparent">
+        {/* Prompt Input (shrink-0 ensures it stays permanently fixed at the bottom!) */}
+        <div className="shrink-0 p-4 sm:p-6 bg-gradient-to-t from-[#0a0c10] via-[#0a0c10]/95 to-transparent z-20">
           <div className="max-w-3xl mx-auto">
             <div className="relative rounded-2xl bg-[#0f1118] border border-white/10 shadow-2xl focus-within:border-amber-500/50 transition">
               <textarea
@@ -585,7 +585,7 @@ export default function CoWorkStudioPage() {
       {/* 3. Right Artifacts & Execution Canvas                                     */}
       {/* ========================================================================= */}
       {activeArtifact && (
-        <aside className="w-[480px] border-l border-white/[0.08] bg-[#0c0e14] flex flex-col shrink-0 z-30 animate-in slide-in-from-right duration-200 shadow-2xl">
+        <aside className="w-[480px] h-full shrink-0 border-l border-white/[0.08] bg-[#0c0e14] flex flex-col z-30 animate-in slide-in-from-right duration-200 shadow-2xl overflow-hidden">
           <div className="h-12 px-4 border-b border-white/[0.06] bg-black/40 flex items-center justify-between">
             <div className="flex items-center gap-2 truncate">
               <Sparkles className="w-4 h-4 text-amber-400" />
