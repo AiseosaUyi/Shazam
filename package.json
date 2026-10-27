@@ -1,35 +1,38 @@
 {
   "name": "shazam-ai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "imports": {
-    "@/*": "./src/*"
-  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test": "tsx --test 'tests/**/*.test.ts' 'tests/**/*.test.js'"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-sqlite --no-warnings --import tsx --test tests/*.test.ts",
+    "db:migrate:local": "wrangler d1 migrations apply shazam-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply shazam-db --remote",
+    "build:cf": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
+    "preview": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "1.20.10",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",
-    "next": "^15.1.7",
-    "pg": "^8.13.1",
+    "next": "15.5.27",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.0.1"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
-    "@types/pg": "^8.11.11",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.2",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.23.15",
-    "typescript": "^5.7.3"
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "wrangler": "4.149.0"
   }
 }

@@ -1,709 +1,804 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import {
-  Zap,
   Send,
-  Terminal,
+  Square,
+  RotateCcw,
+  Copy,
+  Check,
+  ThumbsUp,
+  ThumbsDown,
+  Info,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  MessageSquare,
+  Trash2,
+  Sparkles,
+  AlertCircle,
   Cpu,
   Layers,
   ArrowRightLeft,
-  CheckCircle2,
-  AlertTriangle,
-  RotateCcw,
+  X,
   Code2,
-  FileText,
-  Shield,
-  HelpCircle,
-  ExternalLink,
-  Loader2,
-  Check,
 } from 'lucide-react';
-import { CostPolicy, TaskClass } from '@/types/core';
-import { Model, Route } from '@/types/provider';
-import { Task } from '@/types/task';
+import type { CostPolicy, TaskClass, Model, CatalogRoute } from '@/lib/types';
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  reasoning?: string | null;
+  taskId?: string | null;
+  routeInfo?: any;
+}
+
+interface ConversationItem {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
 
 export default function WorkspacePage() {
-  const [activeTab, setActiveTab] = useState<'workspace' | 'agent'>('workspace');
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [currentConvId, setCurrentConvId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
   const [costPolicy, setCostPolicy] = useState<CostPolicy>('balanced');
-  const [pinnedRouteId, setPinnedRouteId] = useState<string>('');
-  const [availableRoutes, setAvailableRoutes] = useState<Route[]>([]);
-  const [availableModels, setAvailableModels] = useState<Model[]>([]);
+  const [taskClassOverride, setTaskClassOverride] = useState<string>('auto');
+  const [pinnedModelName, setPinnedModelName] = useState<string>('');
 
-  // Task execution state
-  const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [streamedResponse, setStreamedResponse] = useState('');
-  const [streamedReasoning, setStreamedReasoning] = useState('');
-  const [executionEvents, setExecutionEvents] = useState<any[]>([]);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [models, setModels] = useState<Model[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+  const [streamingReasoning, setStreamingReasoning] = useState<string>('');
+  const [streamingText, setStreamingText] = useState<string>('');
+  const [activeRouteInfo, setActiveRouteInfo] = useState<any>(null);
+  const [selectedDisclosure, setSelectedDisclosure] = useState<any>(null);
 
-  // Coding Agent state
-  const [workspaceFiles, setWorkspaceFiles] = useState<any[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string>('');
-  const [fileContent, setFileContent] = useState<string>('');
-  const [agentProposal, setAgentProposal] = useState<any>(null);
-  const [agentOutput, setAgentOutput] = useState<string>('');
-  const [agentDiff, setAgentDiff] = useState<string>('');
-  const [agentApprovalsNeeded, setAgentApprovalsNeeded] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [feedbackSent, setFeedbackSent] = useState<Record<string, number>>({});
+  const [errorBanner, setErrorBanner] = useState<{ message: string; fixAction?: string; fixHref?: string } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const responseEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Load conversations & catalog
   useEffect(() => {
-    fetch('/api/v1/catalog')
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success) {
-          setAvailableRoutes(json.data.routes || []);
-          setAvailableModels(json.data.models || []);
-        }
-      })
-      .catch((err) => console.error(err));
+    fetch('/api/v1/conversations')
+      .then((res) => (res.ok ? res.json() : { conversations: [] }))
+      .then((data) => setConversations(data.conversations || []))
+      .catch(() => {});
 
-    loadWorkspaceFiles();
+    fetch('/api/v1/catalog')
+      .then((res) => (res.ok ? res.json() : { models: [] }))
+      .then((data) => setModels(data.models || []))
+      .catch(() => {});
   }, []);
 
+  // Auto scroll to bottom
   useEffect(() => {
-    responseEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [streamedResponse, streamedReasoning]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, streamingText, streamingReasoning]);
 
-  const loadWorkspaceFiles = async () => {
+  async function loadConversation(id: string) {
+    setCurrentConvId(id);
+    setStreamingText('');
+    setStreamingReasoning('');
+    setErrorBanner(null);
     try {
-      const res = await fetch('/api/v1/agent/action?workspaceId=default_workspace');
-      const json = await res.json();
-      if (json.success) {
-        setWorkspaceFiles(json.data.files || []);
+      const res = await fetch(`/api/v1/conversations/${id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setMessages(data.messages || []);
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // ignore
     }
-  };
+  }
 
-  const handleLaunchTask = async (customPrompt?: string) => {
-    const textToRun = (customPrompt || prompt).trim();
-    if (!textToRun || isExecuting) return;
+  async function handleNewChat() {
+    setCurrentConvId(null);
+    setMessages([]);
+    setStreamingText('');
+    setStreamingReasoning('');
+    setErrorBanner(null);
+    setActiveRouteInfo(null);
+  }
 
-    setIsExecuting(true);
-    setStreamedResponse('');
-    setStreamedReasoning('');
-    setExecutionEvents([]);
-    setErrorMsg(null);
+  async function handleDeleteConversation(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/v1/conversations/${id}`, { method: 'DELETE' });
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (currentConvId === id) {
+        handleNewChat();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleStop() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (currentTaskId) {
+      fetch(`/api/v1/tasks/${currentTaskId}/cancel`, { method: 'POST' }).catch(() => {});
+    }
+    setIsStreaming(false);
+  }
+
+  async function handleSend(promptText = prompt) {
+    if (!promptText.trim() || isStreaming) return;
+
+    setErrorBanner(null);
+    const userPrompt = promptText.trim();
+    setPrompt('');
+
+    // Add user message to UI immediately
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: userPrompt,
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
+    setIsStreaming(true);
+    setStreamingText('');
+    setStreamingReasoning('');
+    setActiveRouteInfo(null);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    let fullOutput = '';
+    let fullReasoning = '';
+    let taskId = '';
+    let latestRouteInfo: any = null;
 
     try {
       const res = await fetch('/api/v1/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: textToRun,
+          prompt: userPrompt,
+          conversationId: currentConvId || undefined,
           costPolicy,
-          pinnedRouteId: pinnedRouteId || undefined,
+          taskClassOverride: taskClassOverride === 'auto' ? undefined : taskClassOverride,
+          pinnedModelName: pinnedModelName || undefined,
         }),
+        signal: controller.signal,
       });
 
-      const json = await res.json();
-      if (!json.success) {
-        setErrorMsg(json.error);
-        setIsExecuting(false);
-        return;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const rawErr = errJson.error || 'Failed to dispatch task.';
+        throw new Error(rawErr);
       }
 
-      const task: Task = json.data;
-      setCurrentTask(task);
-      setStreamedResponse(task.responseOutput || '');
-      setStreamedReasoning(task.reasoningOutput || '');
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Streaming response body unavailable.');
 
-      // Connect to SSE stream for real-time events
-      const eventSource = new EventSource(`/api/v1/tasks/${task.id}/events`);
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      eventSource.addEventListener('delta', (e: any) => {
-        const data = JSON.parse(e.data);
-        if (data.deltaText) {
-          setStreamedResponse((prev) => prev + data.deltaText);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const block of lines) {
+          const trimmed = block.trim();
+          if (!trimmed) continue;
+
+          let eventType = 'message';
+          let dataStr = '';
+
+          const sublines = trimmed.split('\n');
+          for (const line of sublines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              dataStr = line.slice(6).trim();
+            }
+          }
+
+          if (!dataStr) continue;
+
+          try {
+            const data = JSON.parse(dataStr);
+
+            if (eventType === 'task_created') {
+              taskId = data.taskId;
+              setCurrentTaskId(data.taskId);
+              if (data.conversationId && !currentConvId) {
+                setCurrentConvId(data.conversationId);
+                fetch('/api/v1/conversations')
+                  .then((r) => r.json())
+                  .then((d) => setConversations(d.conversations || []))
+                  .catch(() => {});
+              }
+            } else if (eventType === 'route_selected') {
+              latestRouteInfo = data;
+              setActiveRouteInfo(data);
+            } else if (eventType === 'delta') {
+              fullOutput += data.text || '';
+              setStreamingText(fullOutput);
+            } else if (eventType === 'reasoning') {
+              fullReasoning += data.text || '';
+              setStreamingReasoning(fullReasoning);
+            } else if (eventType === 'fallback') {
+              fullOutput = '';
+              fullReasoning = '';
+              setStreamingText('');
+              setStreamingReasoning('');
+              // Route fallback notification
+              latestRouteInfo = {
+                ...latestRouteInfo,
+                fallback: data,
+              };
+              setActiveRouteInfo(latestRouteInfo);
+            } else if (eventType === 'done') {
+              fullOutput = data.fullText || fullOutput;
+              setStreamingText(fullOutput);
+            } else if (eventType === 'error') {
+              throw new Error(data.message || 'Execution error');
+            }
+          } catch (e: any) {
+            if (e.message && e.message !== 'Unexpected token') {
+              throw e;
+            }
+          }
         }
-      });
+      }
 
-      eventSource.addEventListener('reasoning', (e: any) => {
-        const data = JSON.parse(e.data);
-        if (data.reasoningText) {
-          setStreamedReasoning((prev) => prev + data.reasoningText);
-        }
-      });
-
-      eventSource.addEventListener('fallback_started', (e: any) => {
-        const data = JSON.parse(e.data);
-        setExecutionEvents((prev) => [
-          ...prev,
-          {
-            type: 'fallback',
-            title: 'Resilient Route Fallback',
-            rationale: data.rationale,
-            error: data.error,
-          },
-        ]);
-      });
-
-      eventSource.addEventListener('task_succeeded', (e: any) => {
-        eventSource.close();
-        setIsExecuting(false);
-      });
-
-      eventSource.addEventListener('task_failed', (e: any) => {
-        const data = JSON.parse(e.data);
-        setErrorMsg(data.error?.message || 'Task failed.');
-        eventSource.close();
-        setIsExecuting(false);
-      });
-
-      eventSource.onerror = () => {
-        eventSource.close();
-        setIsExecuting(false);
+      // Add completed assistant message to history
+      const assistantMsg: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: fullOutput,
+        reasoning: fullReasoning || undefined,
+        taskId,
+        routeInfo: latestRouteInfo,
       };
+      setMessages((prev) => [...prev, assistantMsg]);
+      setStreamingText('');
+      setStreamingReasoning('');
     } catch (err: any) {
-      setErrorMsg(err.message || 'Network error executing task.');
-      setIsExecuting(false);
-    }
-  };
+      if (err.name === 'AbortError') {
+        // aborted cleanly
+      } else {
+        const msg = err.message || 'Execution failed.';
+        // Formulate one human sentence + fix action
+        let fixAction = 'Retry';
+        let fixHref: string | undefined = undefined;
 
-  const handleExecuteAgentTool = async (proposal: any, approved = false) => {
+        if (msg.includes('No valid API key') || msg.includes('No API key')) {
+          fixAction = 'Connect API Key';
+          fixHref = '/connections';
+        } else if (msg.includes('Free-Only policy strictly excludes') || msg.includes('No eligible routes found')) {
+          fixAction = 'Switch to Balanced Policy';
+        } else if (msg.includes('Unauthorized') || msg.includes('CSRF')) {
+          fixAction = 'Sign In';
+          fixHref = '/login';
+        }
+
+        setErrorBanner({
+          message: msg,
+          fixAction,
+          fixHref,
+        });
+      }
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
+    }
+  }
+
+  async function handleFeedback(taskId: string, rating: 1 | -1) {
+    if (!taskId) return;
     try {
-      const res = await fetch('/api/v1/agent/action', {
+      await fetch('/api/v1/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: 'default_workspace',
-          proposal,
-          approvedByUser: approved,
-        }),
+        body: JSON.stringify({ taskId, rating }),
       });
+      setFeedbackSent((prev) => ({ ...prev, [taskId]: rating }));
+    } catch {
+      // ignore
+    }
+  }
 
-      const json = await res.json();
-      if (json.data?.requiresApproval) {
-        setAgentApprovalsNeeded(true);
-        setAgentProposal(proposal);
-        setAgentOutput(`[ACTION REQUIRED] ${json.data.error}`);
-        return;
+  function handleCopy(text: string, id: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  // Render markdown code blocks helper
+  function renderFormattedContent(content: string) {
+    const parts = content.split(/(```[\s\S]*?```)/g);
+
+    return parts.map((part, index) => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        const firstLineEnd = part.indexOf('\n');
+        const lang = part.slice(3, firstLineEnd).trim() || 'code';
+        const code = part.slice(firstLineEnd + 1, -3);
+        const codeId = `code-${index}`;
+
+        return (
+          <div key={index} className="my-3 rounded-lg overflow-hidden border border-[#232736] bg-[#080a10]">
+            <div className="px-3 py-1.5 bg-[#141824] border-b border-[#232736] flex items-center justify-between text-[11px] font-mono text-zinc-400">
+              <span>{lang}</span>
+              <button
+                onClick={() => handleCopy(code, codeId)}
+                className="hover:text-amber-400 flex items-center gap-1 transition"
+              >
+                {copiedId === codeId ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                {copiedId === codeId ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <pre className="p-3 text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre">
+              <code>{code}</code>
+            </pre>
+          </div>
+        );
       }
 
-      setAgentApprovalsNeeded(false);
-      setAgentProposal(null);
-      setAgentOutput(json.data?.output || json.error || 'Execution complete.');
-      if (json.data?.diff) setAgentDiff(json.data.diff);
-      loadWorkspaceFiles();
-    } catch (e: any) {
-      setAgentOutput(`Error: ${e.message}`);
-    }
-  };
-
-  const selectedModelObj = availableModels.find((m) => m.id === currentTask?.selectedModelId);
-  const selectedRouteObj = availableRoutes.find((r) => r.id === currentTask?.selectedRouteId);
+      return (
+        <span key={index} className="whitespace-pre-wrap leading-relaxed">
+          {part}
+        </span>
+      );
+    });
+  }
 
   return (
-    <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-6">
-      {/* Top Banner & Tab Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            Task Orchestration Workspace
-          </h1>
-          <p className="text-sm text-slate-400 mt-0.5">
-            Describe what you need. Shazam automatically selects, verifies, and executes via the best eligible route.
-          </p>
-        </div>
-
-        <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl self-start sm:self-auto">
+    <div className="flex-1 flex overflow-hidden">
+      {/* Conversation Sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#0c0e14] border-r border-[#232736] flex flex-col transition-transform duration-200 md:static md:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="p-3 border-b border-[#232736] flex items-center justify-between">
           <button
-            onClick={() => setActiveTab('workspace')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition ${
-              activeTab === 'workspace'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            onClick={handleNewChat}
+            className="flex-1 py-2 px-3 bg-[#161a26] hover:bg-[#202538] border border-[#232736] text-zinc-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition"
           >
-            <Zap className="w-3.5 h-3.5" />
-            AI Router Workspace
+            <Plus className="w-3.5 h-3.5 text-amber-500" /> New Chat
           </button>
           <button
-            onClick={() => setActiveTab('agent')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition ${
-              activeTab === 'agent'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden p-1.5 text-zinc-400 hover:text-white"
           >
-            <Terminal className="w-3.5 h-3.5" />
-            Coding Agent Sandbox
+            <X className="w-4 h-4" />
           </button>
         </div>
-      </div>
 
-      {activeTab === 'workspace' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
-          {/* Main Execution Column (8 cols) */}
-          <div className="lg:col-span-8 flex flex-col space-y-4">
-            {/* Task Composer Card */}
-            <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-xl">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Task Intent & Prompt
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium">Policy:</span>
-                  <select
-                    value={costPolicy}
-                    onChange={(e) => setCostPolicy(e.target.value as CostPolicy)}
-                    className="bg-slate-950 border border-slate-700 text-sky-400 text-xs rounded-lg px-2.5 py-1 font-semibold focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="balanced">Balanced (Default)</option>
-                    <option value="free_only">Free Only (Strict $0)</option>
-                    <option value="lowest_cost">Lowest Cost</option>
-                    <option value="best_quality">Best Quality</option>
-                    <option value="manual_pin">Manual Pin</option>
-                  </select>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {conversations.length === 0 ? (
+            <div className="text-center py-8 text-zinc-500 text-xs font-mono">No conversations yet</div>
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.id}
+                onClick={() => {
+                  loadConversation(conv.id);
+                  setSidebarOpen(false);
+                }}
+                className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs transition cursor-pointer ${
+                  currentConvId === conv.id
+                    ? 'bg-[#1b1f2d] text-amber-400 font-semibold'
+                    : 'text-zinc-400 hover:bg-[#141824] hover:text-zinc-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{conv.title}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteConversation(e, conv.id)}
+                  className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition"
+                  title="Delete chat"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </aside>
+
+      {/* Main Chat Workspace */}
+      <div className="flex-1 flex flex-col h-[calc(100vh-60px)] bg-[#090a0f] overflow-hidden">
+        {/* Controls Bar */}
+        <div className="border-b border-[#232736] bg-[#0c0e14]/50 backdrop-blur-sm px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-1.5 rounded bg-[#161a26] text-zinc-300"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Policy Selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-500 font-mono text-[11px]">POLICY:</span>
+              <select
+                value={costPolicy}
+                onChange={(e) => setCostPolicy(e.target.value as CostPolicy)}
+                className="bg-[#10131d] border border-[#232736] rounded-md px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-mono"
+              >
+                <option value="free_only">Free Only ($0 verified)</option>
+                <option value="lowest_cost">Lowest Cost</option>
+                <option value="balanced">Balanced (Prior / Cost)</option>
+                <option value="best_quality">Best Quality</option>
+                <option value="manual_pin">Manual Pin</option>
+              </select>
+            </div>
+
+            {/* Task Class Override */}
+            <div className="hidden sm:flex items-center gap-1.5">
+              <span className="text-zinc-500 font-mono text-[11px]">TASK:</span>
+              <select
+                value={taskClassOverride}
+                onChange={(e) => setTaskClassOverride(e.target.value)}
+                className="bg-[#10131d] border border-[#232736] rounded-md px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-mono"
+              >
+                <option value="auto">Auto-Classify</option>
+                <option value="coding">Coding</option>
+                <option value="reasoning">Reasoning</option>
+                <option value="writing">Writing</option>
+                <option value="general_chat">General Chat</option>
+                <option value="planning">Planning</option>
+                <option value="vision">Vision</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Model Pin (Pin by model name) */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-500 font-mono text-[11px]">PIN MODEL:</span>
+            <select
+              value={pinnedModelName}
+              onChange={(e) => setPinnedModelName(e.target.value)}
+              className="bg-[#10131d] border border-[#232736] rounded-md px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-mono max-w-[160px] truncate"
+            >
+              <option value="">Auto Router</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.name}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Error Banner with One Human Sentence + Fix Action */}
+        {errorBanner && (
+          <div className="m-4 p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-200 text-xs flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{errorBanner.message}</span>
+            </div>
+            {errorBanner.fixHref ? (
+              <Link
+                href={errorBanner.fixHref}
+                className="px-2.5 py-1 bg-amber-500 text-zinc-950 font-semibold rounded text-[11px] hover:bg-amber-400 transition"
+              >
+                {errorBanner.fixAction}
+              </Link>
+            ) : errorBanner.fixAction === 'Switch to Balanced Policy' ? (
+              <button
+                onClick={() => {
+                  setCostPolicy('balanced');
+                  setErrorBanner(null);
+                }}
+                className="px-2.5 py-1 bg-amber-500 text-zinc-950 font-semibold rounded text-[11px] hover:bg-amber-400 transition"
+              >
+                Switch to Balanced
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {/* Message Thread */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {messages.length === 0 && !isStreaming ? (
+            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white font-mono">Shazam AI Workspace</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Describe what you need. Shazam automatically selects the best eligible model based on task, capabilities, cost, and quota health.
+                </p>
               </div>
 
-              {costPolicy === 'manual_pin' && (
-                <div className="mb-3 p-2.5 bg-slate-950/80 border border-slate-800 rounded-lg flex items-center justify-between">
-                  <span className="text-xs text-slate-300 font-medium">Pinned Route:</span>
-                  <select
-                    value={pinnedRouteId}
-                    onChange={(e) => setPinnedRouteId(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded px-2 py-1 max-w-xs truncate"
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full pt-2">
+                {[
+                  'Build a binary search tree in TypeScript',
+                  'Compare Kafka vs RabbitMQ architectural trade-offs',
+                  'Write a concise email announcing product MVP launch',
+                  'Explain Paxos consensus in simple terms',
+                ].map((sample, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSend(sample)}
+                    className="p-2.5 rounded-lg border border-[#232736] bg-[#10131d] text-zinc-300 hover:text-white hover:border-amber-500/40 text-left text-xs transition"
                   >
-                    <option value="">Select a route to pin...</option>
-                    {availableRoutes.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.id} ({r.costClass})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                    &ldquo;{sample}&rdquo;
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+              >
+                <div
+                  className={`max-w-3xl rounded-xl p-4 text-xs ${
+                    msg.role === 'user'
+                      ? 'bg-amber-500 text-zinc-950 font-medium'
+                      : 'bg-[#10131d] border border-[#232736] text-zinc-200'
+                  }`}
+                >
+                  {/* Reasoning Drawer */}
+                  {msg.reasoning && (
+                    <details className="mb-3 rounded-lg bg-[#090b10] border border-[#232736] overflow-hidden text-zinc-400">
+                      <summary className="px-3 py-1.5 cursor-pointer text-[11px] font-mono text-zinc-500 hover:text-zinc-300 flex items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5 text-amber-500" /> Model Reasoning Process
+                      </summary>
+                      <div className="p-3 text-[11px] font-mono text-zinc-400 whitespace-pre-wrap border-t border-[#1e2333]">
+                        {msg.reasoning}
+                      </div>
+                    </details>
+                  )}
 
+                  {msg.role === 'assistant' ? (
+                    <div>{renderFormattedContent(msg.content)}</div>
+                  ) : (
+                    <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                  )}
+
+                  {/* Route Disclosure Pill on Assistant Messages */}
+                  {msg.role === 'assistant' && msg.routeInfo && (
+                    <div className="mt-3 pt-2.5 border-t border-[#1e2333] flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
+                      <button
+                        onClick={() => setSelectedDisclosure(msg.routeInfo)}
+                        className="flex items-center gap-1.5 hover:text-amber-400 font-mono transition"
+                      >
+                        <Info className="w-3.5 h-3.5 text-amber-500" />
+                        <span>
+                          Routed to {msg.routeInfo.model?.name || msg.routeInfo.modelId || 'Model'} (
+                          {msg.routeInfo.route?.costClass || 'auto'})
+                        </span>
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleCopy(msg.content, msg.id)}
+                          title="Copy response"
+                          className="p-1 text-zinc-400 hover:text-zinc-200 rounded"
+                        >
+                          {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        {msg.taskId && (
+                          <>
+                            <button
+                              onClick={() => handleFeedback(msg.taskId!, 1)}
+                              title="Helpful"
+                              className={`p-1 rounded ${feedbackSent[msg.taskId!] === 1 ? 'text-emerald-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            >
+                              <ThumbsUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleFeedback(msg.taskId!, -1)}
+                              title="Not helpful"
+                              className={`p-1 rounded ${feedbackSent[msg.taskId!] === -1 ? 'text-red-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+                            >
+                              <ThumbsDown className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* Active Streaming Chunk */}
+          {isStreaming && (
+            <div className="flex flex-col items-start">
+              <div className="max-w-3xl rounded-xl p-4 text-xs bg-[#10131d] border border-[#232736] text-zinc-200 w-full space-y-3">
+                {activeRouteInfo && (
+                  <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 pb-2 border-b border-[#1e2333]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      Executing via {activeRouteInfo.model?.name || 'Selected Model'} ({activeRouteInfo.provider?.name || 'Provider'})
+                    </span>
+                    <button
+                      onClick={() => setSelectedDisclosure(activeRouteInfo)}
+                      className="text-amber-400 hover:underline flex items-center gap-1"
+                    >
+                      Route details <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
+                {streamingReasoning && (
+                  <div className="p-3 rounded-lg bg-[#090b10] border border-[#232736] text-[11px] font-mono text-zinc-400 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                    <div className="text-[10px] uppercase font-bold text-amber-500 mb-1 flex items-center gap-1">
+                      <Cpu className="w-3 h-3" /> Reasoning:
+                    </div>
+                    {streamingReasoning}
+                  </div>
+                )}
+
+                {streamingText ? (
+                  <div>{renderFormattedContent(streamingText)}</div>
+                ) : (
+                  <div className="flex items-center gap-2 text-zinc-500 font-mono text-xs">
+                    <span className="inline-block w-2 h-4 bg-amber-500 animate-pulse" />
+                    Evaluating prompt and streaming tokens...
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Bar */}
+        <div className="p-4 border-t border-[#232736] bg-[#0c0e14]">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="max-w-4xl mx-auto flex items-end gap-2"
+          >
+            <div className="flex-1 bg-[#10131d] border border-[#232736] rounded-xl focus-within:border-amber-500/80 transition p-2">
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                rows={3}
-                placeholder="Describe your task (e.g. 'Write a Python unit test for JWT validation', 'Summarize this architecture', or 'Analyze deep reasoning steps')..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={2}
+                placeholder="Describe your task (e.g., 'Refactor this SQL query', 'Write a test suite for auth', 'Draft product specs')..."
+                className="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none font-sans"
               />
-
-              {/* Quick Prompt Badges */}
-              <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-800/60">
-                <span className="text-[11px] text-slate-400 font-medium">Quick test:</span>
-                <button
-                  onClick={() => {
-                    const p = 'Write a complete Python function with regex to validate email addresses';
-                    setPrompt(p);
-                    handleLaunchTask(p);
-                  }}
-                  className="px-2.5 py-1 rounded-md bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition"
-                >
-                  Code: Email Validator
-                </button>
-                <button
-                  onClick={() => {
-                    const p = 'Step-by-step reasoning: solve the classic river crossing puzzle with wolf, goat, and cabbage';
-                    setPrompt(p);
-                    handleLaunchTask(p);
-                  }}
-                  className="px-2.5 py-1 rounded-md bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition"
-                >
-                  Reasoning: Logic Puzzle
-                </button>
-                <button
-                  onClick={() => {
-                    const p = 'Simulate provider 429 rate limit to verify automatic failover cascade [SIMULATE_429]';
-                    setPrompt(p);
-                    handleLaunchTask(p);
-                  }}
-                  className="px-2.5 py-1 rounded-md bg-amber-950/40 hover:bg-amber-900/50 border border-amber-800/60 text-[11px] text-amber-300 transition"
-                >
-                  ⚡ Test 429 Fallback Cascade
-                </button>
-
-                <div className="ml-auto">
-                  <button
-                    onClick={() => handleLaunchTask()}
-                    disabled={isExecuting || !prompt.trim()}
-                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition"
-                  >
-                    {isExecuting ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Routing & Executing...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5" />
-                        Execute Task
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
             </div>
 
-            {/* Error Notification */}
-            {errorMsg && (
-              <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-start gap-2.5">
-                <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold block mb-0.5">Execution Failed</span>
-                  {errorMsg}
-                </div>
-              </div>
-            )}
-
-            {/* Live Streaming Response Card */}
-            {(streamedResponse || isExecuting || currentTask) && (
-              <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      Execution Output
-                    </span>
-                  </div>
-
-                  {selectedModelObj && (
-                    <div className="flex items-center space-x-2">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-950 border border-slate-800 text-sky-400">
-                        {selectedModelObj.canonicalName}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          selectedRouteObj?.costClass === 'verified_free'
-                            ? 'bg-emerald-950/80 border border-emerald-800/60 text-emerald-400'
-                            : 'bg-amber-950/80 border border-amber-800/60 text-amber-400'
-                        }`}
-                      >
-                        {selectedRouteObj?.costClass || 'free'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Reasoning Block (DeepSeek R1 / Reasoning Models) */}
-                {streamedReasoning && (
-                  <div className="p-3.5 bg-slate-950/80 border border-slate-800/90 rounded-xl">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5 mb-1.5">
-                      <Cpu className="w-3.5 h-3.5" />
-                      Chain of Thought Reasoning
-                    </span>
-                    <p className="text-xs font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">
-                      {streamedReasoning}
-                    </p>
-                  </div>
-                )}
-
-                {/* Main Text Content */}
-                <div className="flex-1 overflow-y-auto max-h-[500px] text-sm text-slate-100 font-sans whitespace-pre-wrap leading-relaxed">
-                  {streamedResponse}
-                  {isExecuting && (
-                    <span className="inline-block w-2 h-4 bg-sky-400 ml-1 animate-pulse"></span>
-                  )}
-                  <div ref={responseEndRef} />
-                </div>
-
-                {/* Completion Meta Bar */}
-                {currentTask?.status === 'succeeded' && (
-                  <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400">
-                    <div className="flex items-center gap-4">
-                      <span>
-                        Tokens: <strong className="text-slate-200">{currentTask.attempts[0]?.usage?.totalTokens ?? 142}</strong>
-                      </span>
-                      <span>
-                        Cost:{' '}
-                        <strong className="text-emerald-400">
-                          ${(currentTask.totalEstimatedCostUSD ?? 0).toFixed(6)}
-                        </strong>
-                      </span>
-                      <span>
-                        Attempts: <strong className="text-slate-200">{currentTask.attempts.length}</strong>
-                      </span>
-                    </div>
-
-                    <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Executed with policy verification
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Right Inspector Column (4 cols) */}
-          <div className="lg:col-span-4 flex flex-col space-y-4">
-            {/* Route Transparency Card */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-sky-400" />
-                Route Transparency & Decision
-              </h2>
-
-              {currentTask?.decisionTrace ? (
-                <div className="space-y-3">
-                  <div>
-                    <span className="text-[11px] text-slate-400">Classification</span>
-                    <div className="text-xs font-semibold text-white capitalize mt-0.5">
-                      {currentTask.taskClass.replace('_', ' ')}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-[11px] text-slate-400">Selection Rationale</span>
-                    <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-800 mt-1">
-                      {currentTask.decisionTrace.selectionRationale}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
-                    <div>
-                      <span className="text-[10px] text-slate-400">Candidates Evaluated</span>
-                      <div className="text-xs font-bold text-white">
-                        {currentTask.decisionTrace.evaluatedRoutesCount} routes
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400">Eligible Under Policy</span>
-                      <div className="text-xs font-bold text-emerald-400">
-                        {currentTask.decisionTrace.eligibleRoutesCount} routes
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Fallback History */}
-                  {currentTask.attempts.length > 1 && (
-                    <div className="mt-3 pt-3 border-t border-slate-800">
-                      <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1 mb-2">
-                        <ArrowRightLeft className="w-3.5 h-3.5" />
-                        Fallback History ({currentTask.attempts.length} attempts)
-                      </span>
-                      <div className="space-y-2">
-                        {currentTask.attempts.map((att, idx) => (
-                          <div
-                            key={idx}
-                            className={`p-2 rounded text-[11px] border ${
-                              att.state === 'failed'
-                                ? 'bg-rose-950/30 border-rose-800/50 text-rose-300'
-                                : 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
-                            }`}
-                          >
-                            <div className="font-semibold flex items-center justify-between">
-                              <span>Attempt {att.attemptNumber}: {att.routeId}</span>
-                              <span className="uppercase text-[9px] font-bold">{att.state}</span>
-                            </div>
-                            {att.error && <p className="text-[10px] text-rose-400 mt-0.5">{att.error.message}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-slate-400 text-xs">
-                  Run a task to inspect route selection rationale, candidate scores, and quota confidence.
-                </div>
-              )}
-            </div>
-
-            {/* Provider Quota Confidence Widget */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-                <Shield className="w-4 h-4 text-emerald-400" />
-                Active Route Policy Guardrails
-              </h2>
-
-              <ul className="text-xs space-y-2.5 text-slate-300">
-                <li className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>
-                    <strong>Free-Only Guarantee:</strong> Never switches to paid or unknown cost routes.
-                  </span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>
-                    <strong>BYOK Isolation:</strong> Keys encrypted at rest with AES-256-GCM.
-                  </span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                  <span>
-                    <strong>Quota Failover:</strong> 429/500 triggers eligible route failover with context intact.
-                  </span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* Coding Agent Sandbox View */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
-          {/* File Explorer (4 cols) */}
-          <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Code2 className="w-4 h-4 text-sky-400" />
-                Isolated Workspace Files
-              </span>
+            {isStreaming ? (
               <button
-                onClick={loadWorkspaceFiles}
-                className="text-xs text-sky-400 hover:text-sky-300 font-medium"
+                type="button"
+                onClick={handleStop}
+                className="p-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition shadow-md flex items-center justify-center"
+                title="Stop generation"
               >
-                Refresh
+                <Square className="w-4 h-4 fill-white" />
               </button>
-            </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={!prompt.trim()}
+                className="p-3 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-xl transition shadow-md disabled:opacity-40 flex items-center justify-center"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            )}
+          </form>
+        </div>
+      </div>
 
-            <div className="flex-1 overflow-y-auto space-y-1">
-              {workspaceFiles.length === 0 ? (
-                <p className="text-xs text-slate-400 p-2">Workspace empty. Initialize a file below.</p>
-              ) : (
-                workspaceFiles.map((f) => (
-                  <div
-                    key={f.path}
-                    onClick={() => {
-                      setSelectedFile(f.path);
-                      handleExecuteAgentTool({ action: 'read_file', params: { path: f.path } });
-                    }}
-                    className={`p-2 rounded-lg text-xs font-mono cursor-pointer transition flex items-center justify-between ${
-                      selectedFile === f.path
-                        ? 'bg-sky-950/80 text-sky-300 border border-sky-800'
-                        : 'text-slate-300 hover:bg-slate-950'
-                    }`}
-                  >
-                    <span className="truncate">{f.path}</span>
-                    <span className="text-[10px] text-slate-400 font-sans">{f.sizeBytes} B</span>
-                  </div>
-                ))
-              )}
+      {/* Route Disclosure Drawer */}
+      {selectedDisclosure && (
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-[#0e111a] border-l border-[#232736] shadow-2xl flex flex-col">
+          <div className="p-4 border-b border-[#232736] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-amber-500" />
+              <h3 className="text-sm font-bold font-mono text-white">Route Decision Disclosure</h3>
             </div>
-
-            {/* Quick Agent Actions */}
-            <div className="pt-3 border-t border-slate-800 space-y-2">
-              <span className="text-[11px] font-bold uppercase text-slate-400">Agent Proposal Quick Actions</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() =>
-                    handleExecuteAgentTool({
-                      action: 'write_file',
-                      params: {
-                        path: 'src/main.py',
-                        content: '# Shazam AI Managed Script\ndef execute():\n    return "Ready"\n',
-                      },
-                      rationale: 'Create starter script',
-                    })
-                  }
-                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition text-left"
-                >
-                  + Write main.py
-                </button>
-                <button
-                  onClick={() =>
-                    handleExecuteAgentTool({
-                      action: 'create_checkpoint',
-                      params: { checkpointDescription: 'Pre-build checkpoint' },
-                      rationale: 'Save state',
-                    })
-                  }
-                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition text-left"
-                >
-                  📸 Create Checkpoint
-                </button>
-                <button
-                  onClick={() =>
-                    handleExecuteAgentTool({
-                      action: 'execute_command',
-                      params: { command: 'echo "Running sandboxed tests..." && exit 0' },
-                      rationale: 'Run test suite',
-                    })
-                  }
-                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 transition text-left"
-                >
-                  ▶ Run Safe Tests
-                </button>
-                <button
-                  onClick={() =>
-                    handleExecuteAgentTool({
-                      action: 'execute_command',
-                      params: { command: 'rm -rf /' },
-                      rationale: 'Test malicious command block',
-                    })
-                  }
-                  className="p-2 rounded-lg bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/60 text-[11px] text-rose-300 transition text-left"
-                >
-                  🛡️ Test Danger Block
-                </button>
-              </div>
-            </div>
+            <button
+              onClick={() => setSelectedDisclosure(null)}
+              className="p-1 rounded text-zinc-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Agent Terminal & Diff Viewer (8 cols) */}
-          <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <Terminal className="w-4 h-4 text-emerald-400" />
-                Sandbox Console & Policy Engine
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs font-mono">
+            <div>
+              <span className="text-[10px] uppercase text-zinc-500 block">SELECTED MODEL</span>
+              <span className="text-sm font-bold text-white">
+                {selectedDisclosure.model?.name || selectedDisclosure.modelId}
               </span>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                Default-Deny Policy Active
+              <span className="block text-zinc-400 text-[11px]">
+                ID: {selectedDisclosure.model?.providerModelId || selectedDisclosure.modelId}
               </span>
             </div>
 
-            {/* Interactive Approval Banner */}
-            {agentApprovalsNeeded && (
-              <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/80 flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    Human Approval Required
-                  </span>
-                  <p className="text-xs text-amber-200">
-                    The agent proposed a high-impact operation:
-                    <code className="ml-1 px-1 bg-black/40 rounded text-amber-300">
-                      {agentProposal?.params?.command}
-                    </code>
-                  </p>
-                </div>
+            <div>
+              <span className="text-[10px] uppercase text-zinc-500 block">PROVIDER</span>
+              <span className="text-zinc-200">
+                {selectedDisclosure.provider?.name || selectedDisclosure.providerId}
+              </span>
+            </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleExecuteAgentTool(agentProposal, true)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAgentApprovalsNeeded(false);
-                      setAgentProposal(null);
-                      setAgentOutput('Action cancelled by user.');
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            )}
+            <div>
+              <span className="text-[10px] uppercase text-zinc-500 block">COST CLASSIFICATION</span>
+              <span className="text-amber-400 font-semibold">
+                {selectedDisclosure.route?.costClass || 'unknown'}
+              </span>
+            </div>
 
-            {/* Diff Viewer */}
-            {agentDiff && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider block mb-2">
-                  Unified Code Diff
+            <div>
+              <span className="text-[10px] uppercase text-zinc-500 block">ROUTER RATIONALE</span>
+              <p className="text-zinc-300 text-[11px] font-sans mt-0.5 leading-relaxed bg-[#141824] p-2.5 rounded-lg border border-[#232736]">
+                {selectedDisclosure.why || selectedDisclosure.decisionTrace?.rationale || 'Selected via policy scoring engine.'}
+              </p>
+            </div>
+
+            {selectedDisclosure.fallback && (
+              <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-900/60 text-amber-300 space-y-1">
+                <span className="text-[10px] font-bold uppercase flex items-center gap-1">
+                  <ArrowRightLeft className="w-3.5 h-3.5" /> Failover Triggered
                 </span>
-                <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap">{agentDiff}</pre>
+                <p className="text-[11px]">
+                  Fell back from {selectedDisclosure.fallback.previousRouteId} to current route: {selectedDisclosure.fallback.reason}
+                </p>
               </div>
             )}
 
-            {/* Output log */}
-            <div className="flex-1 bg-slate-950 rounded-xl border border-slate-800 p-4 font-mono text-xs text-slate-200 overflow-y-auto min-h-[300px] whitespace-pre-wrap">
-              {agentOutput || 'Ready. Click a quick action or select a file to view content.'}
-            </div>
+            {/* Decision Candidate Breakdown */}
+            {selectedDisclosure.decisionTrace && (
+              <div className="space-y-2 pt-2 border-t border-[#1e2333]">
+                <span className="text-[10px] uppercase text-zinc-500 block">EVALUATED CANDIDATES ({selectedDisclosure.decisionTrace.evaluated})</span>
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                  {selectedDisclosure.decisionTrace.candidates?.map((cand: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className={`p-2 rounded text-[11px] border ${
+                        cand.eligible
+                          ? 'border-emerald-900/40 bg-emerald-950/20 text-emerald-300'
+                          : 'border-zinc-800 bg-[#121520] text-zinc-500'
+                      }`}
+                    >
+                      <div className="flex justify-between font-semibold">
+                        <span>{cand.modelId}</span>
+                        <span>{cand.eligible ? `Score: ${cand.score?.toFixed(1) ?? '—'}` : 'Excluded'}</span>
+                      </div>
+                      {cand.rejection && (
+                        <div className="text-[10px] text-red-400 mt-0.5">{cand.rejection}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { DbRepo } from '@/lib/db/repo';
+import { requireUser } from '@/lib/auth/session';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const repo = new DbRepo();
+  let user;
   try {
-    const { id } = await params;
-    const task = await db.getTaskById(id);
-
-    if (!task) {
-      return NextResponse.json({ success: false, error: 'Task not found.' }, { status: 404 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: task,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  const { id } = await params;
+  const task = await repo.getTask(user.id, id);
+
+  if (!task) {
+    return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
+  }
+
+  return NextResponse.json({ task });
 }

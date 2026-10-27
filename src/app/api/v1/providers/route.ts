@@ -1,40 +1,48 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { DbRepo } from '@/lib/db/repo';
+import { getCurrentUser } from '@/lib/auth/session';
+import { getLiveCatalog } from '@/lib/catalog';
+import { envFlag, envVar } from '@/lib/env';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = 'user_default'; // default user session in MVP
-    const providers = await db.getProviders();
-    const userCredentials = await db.getCredentialsForUser(userId);
+    const repo = new DbRepo();
+    const user = await getCurrentUser(req, repo);
+    const catalog = await getLiveCatalog(repo);
 
+    let userCredentials: any[] = [];
+    if (user) {
+      userCredentials = await repo.getCredentials(user.id);
+    }
     const credMap = new Map(userCredentials.map((c) => [c.providerId, c]));
 
-    const systemKeysAvailable: Record<string, boolean> = {
-      google: Boolean(process.env.GOOGLE_AI_API_KEY),
-      deepseek: Boolean(process.env.DEEPSEEK_API_KEY),
-      openrouter: Boolean(process.env.OPENROUTER_API_KEY),
-      openai: Boolean(process.env.OPENAI_API_KEY),
-      anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
-      alibaba: Boolean(process.env.DASHSCOPE_API_KEY),
-      simulation: true,
+    const canUseSystem = user?.role === 'admin' || envFlag('SHAZAM_SHARE_SYSTEM_KEYS', false);
+    const systemKeys: Record<string, boolean> = {
+      google: Boolean(envVar('GOOGLE_AI_API_KEY') || envVar('GOOGLE_API_KEY')),
+      openai: Boolean(envVar('OPENAI_API_KEY')),
+      anthropic: Boolean(envVar('ANTHROPIC_API_KEY')),
+      deepseek: Boolean(envVar('DEEPSEEK_API_KEY')),
+      openrouter: Boolean(envVar('OPENROUTER_API_KEY')),
+      simulation: envFlag('SHAZAM_ENABLE_SIMULATION', false),
     };
 
-    const result = providers.map((p) => {
+    const providers = catalog.providers.map((p) => {
       const cred = credMap.get(p.id);
+      const hasSystem = canUseSystem && systemKeys[p.id] === true;
+      const isConnected = Boolean(cred) || hasSystem;
+
       return {
         ...p,
-        isConnected: Boolean(cred) || systemKeysAvailable[p.id] === true,
-        keyPrefix: cred ? cred.keyPrefix : systemKeysAvailable[p.id] ? 'system_configured' : undefined,
-        credentialStatus: cred ? cred.status : systemKeysAvailable[p.id] ? 'valid' : 'unconnected',
-        lastValidatedAt: cred?.lastValidatedAt,
+        isConnected,
+        isSystemProvided: !cred && hasSystem,
+        keyMask: cred?.keyMask || (hasSystem ? 'System Configured' : null),
+        credentialStatus: cred ? cred.status : hasSystem ? 'valid' : 'unconnected',
+        lastValidatedAt: cred?.lastValidatedAt ?? null,
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      data: result,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ providers });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to list providers.' }, { status: 500 });
   }
 }

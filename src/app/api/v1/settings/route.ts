@@ -1,42 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { z } from 'zod';
+import { DbRepo } from '@/lib/db/repo';
+import { requireUser } from '@/lib/auth/session';
 
-export async function GET() {
+const UpdateSettingsSchema = z.object({
+  defaultCostPolicy: z
+    .enum(['free_only', 'lowest_cost', 'balanced', 'best_quality', 'manual_pin'])
+    .optional(),
+  maxCostPerTaskUSD: z.number().min(0.001).max(100).optional(),
+  monthlyBudgetUSD: z.number().min(0).max(10000).optional(),
+  privacyMode: z.enum(['standard', 'strict']).optional(),
+  retentionDays: z.number().min(1).max(365).optional(),
+  allowedProviders: z.array(z.string()).nullable().optional(),
+  preferredRegion: z.string().nullable().optional(),
+  autoFallbackEnabled: z.boolean().optional(),
+  allowPaidFallback: z.boolean().optional(),
+});
+
+export async function GET(req: NextRequest) {
+  const repo = new DbRepo();
+  let user;
   try {
-    const userId = 'user_default';
-    const pref = await db.getUserPreference(userId);
-    return NextResponse.json({ success: true, data: pref });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  const preferences = await repo.getUserPreferences(user.id);
+  return NextResponse.json({ preferences });
 }
 
 export async function PATCH(req: NextRequest) {
+  const repo = new DbRepo();
+  let user;
   try {
-    const userId = 'user_default';
-    const body = await req.json();
-
-    const allowedFields = [
-      'defaultCostPolicy',
-      'maxCostPerTaskUSD',
-      'monthlyBudgetUSD',
-      'privacyMode',
-      'allowedProviders',
-      'disallowedProviders',
-      'preferredRegion',
-      'autoFallbackEnabled',
-    ];
-
-    const updates: any = {};
-    for (const key of allowedFields) {
-      if (body[key] !== undefined) {
-        updates[key] = body[key];
-      }
-    }
-
-    const updated = await db.updateUserPreference(userId, updates);
-    return NextResponse.json({ success: true, data: updated });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON request body.' }, { status: 400 });
+  }
+
+  const parseResult = UpdateSettingsSchema.safeParse(body);
+  if (!parseResult.success) {
+    return NextResponse.json(
+      { error: parseResult.error.issues[0]?.message || 'Invalid parameters.' },
+      { status: 400 }
+    );
+  }
+
+  const updated = await repo.updateUserPreferences(user.id, parseResult.data);
+  return NextResponse.json({ success: true, preferences: updated });
 }

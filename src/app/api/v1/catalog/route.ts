@@ -1,21 +1,17 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { DbRepo } from '@/lib/db/repo';
+import { getLiveCatalog } from '@/lib/catalog';
 
 export async function GET() {
   try {
-    const models = await db.getModels();
-    const routes = await db.getRoutes();
-    const providers = await db.getProviders();
-
+    const repo = new DbRepo();
+    const catalog = await getLiveCatalog(repo);
     return NextResponse.json({
-      success: true,
-      data: {
-        models,
-        routes,
-        providers,
-      },
+      providers: catalog.providers,
+      models: catalog.models,
+      routes: catalog.routes,
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to fetch catalog.' }, { status: 500 });
   }
 }

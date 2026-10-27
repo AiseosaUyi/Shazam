@@ -1,103 +1,146 @@
-import crypto from 'crypto';
+import { envVar, isProduction } from '@/lib/env';
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 12; // 96 bits for GCM
-const AUTH_TAG_LENGTH = 16;
+const ALGORITHM = 'AES-GCM';
+const IV_LENGTH = 12; // 96 bits
 
-/**
- * Gets or derives the master 32-byte encryption key from environment.
- * If unset in development, uses a deterministic fallback key with explicit warning.
- */
-export function getMasterKey(): Buffer {
-  const envKey = process.env.SHAZAM_ENCRYPTION_KEY;
-  if (envKey) {
-    if (envKey.length === 64) {
-      return Buffer.from(envKey, 'hex');
+function hexToUint8Array(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
+function uint8ArrayToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function getVaultKey(): Promise<CryptoKey> {
+  const hexKey = envVar('SHAZAM_ENCRYPTION_KEY');
+
+  if (!hexKey) {
+    if (isProduction()) {
+      throw new Error('Refusing to encrypt: SHAZAM_ENCRYPTION_KEY secret is missing in production.');
     }
-    return crypto.createHash('sha256').update(envKey).digest();
+    // Deterministic dev fallback key (32 bytes)
+    const devHex = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    return crypto.subtle.importKey(
+      'raw',
+      hexToUint8Array(devHex) as BufferSource,
+      { name: ALGORITHM, length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
   }
-  // Deterministic local development key
-  return crypto.createHash('sha256').update('shazam-ai-local-dev-secret-key-32b').digest();
+
+  let keyBytes: Uint8Array;
+  if (hexKey.length === 64) {
+    keyBytes = hexToUint8Array(hexKey);
+  } else {
+    // Hash key to 32 bytes using SHA-256
+    const enc = new TextEncoder().encode(hexKey);
+    const hash = await crypto.subtle.digest('SHA-256', enc);
+    keyBytes = new Uint8Array(hash);
+  }
+
+  return crypto.subtle.importKey(
+    'raw',
+    keyBytes as BufferSource,
+    { name: ALGORITHM, length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
 }
 
 /**
- * Encrypts a plaintext string (e.g. API key) using AES-256-GCM.
- * Output format: base64(iv + authTag + cipherText)
+ * Encrypts a plaintext secret using AES-256-GCM via WebCrypto.
+ * Format: base64(iv + cipherTextAndTag)
  */
-export function encryptSecret(plainText: string, masterKey = getMasterKey()): string {
-  if (!plainText) {
-    throw new Error('Cannot encrypt empty secret');
-  }
+export async function encryptSecret(plainText: string): Promise<string> {
+  if (!plainText) throw new Error('Cannot encrypt empty secret');
 
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ALGORITHM, masterKey, iv, { authTagLength: AUTH_TAG_LENGTH });
+  const key = await getVaultKey();
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const encoded = new TextEncoder().encode(plainText);
 
-  const cipherText = Buffer.concat([
-    cipher.update(plainText, 'utf8'),
-    cipher.final()
-  ]);
+  const cipherBuffer = await crypto.subtle.encrypt(
+    { name: ALGORITHM, iv: iv as BufferSource },
+    key,
+    encoded as BufferSource
+  );
 
-  const authTag = cipher.getAuthTag();
+  const cipherBytes = new Uint8Array(cipherBuffer);
+  const combined = new Uint8Array(iv.length + cipherBytes.length);
+  combined.set(iv, 0);
+  combined.set(cipherBytes, iv.length);
 
-  // Combine IV + AuthTag + CipherText
-  const payload = Buffer.concat([iv, authTag, cipherText]);
-  return payload.toString('base64');
+  return uint8ArrayToBase64(combined);
 }
 
 /**
- * Decrypts a secret encrypted with encryptSecret.
+ * Decrypts an encrypted payload using AES-256-GCM via WebCrypto.
  */
-export function decryptSecret(encryptedPayloadBase64: string, masterKey = getMasterKey()): string {
-  if (!encryptedPayloadBase64) {
-    throw new Error('Cannot decrypt empty payload');
-  }
+export async function decryptSecret(payloadBase64: string): Promise<string> {
+  if (!payloadBase64) throw new Error('Cannot decrypt empty payload');
 
-  const payload = Buffer.from(encryptedPayloadBase64, 'base64');
-  if (payload.length < IV_LENGTH + AUTH_TAG_LENGTH) {
+  const key = await getVaultKey();
+  const combined = base64ToUint8Array(payloadBase64);
+
+  if (combined.length <= IV_LENGTH) {
     throw new Error('Invalid encrypted payload length');
   }
 
-  const iv = payload.subarray(0, IV_LENGTH);
-  const authTag = payload.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
-  const cipherText = payload.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
+  const iv = combined.slice(0, IV_LENGTH);
+  const cipherBytes = combined.slice(IV_LENGTH);
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, masterKey, iv, { authTagLength: AUTH_TAG_LENGTH });
-  decipher.setAuthTag(authTag);
+  const decryptedBuffer = await crypto.subtle.decrypt(
+    { name: ALGORITHM, iv: iv as BufferSource },
+    key,
+    cipherBytes as BufferSource
+  );
 
-  const decrypted = Buffer.concat([
-    decipher.update(cipherText),
-    decipher.final()
-  ]);
-
-  return decrypted.toString('utf8');
+  return new TextDecoder().decode(decryptedBuffer);
 }
 
 /**
- * Safely masks an API key for UI display (e.g. "sk-12345678" -> "sk-...5678").
- * Never reveals full secrets.
+ * Masks an API key for UI display (e.g., "sk-...4a2b").
  */
-export function maskApiKey(key: string): string {
+export function maskKey(key: string): string {
   if (!key) return '';
   const trimmed = key.trim();
-  if (trimmed.length <= 8) {
-    return '***';
-  }
+  if (trimmed.length <= 8) return '***';
   const prefix = trimmed.slice(0, 3);
   const suffix = trimmed.slice(-4);
   return `${prefix}...${suffix}`;
 }
 
 /**
- * Redacts potential secrets, keys, and authorization headers from strings and error logs.
+ * Redacts API keys, Bearer tokens, and secrets from text logs and errors.
  */
 export function redactSecrets(text: string): string {
   if (!text) return '';
   return text
-    // Redact Bearer tokens
     .replace(/Bearer\s+([a-zA-Z0-9_\-\.]{8,})/gi, 'Bearer [REDACTED]')
-    // Redact common API key patterns (OpenAI, Anthropic, Google, DeepSeek, etc.)
     .replace(/(sk-[a-zA-Z0-9_\-]{8,})/gi, '[REDACTED_API_KEY]')
     .replace(/(AIzaSy[a-zA-Z0-9_\-]{15,})/gi, '[REDACTED_GOOGLE_KEY]')
-    // Redact query param keys: api_key=..., key=...
     .replace(/(key|api_key|secret|token)=([^&\s]+)/gi, '$1=[REDACTED]');
 }

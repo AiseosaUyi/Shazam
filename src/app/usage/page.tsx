@@ -1,185 +1,197 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, DollarSign, Activity, ArrowRightLeft } from 'lucide-react';
+import { BarChart3, TrendingUp, DollarSign, Activity, AlertCircle } from 'lucide-react';
 
 export default function UsagePage() {
-  const [usage, setUsage] = useState<any>(null);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/v1/usage')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load usage data. Sign in may be required.');
+        return res.json();
+      })
       .then((json) => {
-        if (json.success) setUsage(json.data);
+        setData(json);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
       });
   }, []);
 
+  const summary = data?.summary;
+  const monthlyBudget = data?.monthlyBudgetUSD ?? 10.0;
+  const monthlySpend = data?.monthlySpendUSD ?? 0.0;
+  const budgetRemaining = data?.budgetRemainingUSD ?? 10.0;
+  const percentUsed = Math.min(100, (monthlySpend / (monthlyBudget || 1)) * 100);
+
   return (
-    <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-sky-400" />
-          Usage Ledger & Cost Tracking
-        </h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Auditable ledger of executed tasks, token volumes, estimated spend, and failover history.
-        </p>
+    <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#232736] pb-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-white font-mono">Usage Ledger</h1>
+            <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-zinc-800 text-zinc-300 border border-zinc-700">
+              D1 Append-Only Ledger
+            </span>
+          </div>
+          <p className="text-sm text-zinc-400 mt-1">
+            Exact token counts, cost classification (zero, estimated, unknown), and monthly budget consumption.
+          </p>
+        </div>
       </div>
 
-      {/* Top Metric Cards */}
+      {error && (
+        <div className="p-3 rounded-lg bg-red-950/40 border border-red-800 text-red-300 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Monthly Budget Bar */}
+      <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between text-xs font-mono">
+          <span className="text-zinc-400 font-semibold">MONTHLY BUDGET CONSUMPTION</span>
+          <span className="text-zinc-200">
+            ${monthlySpend.toFixed(4)} / ${monthlyBudget.toFixed(2)} USD ({percentUsed.toFixed(1)}%)
+          </span>
+        </div>
+        <div className="w-full bg-[#181d2a] rounded-full h-2.5 overflow-hidden">
+          <div
+            className={`h-2.5 rounded-full transition-all duration-500 ${
+              percentUsed > 90 ? 'bg-red-500' : percentUsed > 70 ? 'bg-amber-500' : 'bg-emerald-500'
+            }`}
+            style={{ width: `${percentUsed}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[11px] text-zinc-500">
+          <span>Remaining: ${budgetRemaining.toFixed(4)} USD</span>
+          <span>Resets on 1st of next month</span>
+        </div>
+      </div>
+
+      {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
+        <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-1">
+          <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span>Total Invocations</span>
-            <Activity className="w-4 h-4 text-sky-400" />
+            <Activity className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-extrabold text-white">
-            {usage?.totalRequests ?? 0}
+          <div className="text-2xl font-bold font-mono text-white">
+            {summary?.totalRequests ?? 0}
           </div>
-          <div className="text-[11px] text-emerald-400 mt-1">
-            {usage?.successfulRequests ?? 0} completed successfully
+          <div className="text-[11px] text-emerald-400">
+            {summary?.successfulRequests ?? 0} succeeded
           </div>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
+        <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-1">
+          <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span>Total Tokens</span>
-            <TrendingUp className="w-4 h-4 text-indigo-400" />
+            <TrendingUp className="w-4 h-4 text-zinc-400" />
           </div>
-          <div className="text-2xl font-extrabold text-white">
-            {(usage?.totalTokens ?? 0).toLocaleString()}
+          <div className="text-2xl font-bold font-mono text-white">
+            {(summary?.totalTokens ?? 0).toLocaleString()}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1 font-mono">Input + Output Tokens</div>
+          <div className="text-[11px] text-zinc-500">Prompt + Completion Tokens</div>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
-            <span>Estimated Spend</span>
+        <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-1">
+          <div className="flex items-center justify-between text-zinc-400 text-xs">
+            <span>All-time Cost</span>
             <DollarSign className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-extrabold text-emerald-400">
-            ${(usage?.totalEstimatedCostUSD ?? 0).toFixed(4)}
+          <div className="text-2xl font-bold font-mono text-white">
+            ${(summary?.totalEstimatedCostUSD ?? 0).toFixed(4)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">
-            Monthly budget: ${(usage?.monthlyBudgetUSD ?? 25).toFixed(2)}
-          </div>
+          <div className="text-[11px] text-zinc-500 font-mono">USD Estimated</div>
         </div>
 
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
-            <span>Resilient Failovers</span>
-            <ArrowRightLeft className="w-4 h-4 text-amber-400" />
+        <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-1">
+          <div className="flex items-center justify-between text-zinc-400 text-xs">
+            <span>Success Rate</span>
+            <BarChart3 className="w-4 h-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-extrabold text-amber-400">
-            {usage?.fallbacks ?? 0}
+          <div className="text-2xl font-bold font-mono text-white">
+            {summary?.totalRequests
+              ? `${Math.round((summary.successfulRequests / summary.totalRequests) * 100)}%`
+              : '—'}
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">Quota / Rate-limit cascades</div>
-        </div>
-      </div>
-
-      {/* Provider & Model Breakdowns */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Spend by Provider
-          </h3>
-          <div className="space-y-2">
-            {usage?.byProvider && Object.keys(usage.byProvider).length > 0 ? (
-              Object.entries(usage.byProvider).map(([prov, data]: [string, any]) => (
-                <div
-                  key={prov}
-                  className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs"
-                >
-                  <span className="font-semibold text-white capitalize">{prov}</span>
-                  <div className="flex items-center gap-4 text-slate-400 font-mono">
-                    <span>{data.requests} reqs</span>
-                    <span>{data.tokens.toLocaleString()} tok</span>
-                    <strong className="text-emerald-400">${data.costUSD.toFixed(4)}</strong>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 py-4 text-center">No provider usage recorded yet.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Spend by Model
-          </h3>
-          <div className="space-y-2">
-            {usage?.byModel && Object.keys(usage.byModel).length > 0 ? (
-              Object.entries(usage.byModel).map(([mod, data]: [string, any]) => (
-                <div
-                  key={mod}
-                  className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs"
-                >
-                  <span className="font-mono text-sky-400">{mod}</span>
-                  <div className="flex items-center gap-4 text-slate-400 font-mono">
-                    <span>{data.requests} reqs</span>
-                    <strong className="text-emerald-400">${data.costUSD.toFixed(4)}</strong>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 py-4 text-center">No model usage recorded yet.</p>
-            )}
-          </div>
+          <div className="text-[11px] text-zinc-500">Across all providers</div>
         </div>
       </div>
 
-      {/* Append-only Event Ledger */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Append-Only Task Ledger (Latest 50 Events)
-        </h3>
+      {/* Usage Events Table */}
+      <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-bold font-mono text-white">Recent Execution Events</h3>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-sans">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 font-semibold">
-                <th className="pb-2.5">Time</th>
-                <th className="pb-2.5">Task ID</th>
-                <th className="pb-2.5">Route</th>
-                <th className="pb-2.5">Policy</th>
-                <th className="pb-2.5">Tokens</th>
-                <th className="pb-2.5">Est. Cost</th>
-                <th className="pb-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
-              {usage?.events && usage.events.length > 0 ? (
-                usage.events.map((evt: any) => (
-                  <tr key={evt.id} className="hover:bg-slate-950/60 transition">
-                    <td className="py-2.5 font-sans text-slate-400 text-[11px]">
-                      {new Date(evt.createdAt).toLocaleTimeString()}
+        {loading ? (
+          <div className="text-center py-10 text-zinc-500 text-xs font-mono">Loading events...</div>
+        ) : summary?.recentEvents?.length === 0 ? (
+          <div className="text-center py-10 text-zinc-500 text-xs">No execution events recorded yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-[#232736] text-[11px] font-mono uppercase text-zinc-500">
+                <tr>
+                  <th className="pb-3 font-semibold">Time</th>
+                  <th className="pb-3 font-semibold">Task</th>
+                  <th className="pb-3 font-semibold">Route</th>
+                  <th className="pb-3 font-semibold">Policy</th>
+                  <th className="pb-3 font-semibold">Tokens</th>
+                  <th className="pb-3 font-semibold">Cost</th>
+                  <th className="pb-3 font-semibold">Latency</th>
+                  <th className="pb-3 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1b1f2e] text-zinc-300 font-mono">
+                {summary?.recentEvents?.map((ev: any) => (
+                  <tr key={ev.id} className="hover:bg-[#141824] transition">
+                    <td className="py-2.5 text-zinc-400 text-[11px]">
+                      {new Date(ev.created_at).toLocaleTimeString()}
                     </td>
-                    <td className="py-2.5 text-sky-400 truncate max-w-[120px]">{evt.taskId}</td>
-                    <td className="py-2.5 text-slate-200">{evt.routeId}</td>
-                    <td className="py-2.5 text-[11px] font-sans capitalize text-slate-400">
-                      {evt.costPolicy}
+                    <td className="py-2.5 capitalize">{ev.task_class}</td>
+                    <td className="py-2.5 text-zinc-200">
+                      <div>{ev.model_id}</div>
+                      <div className="text-[10px] text-zinc-500">{ev.provider_id}</div>
                     </td>
-                    <td className="py-2.5">{evt.totalTokens.toLocaleString()}</td>
-                    <td className="py-2.5 text-emerald-400">${evt.estimatedCostUSD.toFixed(4)}</td>
+                    <td className="py-2.5 text-zinc-400 text-[11px]">{ev.cost_policy}</td>
                     <td className="py-2.5">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/80 text-emerald-400">
-                        {evt.status}
+                      <div>{(ev.prompt_tokens + ev.completion_tokens).toLocaleString()}</div>
+                      <div className="text-[10px] text-zinc-500">{ev.tokens_kind}</div>
+                    </td>
+                    <td className="py-2.5">
+                      {ev.cost_kind === 'zero' ? (
+                        <span className="text-emerald-400">$0.00</span>
+                      ) : ev.cost_kind === 'unknown' ? (
+                        <span className="text-amber-400">unknown</span>
+                      ) : (
+                        <span>${Number(ev.cost_usd).toFixed(4)}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 text-zinc-400">{ev.latency_ms ? `${ev.latency_ms}ms` : '—'}</td>
+                    <td className="py-2.5">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] ${
+                          ev.status === 'succeeded'
+                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                            : 'bg-red-950 text-red-400 border border-red-800'
+                        }`}
+                      >
+                        {ev.status}
                       </span>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={7} className="py-6 text-center text-slate-500 font-sans">
-                    No transactions recorded yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

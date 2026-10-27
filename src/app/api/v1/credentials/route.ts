@@ -1,81 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { db } from '@/lib/db';
-import { encryptSecret, maskApiKey } from '@/lib/crypto/vault';
-import { providerRegistry } from '@/lib/providers/registry';
+import { z } from 'zod';
+import { DbRepo } from '@/lib/db/repo';
+import { requireUser } from '@/lib/auth/session';
+import { encryptSecret, maskKey } from '@/lib/crypto/vault';
+
+const CredentialSchema = z.object({
+  providerId: z.string().min(1),
+  apiKey: z.string().min(4, 'API key is too short').max(512),
+});
+
+export async function GET(req: NextRequest) {
+  const repo = new DbRepo();
+  let user;
+  try {
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  }
+
+  const credentials = await repo.getCredentials(user.id);
+  const safeCredentials = credentials.map((c) => ({
+    id: c.id,
+    providerId: c.providerId,
+    keyMask: c.keyHint,
+    status: c.status,
+    lastValidatedAt: c.lastValidatedAt,
+  }));
+
+  return NextResponse.json({ credentials: safeCredentials });
+}
 
 export async function POST(req: NextRequest) {
+  const repo = new DbRepo();
+  let user;
   try {
-    const userId = 'user_default';
-    const body = await req.json();
-    const { providerId, apiKey } = body;
-
-    if (!providerId || !apiKey) {
-      return NextResponse.json(
-        { success: false, error: 'Both providerId and apiKey are required.' },
-        { status: 400 }
-      );
-    }
-
-    const provider = await db.getProviderById(providerId);
-    if (!provider) {
-      return NextResponse.json({ success: false, error: 'Provider not found.' }, { status: 404 });
-    }
-
-    // Validate key with provider adapter
-    let validationResult: { valid: boolean; error?: string } = { valid: true };
-    if (providerRegistry.hasAdapter(providerId)) {
-      const adapter = providerRegistry.getAdapter(providerId);
-      validationResult = await adapter.validateCredentials(apiKey);
-    }
-
-    if (!validationResult.valid) {
-      return NextResponse.json(
-        { success: false, error: validationResult.error || 'Invalid API key.' },
-        { status: 400 }
-      );
-    }
-
-    // Encrypt secret with AES-256-GCM
-    const encryptedKey = encryptSecret(apiKey);
-    const keyPrefix = maskApiKey(apiKey);
-
-    const cred = await db.saveCredential({
-      id: `${userId}:${providerId}`,
-      userId,
-      providerId,
-      encryptedKey,
-      keyPrefix,
-      keyVersion: 1,
-      status: 'valid',
-      createdAt: new Date().toISOString(),
-      lastValidatedAt: new Date().toISOString(),
-    });
-
-    // Record audit event
-    await db.recordAuditEvent({
-      id: `audit_${crypto.randomUUID()}`,
-      actorId: userId,
-      action: 'connect_provider_key',
-      targetType: 'provider',
-      targetId: providerId,
-      timestamp: new Date().toISOString(),
-      outcome: 'success',
-      metadata: { keyPrefix },
-    });
-
-    // Return safe object WITHOUT plaintext key
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: cred.id,
-        providerId: cred.providerId,
-        keyPrefix: cred.keyPrefix,
-        status: cred.status,
-        lastValidatedAt: cred.lastValidatedAt,
-      },
-    });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON request body.' }, { status: 400 });
+  }
+
+  const parseResult = CredentialSchema.safeParse(body);
+  if (!parseResult.success) {
+    return NextResponse.json(
+      { error: parseResult.error.issues[0]?.message || 'Invalid input.' },
+      { status: 400 }
+    );
+  }
+
+  const { providerId, apiKey } = parseResult.data;
+
+  // Encrypt secret with AES-256-GCM
+  let encryptedKey: string;
+  try {
+    encryptedKey = await encryptSecret(apiKey.trim());
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err.message || 'Encryption failed.' },
+      { status: 500 }
+    );
+  }
+
+  const keyMask = maskKey(apiKey.trim());
+  const now = new Date().toISOString();
+  const id = `${user.id}:${providerId}`;
+
+  await repo.setCredential({
+    id,
+    userId: user.id,
+    providerId,
+    encryptedKey,
+    keyHint: keyMask,
+    status: 'valid',
+  });
+
+  return NextResponse.json({
+    success: true,
+    credential: {
+      id,
+      providerId,
+      keyMask,
+      status: 'valid',
+      lastValidatedAt: now,
+    },
+  });
 }

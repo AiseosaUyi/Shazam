@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shazam-ai",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shazam-db",
+      "database_id": "72da00a8-b7e5-4071-83ad-2b5e3668e0ce",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "SHAZAM_SHARE_SYSTEM_KEYS": "false",
+    "SHAZAM_ENABLE_SIMULATION": "false",
+    "SHAZAM_ALLOW_SIGNUP": "true"
+  }
+}

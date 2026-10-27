@@ -1,0 +1,17 @@
+node_modules
+.next
+.open-next
+.wrangler
+out
+coverage
+.DS_Store
+*.pem
+npm-debug.log*
+.env
+.env*.local
+.dev.vars
+*.tsbuildinfo
+next-env.d.ts
+cloudflare-env.d.ts
+data/
+.sync-in.tgz

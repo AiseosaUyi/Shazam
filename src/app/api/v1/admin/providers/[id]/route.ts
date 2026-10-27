@@ -1,45 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { db } from '@/lib/db';
+import { z } from 'zod';
+import { DbRepo } from '@/lib/db/repo';
+import { requireAdmin } from '@/lib/auth/session';
+
+const StatusSchema = z.object({
+  status: z.enum(['enabled', 'disabled']),
+  reason: z.string().max(500).default('Provider kill switch toggled'),
+});
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const repo = new DbRepo();
+  let admin;
   try {
-    const { id: providerId } = await params;
-    const body = await req.json();
-    const { status } = body;
-
-    if (!['enabled', 'degraded', 'disabled'].includes(status)) {
-      return NextResponse.json(
-        { success: false, error: 'Status must be enabled, degraded, or disabled.' },
-        { status: 400 }
-      );
-    }
-
-    const updated = await db.updateProviderStatus(providerId, status);
-    if (!updated) {
-      return NextResponse.json({ success: false, error: 'Provider not found.' }, { status: 404 });
-    }
-
-    // Record audit event
-    await db.recordAuditEvent({
-      id: `audit_${crypto.randomUUID()}`,
-      actorId: 'admin_user',
-      action: 'admin_update_provider_status',
-      targetType: 'provider',
-      targetId: providerId,
-      timestamp: new Date().toISOString(),
-      outcome: 'success',
-      metadata: { status },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: updated,
-    });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    admin = await requireAdmin(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
   }
+
+  const { id: providerId } = await params;
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON request body.' }, { status: 400 });
+  }
+
+  const parseResult = StatusSchema.safeParse(body);
+  if (!parseResult.success) {
+    return NextResponse.json(
+      { error: parseResult.error.issues[0]?.message || 'Invalid status.' },
+      { status: 400 }
+    );
+  }
+
+  const { status, reason } = parseResult.data;
+  await repo.setCatalogOverride('provider', providerId, status, reason, admin.id);
+
+  await repo.recordAuditEvent({
+    id: crypto.randomUUID(),
+    actorId: admin.id,
+    action: 'admin_update_provider_status',
+    targetType: 'provider',
+    targetId: providerId,
+    outcome: 'success',
+    metadata: { status, reason },
+  });
+
+  return NextResponse.json({ success: true, providerId, status });
 }

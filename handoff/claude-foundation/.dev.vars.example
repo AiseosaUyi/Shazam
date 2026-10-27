@@ -1,0 +1,14 @@
+# Copy to .dev.vars for local dev (wrangler / next dev read it). Never commit .dev.vars.
+# 32-byte hex key for the BYOK vault. Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+SHAZAM_ENCRYPTION_KEY=
+# Comma-separated emails that are always admins (the first account created is also admin).
+ADMIN_EMAILS=
+# Optional system provider keys. Only admins can use them unless SHAZAM_SHARE_SYSTEM_KEYS=true.
+GOOGLE_AI_API_KEY=
+DEEPSEEK_API_KEY=
+OPENROUTER_API_KEY=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+# Dev only: enables the clearly-labelled offline Demo provider.
+SHAZAM_ENABLE_SIMULATION=true

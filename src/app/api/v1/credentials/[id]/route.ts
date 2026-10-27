@@ -1,32 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { db } from '@/lib/db';
+import { DbRepo } from '@/lib/db/repo';
+import { requireUser } from '@/lib/auth/session';
 
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const repo = new DbRepo();
+  let user;
   try {
-    const userId = 'user_default';
-    const { id: providerId } = await params;
-
-    const deleted = await db.deleteCredential(userId, providerId);
-
-    await db.recordAuditEvent({
-      id: `audit_${crypto.randomUUID()}`,
-      actorId: userId,
-      action: 'revoke_provider_key',
-      targetType: 'provider',
-      targetId: providerId,
-      timestamp: new Date().toISOString(),
-      outcome: deleted ? 'success' : 'failure',
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: { revoked: deleted },
-    });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  const { id: providerId } = await params;
+  const deleted = await repo.deleteCredential(user.id, providerId);
+
+  await repo.recordAuditEvent({
+    id: crypto.randomUUID(),
+    actorId: user.id,
+    action: 'revoke_provider_key',
+    targetType: 'provider',
+    targetId: providerId,
+    outcome: deleted ? 'success' : 'failure',
+  });
+
+  return NextResponse.json({ success: true, revoked: deleted });
 }

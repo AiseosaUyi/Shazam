@@ -1,55 +1,100 @@
-import { NextRequest } from 'next/server';
-import { taskEventHub } from '@/lib/task/orchestrator';
-import { db } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { DbRepo } from '@/lib/db/repo';
+import { requireUser } from '@/lib/auth/session';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const repo = new DbRepo();
+  let user;
+  try {
+    user = await requireUser(req, repo);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  }
+
   const { id: taskId } = await params;
+  const task = await repo.getTask(user.id, taskId);
 
+  if (!task) {
+    return NextResponse.json({ error: 'Task not found.' }, { status: 404 });
+  }
+
+  const encoder = new TextEncoder();
   const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-
-      const sendEvent = (eventType: string, data: any) => {
-        const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
-        controller.enqueue(encoder.encode(payload));
-      };
-
-      // Check current task status
-      const existingTask = await db.getTaskById(taskId);
-      if (existingTask) {
-        sendEvent('state_snapshot', existingTask);
-        if (existingTask.status === 'succeeded' || existingTask.status === 'failed') {
-          controller.close();
-          return;
+    start(controller) {
+      function sendEvent(event: string, data: any) {
+        try {
+          const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+          controller.enqueue(encoder.encode(payload));
+        } catch {
+          // ignore
         }
       }
 
-      // Subscribe to live events
-      const unsubscribe = taskEventHub.subscribe(taskId, (event) => {
-        sendEvent(event.type, event.data);
-        if (event.type === 'task_succeeded' || event.type === 'task_failed' || event.type === 'task_cancelled') {
-          setTimeout(() => {
-            try {
-              controller.close();
-            } catch {
-              // ignore if already closed
-            }
-          }, 100);
-        }
+      sendEvent('task_created', {
+        taskId: task.id,
+        conversationId: task.conversationId,
+        prompt: task.prompt,
+        taskClass: task.taskClass,
+        costPolicy: task.costPolicy,
       });
 
-      req.signal.addEventListener('abort', () => {
-        unsubscribe();
-      });
+      if (task.decisionTrace) {
+        sendEvent('route_selected', {
+          routeId: task.routeId,
+          modelId: task.modelId,
+          providerId: task.providerId,
+          decisionTrace: task.decisionTrace,
+        });
+      }
+
+      // Replay attempts/fallbacks
+      if (Array.isArray(task.attempts)) {
+        for (let i = 0; i < task.attempts.length - 1; i++) {
+          const att = task.attempts[i];
+          if (att.state === 'failed') {
+            sendEvent('fallback', {
+              previousRouteId: att.routeId,
+              attempt: att.attempt,
+              reason: att.error?.message || 'Retryable failure',
+            });
+          }
+        }
+      }
+
+      if (task.reasoning) {
+        sendEvent('reasoning', { text: task.reasoning });
+      }
+
+      if (task.response) {
+        sendEvent('delta', { text: task.response });
+      }
+
+      if (task.status === 'succeeded') {
+        sendEvent('done', {
+          taskId: task.id,
+          fullText: task.response,
+          reasoning: task.reasoning,
+          costUSD: task.costUSD,
+          costKind: task.costKind,
+        });
+      } else if (task.status === 'failed') {
+        sendEvent('error', {
+          message: task.error?.message || 'Task execution failed.',
+        });
+      } else if (task.status === 'cancelled') {
+        sendEvent('error', { message: 'Task cancelled by user.' });
+      }
+
+      controller.close();
     },
   });
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
+      'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
     },

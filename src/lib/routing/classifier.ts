@@ -1,115 +1,124 @@
-import { CostPolicy, Modality, TaskAttachment, TaskClass, TaskSpec } from '@/types/core';
-import { UserPreference } from '@/types/user';
+import type { CostPolicy, Modality, OutputModality, PrivacyMode, TaskClass, TaskSpec } from '@/lib/types';
 
 export function classifyTask(
   prompt: string,
-  attachments: TaskAttachment[] = [],
-  userPref?: UserPreference,
-  policyOverride?: CostPolicy,
-  pinnedRouteId?: string
+  options?: {
+    taskClassOverride?: TaskClass;
+    costPolicyOverride?: CostPolicy;
+    privacyMode?: PrivacyMode;
+    maxCostUSD?: number;
+    monthlyBudgetRemainingUSD?: number;
+    allowedProviders?: string[] | null;
+    pinnedRouteId?: string | null;
+    attachments?: Array<{ mimeType: string; sizeBytes: number }>;
+  }
 ): TaskSpec {
   const p = prompt.toLowerCase();
 
-  // 1. Detect input modalities
+  // 1. Detect input modalities from attachments
   const inputModalities: Modality[] = ['text'];
-  for (const att of attachments) {
-    if (att.mimeType.startsWith('image/')) {
-      if (!inputModalities.includes('image')) inputModalities.push('image');
-    } else if (att.mimeType.startsWith('audio/')) {
-      if (!inputModalities.includes('audio')) inputModalities.push('audio');
-    } else if (att.mimeType.startsWith('video/')) {
-      if (!inputModalities.includes('video')) inputModalities.push('video');
-    } else if (att.mimeType.includes('pdf') || att.mimeType.includes('document')) {
-      if (!inputModalities.includes('document')) inputModalities.push('document');
+  if (options?.attachments && options.attachments.length > 0) {
+    for (const att of options.attachments) {
+      if (att.mimeType.startsWith('image/') && !inputModalities.includes('image')) {
+        inputModalities.push('image');
+      } else if (att.mimeType.startsWith('audio/') && !inputModalities.includes('audio')) {
+        inputModalities.push('audio');
+      } else if (att.mimeType.startsWith('video/') && !inputModalities.includes('video')) {
+        inputModalities.push('video');
+      } else if ((att.mimeType.includes('pdf') || att.mimeType.includes('document')) && !inputModalities.includes('document')) {
+        inputModalities.push('document');
+      }
     }
   }
 
-  // 2. Classify task intent
-  let taskClass: TaskClass = 'general_chat';
-  let outputModality: Modality = 'text';
-  const requiredCapabilities: string[] = [];
-  let requiresTools = false;
+  // 2. Classify task class & capabilities
+  let taskClass: TaskClass = options?.taskClassOverride || 'general_chat';
+  let confidence: 'keyword' | 'user_override' | 'default' = options?.taskClassOverride ? 'user_override' : 'default';
+  let outputModality: OutputModality = 'text';
+  const requiredCapabilities: ('tools' | 'reasoning')[] = [];
 
-  // Media generation signals
-  if (
-    p.includes('generate image') ||
-    p.includes('draw a') ||
-    p.includes('create an illustration') ||
-    p.includes('paint a') ||
-    p.includes('render 3d')
-  ) {
-    taskClass = 'image_generation';
-    outputModality = 'image';
-    requiredCapabilities.push('image_generation');
-  } else if (p.includes('generate video') || p.includes('animate this') || p.includes('create a clip')) {
-    taskClass = 'video_generation';
-    outputModality = 'video';
-    requiredCapabilities.push('video_generation');
-  } else if (p.includes('text to speech') || p.includes('generate audio') || p.includes('voiceover')) {
-    taskClass = 'audio';
-    outputModality = 'audio';
-    requiredCapabilities.push('audio_out');
-  } else if (inputModalities.includes('audio') || p.includes('transcribe')) {
-    taskClass = 'audio';
-    requiredCapabilities.push('audio_in');
-  } else if (inputModalities.includes('image') || p.includes('inspect this image') || p.includes('ocr')) {
-    taskClass = 'vision';
-    requiredCapabilities.push('vision');
-  } else if (inputModalities.includes('document') || p.includes('summarize the attached pdf') || p.includes('contract analysis')) {
-    taskClass = 'document_analysis';
-  } else if (
-    p.includes('```') ||
-    p.includes('write code') ||
-    p.includes('function ') ||
-    p.includes('bug ') ||
-    p.includes('refactor') ||
-    p.includes('typescript') ||
-    p.includes('python') ||
-    p.includes('javascript') ||
-    p.includes('sql query') ||
-    p.includes('unit test') ||
-    p.includes('regex')
-  ) {
-    taskClass = 'coding';
-    outputModality = 'code';
-    requiredCapabilities.push('code');
-  } else if (
-    p.includes('step-by-step') ||
-    p.includes('prove that') ||
-    p.includes('math problem') ||
-    p.includes('deduce') ||
-    p.includes('logical puzzle') ||
-    p.includes('deep reasoning')
-  ) {
-    taskClass = 'reasoning';
-    requiredCapabilities.push('reasoning');
-  } else if (
-    p.includes('roadmap') ||
-    p.includes('project plan') ||
-    p.includes('sprint plan') ||
-    p.includes('architecture plan') ||
-    p.includes('migration strategy')
-  ) {
-    taskClass = 'planning';
-  } else if (
-    p.includes('essay') ||
-    p.includes('email') ||
-    p.includes('blog post') ||
-    p.includes('draft ') ||
-    p.includes('rewrite') ||
-    p.includes('creative story') ||
-    p.includes('article') ||
-    p.includes('copywriting')
-  ) {
-    taskClass = 'writing';
+  if (!options?.taskClassOverride) {
+    if (
+      p.includes('generate image') ||
+      p.includes('generate an image') ||
+      p.includes('create an image') ||
+      p.includes('draw a') ||
+      p.includes('create an illustration') ||
+      p.includes('render an image')
+    ) {
+      taskClass = 'image_generation';
+      outputModality = 'image';
+      confidence = 'keyword';
+    } else if (p.includes('generate video') || p.includes('animate this') || p.includes('create a clip')) {
+      taskClass = 'video_generation';
+      outputModality = 'video';
+      confidence = 'keyword';
+    } else if (p.includes('text to speech') || p.includes('transcribe') || p.includes('voiceover')) {
+      taskClass = 'audio';
+      outputModality = 'audio';
+      confidence = 'keyword';
+    } else if (inputModalities.includes('image') || p.includes('inspect this image') || p.includes('ocr')) {
+      taskClass = 'vision';
+      confidence = 'keyword';
+    } else if (inputModalities.includes('document') || p.includes('summarize the attached pdf') || p.includes('extract tables from document')) {
+      taskClass = 'document_analysis';
+      confidence = 'keyword';
+    } else if (
+      p.includes('```') ||
+      p.includes('write code') ||
+      p.includes('function ') ||
+      p.includes('bug in') ||
+      p.includes('refactor') ||
+      p.includes('typescript') ||
+      p.includes('python') ||
+      p.includes('javascript') ||
+      p.includes('sql query') ||
+      p.includes('unit test')
+    ) {
+      taskClass = 'coding';
+      requiredCapabilities.push('tools');
+      confidence = 'keyword';
+    } else if (
+      p.includes('roadmap') ||
+      p.includes('project plan') ||
+      p.includes('sprint plan') ||
+      p.includes('architecture plan') ||
+      p.includes('rollout strategy') ||
+      p.includes('migration plan')
+    ) {
+      taskClass = 'planning';
+      confidence = 'keyword';
+    } else if (
+      p.includes('prove that') ||
+      p.includes('math problem') ||
+      p.includes('deduce') ||
+      p.includes('logic puzzle') ||
+      p.includes('deep reasoning') ||
+      p.includes('chain of thought')
+    ) {
+      taskClass = 'reasoning';
+      requiredCapabilities.push('reasoning');
+      confidence = 'keyword';
+    } else if (
+      p.includes('draft ') ||
+      p.includes('essay') ||
+      p.includes('blog post') ||
+      p.includes('rewrite') ||
+      p.includes('creative story') ||
+      p.includes('email')
+    ) {
+      taskClass = 'writing';
+      confidence = 'keyword';
+    }
   }
 
-  // Estimate context tokens
-  const estimatedPromptTokens = Math.ceil(prompt.length / 4);
-  const estimatedAttachmentTokens = attachments.reduce((acc, att) => acc + Math.ceil(att.sizeBytes / 4), 0);
-  const contextEstimateTokens = Math.max(500, estimatedPromptTokens + estimatedAttachmentTokens + 1000);
-
-  const costPolicy: CostPolicy = policyOverride || userPref?.defaultCostPolicy || 'balanced';
+  // Token estimates
+  const estimatedPromptTokens = Math.max(10, Math.ceil(prompt.length / 4));
+  const expectedOutputTokens =
+    taskClass === 'coding' || taskClass === 'reasoning' || taskClass === 'planning'
+      ? 1500
+      : 500;
+  const contextEstimateTokens = estimatedPromptTokens + expectedOutputTokens;
 
   return {
     taskClass,
@@ -117,14 +126,17 @@ export function classifyTask(
     outputModality,
     requiredCapabilities,
     contextEstimateTokens,
-    privacySensitivity: userPref?.privacyMode || 'standard',
-    costPolicy,
-    maxCostUSD: userPref?.maxCostPerTaskUSD ?? 0.50,
-    allowedProviders: userPref?.allowedProviders,
-    disallowedProviders: userPref?.disallowedProviders,
-    preferredRegion: userPref?.preferredRegion,
-    pinnedRouteId,
-    requiresTools,
-    intentSummary: `Classified as ${taskClass.replace('_', ' ')} with ${costPolicy.replace('_', ' ')} policy`,
+    expectedOutputTokens,
+    privacyMode: options?.privacyMode || 'standard',
+    costPolicy: options?.costPolicyOverride || 'balanced',
+    maxCostUSD: options?.maxCostUSD ?? 0.25,
+    monthlyBudgetRemainingUSD: options?.monthlyBudgetRemainingUSD ?? 10.0,
+    allowedProviders: options?.allowedProviders || null,
+    pinnedRouteId: options?.pinnedRouteId || null,
+    classifierConfidence: confidence,
   };
+}
+
+export function classifyPrompt(prompt: string, taskClassOverride?: TaskClass): TaskSpec {
+  return classifyTask(prompt, { taskClassOverride });
 }
