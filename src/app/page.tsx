@@ -60,7 +60,13 @@ export default function WorkspacePage() {
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [feedbackSent, setFeedbackSent] = useState<Record<string, number>>({});
-  const [errorBanner, setErrorBanner] = useState<{ message: string; fixAction?: string; fixHref?: string } | null>(null);
+  const [errorBanner, setErrorBanner] = useState<{
+    message: string;
+    subtext?: string;
+    details?: string;
+    fixAction?: string;
+    fixHref?: string;
+  } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -276,23 +282,42 @@ export default function WorkspacePage() {
       if (err.name === 'AbortError') {
         // aborted cleanly
       } else {
-        const msg = err.message || 'Execution failed.';
-        // Formulate one human sentence + fix action
-        let fixAction = 'Retry';
+        const rawMsg = err.message || 'Execution failed.';
+        let userMessage = 'Unable to complete this request.';
+        let subtext: string | undefined = undefined;
+        let fixAction: string | undefined = undefined;
         let fixHref: string | undefined = undefined;
 
-        if (msg.includes('No valid API key') || msg.includes('No API key')) {
-          fixAction = 'Connect API Key';
+        if (rawMsg.includes('No valid API key') || rawMsg.includes('No API key')) {
+          userMessage = 'No AI provider is connected yet.';
+          subtext = 'To chat for free, connect a 100% free Google Gemini key in under 30 seconds (no credit card or billing ever required).';
+          fixAction = 'Connect Free Key (30s)';
           fixHref = '/connections';
-        } else if (msg.includes('Free-Only policy strictly excludes') || msg.includes('No eligible routes found')) {
-          fixAction = 'Switch to Balanced Policy';
-        } else if (msg.includes('Unauthorized') || msg.includes('CSRF')) {
+        } else if (rawMsg.includes('Free-Only policy strictly excludes') || rawMsg.includes('No eligible routes found under policy "free only"')) {
+          userMessage = 'No free models are available for this specific task.';
+          subtext = 'Switch to Balanced policy or connect a free provider key.';
+          fixAction = 'Switch to Balanced';
+        } else if (rawMsg.includes('No eligible routes found')) {
+          userMessage = 'No available models match your current settings.';
+          subtext = 'Try switching your policy to Balanced or check your connected providers.';
+          fixAction = 'Switch to Balanced';
+        } else if (rawMsg.includes('rate-limit') || rawMsg.includes('cooldown') || rawMsg.includes('429')) {
+          userMessage = 'All models are temporarily busy.';
+          subtext = 'Please wait 15 seconds and try sending your message again.';
+          fixAction = 'Try Again';
+        } else if (rawMsg.includes('Unauthorized') || rawMsg.includes('CSRF')) {
+          userMessage = 'Your session has expired.';
+          subtext = 'Please sign in again to continue.';
           fixAction = 'Sign In';
           fixHref = '/login';
+        } else {
+          userMessage = rawMsg.length > 100 ? rawMsg.slice(0, 100) + '...' : rawMsg;
         }
 
         setErrorBanner({
-          message: msg,
+          message: userMessage,
+          subtext,
+          details: rawMsg !== userMessage ? rawMsg : undefined,
           fixAction,
           fixHref,
         });
@@ -484,31 +509,57 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* Error Banner with One Human Sentence + Fix Action */}
+        {/* Error Banner with Human Message + Clear Fix Action */}
         {errorBanner && (
-          <div className="m-4 p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-200 text-xs flex items-center justify-between shadow-lg">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{errorBanner.message}</span>
+          <div className="mx-4 sm:mx-6 mt-4 p-4 rounded-xl bg-[#1a0f12] border border-red-500/30 text-xs shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0 mt-0.5">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold text-zinc-100 text-sm">{errorBanner.message}</p>
+                {errorBanner.subtext && (
+                  <p className="text-zinc-400 text-xs leading-relaxed">{errorBanner.subtext}</p>
+                )}
+                {errorBanner.details && (
+                  <details className="pt-1 text-[11px] font-mono text-zinc-500">
+                    <summary className="cursor-pointer hover:text-zinc-400 select-none">
+                      Technical details
+                    </summary>
+                    <div className="mt-1.5 p-2 bg-[#090b10] border border-[#232736] rounded text-zinc-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                      {errorBanner.details}
+                    </div>
+                  </details>
+                )}
+              </div>
             </div>
-            {errorBanner.fixHref ? (
-              <Link
-                href={errorBanner.fixHref}
-                className="px-2.5 py-1 bg-amber-500 text-zinc-950 font-semibold rounded text-[11px] hover:bg-amber-400 transition"
-              >
-                {errorBanner.fixAction}
-              </Link>
-            ) : errorBanner.fixAction === 'Switch to Balanced Policy' ? (
+            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+              {errorBanner.fixHref ? (
+                <Link
+                  href={errorBanner.fixHref}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-lg text-xs transition shadow-sm"
+                >
+                  {errorBanner.fixAction}
+                </Link>
+              ) : errorBanner.fixAction?.includes('Balanced') ? (
+                <button
+                  onClick={() => {
+                    setCostPolicy('balanced');
+                    setErrorBanner(null);
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-lg text-xs transition shadow-sm"
+                >
+                  Switch to Balanced
+                </button>
+              ) : null}
               <button
-                onClick={() => {
-                  setCostPolicy('balanced');
-                  setErrorBanner(null);
-                }}
-                className="px-2.5 py-1 bg-amber-500 text-zinc-950 font-semibold rounded text-[11px] hover:bg-amber-400 transition"
+                onClick={() => setErrorBanner(null)}
+                className="p-1.5 text-zinc-500 hover:text-zinc-300 rounded-lg hover:bg-zinc-800/50 transition"
+                title="Dismiss"
               >
-                Switch to Balanced
+                <X className="w-4 h-4" />
               </button>
-            ) : null}
+            </div>
           </div>
         )}
 

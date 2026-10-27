@@ -121,6 +121,30 @@ export default function ConnectionsPage() {
         </div>
       </div>
 
+      {/* Free Tier Guide Banner */}
+      <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#141824] to-[#141824] border border-amber-500/20 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              100% Free Forever
+            </span>
+            <span className="font-semibold text-white">How Free AI Keys Work</span>
+          </div>
+          <p className="text-zinc-400 leading-relaxed max-w-2xl">
+            You are never billed by Shazam AI. To get unlimited personal free usage (1,500 requests/day), you can get a 100% free API key from Google AI Studio in 30 seconds using any standard Google account. Google will never ask for a credit card or billing details.
+          </p>
+        </div>
+        <a
+          href="https://aistudio.google.com/app/apikey"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-lg transition shrink-0 flex items-center gap-1.5 shadow-sm"
+        >
+          <span>Get Free Google Key</span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
+
       {feedback && (
         <div
           className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
