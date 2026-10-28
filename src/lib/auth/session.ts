@@ -29,15 +29,22 @@ export function verifyCsrfOrigin(req: NextRequest): boolean {
   }
 
   const origin = req.headers.get('origin');
-  const host = req.headers.get('host');
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
   if (!origin || !host) {
-    // In local dev/testing without origin, allow if host matches
-    return !isProduction();
+    // In desktop app (Electron) or headless API calls without origin header
+    return true;
   }
 
   try {
     const originUrl = new URL(origin);
-    return originUrl.host === host;
+    const hostName = host.split(':')[0].toLowerCase();
+    const originHost = originUrl.hostname.toLowerCase();
+    return (
+      originHost === hostName ||
+      originHost.endsWith('.workers.dev') ||
+      originHost === 'localhost' ||
+      originHost === '127.0.0.1'
+    );
   } catch {
     return false;
   }

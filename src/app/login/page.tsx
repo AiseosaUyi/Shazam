@@ -36,7 +36,7 @@ export default function LoginPage() {
         throw new Error(data.error || 'Login failed. Please check your credentials.');
       }
 
-      router.push('/');
+      router.push('/agent');
       router.refresh();
     } catch (err: any) {
       setError(err.message);

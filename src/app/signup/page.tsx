@@ -24,12 +24,22 @@ export default function SignupPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Server returned an error (${res.status}).`);
+      }
+
       if (!res.ok) {
+        if (res.status === 409) {
+          throw new Error('An account with this email already exists. Please sign in instead.');
+        }
         throw new Error(data.error || 'Registration failed.');
       }
 
-      router.push('/onboarding');
+      router.push('/agent');
       router.refresh();
     } catch (err: any) {
       setError(err.message);
