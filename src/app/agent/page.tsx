@@ -37,6 +37,8 @@ import {
   GitBranch,
   Play,
   RotateCcw,
+  CheckCircle2,
+  FilePlus,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { parsePatchesFromText, applySearchReplace } from '@/lib/agent/patcher';
@@ -77,9 +79,151 @@ interface CoWorkMessage {
   role: 'user' | 'assistant';
   content: string;
   thought?: string;
+  steps?: Array<{
+    step: number;
+    thought: string;
+    tool: string;
+    args?: any;
+    observation?: string;
+    isError?: boolean;
+  }>;
   readLog?: string[];
   editedFiles?: Array<{ path: string; added: number; deleted: number; code?: string }>;
   timestamp: string;
+}
+
+function ReActStepper({
+  steps,
+  isLive,
+}: {
+  steps: Array<{
+    step: number;
+    thought: string;
+    tool: string;
+    args?: any;
+    observation?: string;
+    isError?: boolean;
+  }>;
+  isLive?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(isLive || false);
+  const [expandedSteps, setExpandedSteps] = useState<Record<number, boolean>>({});
+
+  const toggleStep = (stepNum: number) => {
+    setExpandedSteps((prev) => ({ ...prev, [stepNum]: !prev[stepNum] }));
+  };
+
+  const getToolIcon = (tool: string) => {
+    switch (tool) {
+      case 'read_file':
+        return <Search className="w-3.5 h-3.5 text-blue-400" />;
+      case 'edit_file':
+        return <FileCode className="w-3.5 h-3.5 text-amber-400" />;
+      case 'create_file':
+        return <FilePlus className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'run_command':
+        return <Terminal className="w-3.5 h-3.5 text-purple-400" />;
+      case 'finish_task':
+        return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />;
+      default:
+        return <Zap className="w-3.5 h-3.5 text-amber-400" />;
+    }
+  };
+
+  const formatArgs = (tool: string, args: any) => {
+    if (!args) return '';
+    if (tool === 'read_file') return args.path || '';
+    if (tool === 'edit_file') return args.path || '';
+    if (tool === 'create_file') return args.path || '';
+    if (tool === 'run_command') return `$ ${args.command || ''}`;
+    if (tool === 'finish_task') return args.summary ? (args.summary.length > 60 ? `${args.summary.slice(0, 60)}...` : args.summary) : 'Task completed';
+    return JSON.stringify(args);
+  };
+
+  return (
+    <div className="border border-white/[0.08] bg-black/40 rounded-xl overflow-hidden shadow-sm my-2">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-2 text-left text-xs text-zinc-300 hover:text-white bg-white/[0.02] hover:bg-white/[0.04] flex items-center justify-between transition select-none"
+      >
+        <span className="flex items-center gap-2 font-medium">
+          <Zap className={`w-3.5 h-3.5 ${isLive ? 'text-amber-400 animate-pulse' : 'text-amber-400'}`} />
+          <span className="font-semibold text-zinc-200">Autonomous ReAct Execution</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
+            {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+          </span>
+          {isLive && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 animate-pulse font-mono">
+              Running
+            </span>
+          )}
+        </span>
+        {expanded ? <ChevronDown className="w-3.5 h-3.5 text-zinc-400" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-400" />}
+      </button>
+
+      {expanded && (
+        <div className="p-3 space-y-2 border-t border-white/[0.06] bg-[#080a0f]">
+          {steps.map((st, idx) => {
+            const isStepExpanded = expandedSteps[st.step] ?? (isLive && idx === steps.length - 1);
+            return (
+              <div
+                key={st.step || idx}
+                className={`rounded-lg border text-xs transition ${
+                  st.isError
+                    ? 'border-red-500/30 bg-red-950/20'
+                    : isLive && idx === steps.length - 1
+                    ? 'border-amber-500/40 bg-amber-500/[0.04]'
+                    : 'border-white/[0.06] bg-white/[0.02]'
+                }`}
+              >
+                <div
+                  onClick={() => toggleStep(st.step)}
+                  className="px-2.5 py-1.5 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] select-none"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden truncate">
+                    <span className="text-[10px] font-mono text-zinc-500">#{st.step}</span>
+                    <span className="p-1 rounded bg-white/5">{getToolIcon(st.tool)}</span>
+                    <span className="font-mono font-medium text-amber-300">{st.tool}</span>
+                    <span className="font-mono text-zinc-400 truncate text-[11px]">{formatArgs(st.tool, st.args)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    {st.isError && (
+                      <span className="text-[10px] text-red-400 font-mono bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
+                        Error
+                      </span>
+                    )}
+                    {st.observation && !st.isError && (
+                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                        Done
+                      </span>
+                    )}
+                    {isStepExpanded ? <ChevronDown className="w-3 h-3 text-zinc-500" /> : <ChevronRight className="w-3 h-3 text-zinc-500" />}
+                  </div>
+                </div>
+
+                {isStepExpanded && (
+                  <div className="px-2.5 pb-2 pt-1 border-t border-white/[0.04] space-y-1.5">
+                    {st.thought && (
+                      <div className="text-[11px] text-zinc-400 italic">
+                        <span className="text-zinc-500 font-semibold not-italic">Thought: </span>
+                        {st.thought}
+                      </div>
+                    )}
+                    {st.observation && (
+                      <div className="rounded bg-black/60 p-2 font-mono text-[10px] text-zinc-300 max-h-36 overflow-y-auto whitespace-pre-wrap border border-white/5">
+                        {st.observation}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ClaudeCoWorkStudio() {
@@ -95,12 +239,23 @@ export default function ClaudeCoWorkStudio() {
   const [currentTitle, setCurrentTitle] = useState<string>('New Conversation');
   const [loadingConv, setLoadingConv] = useState(false);
 
+  // Model Selection Pill
+  const [selectedModel, setSelectedModel] = useState<string>('auto');
+
   // Chat stream
   const [messages, setMessages] = useState<CoWorkMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingThought, setStreamingThought] = useState('');
   const [streamingOutput, setStreamingOutput] = useState('');
+  const [streamingSteps, setStreamingSteps] = useState<Array<{
+    step: number;
+    thought: string;
+    tool: string;
+    args?: any;
+    observation?: string;
+    isError?: boolean;
+  }>>([]);
   const [streamingReadLog, setStreamingReadLog] = useState<string[]>([]);
   const [thoughtExpanded, setThoughtExpanded] = useState(false);
 
@@ -865,7 +1020,17 @@ export default function ClaudeCoWorkStudio() {
     setIsStreaming(true);
     setStreamingOutput('');
     setStreamingThought('');
+    setStreamingSteps([]);
     setStreamingReadLog(['Analyzing project requirements...', 'Reviewing workspace context...']);
+
+    const currentTurnSteps: Array<{
+      step: number;
+      thought: string;
+      tool: string;
+      args?: any;
+      observation?: string;
+      isError?: boolean;
+    }> = [];
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -916,6 +1081,7 @@ ${textToSend}`;
           conversationId: currentConversationId || undefined,
           projectId: currentProject?.id || undefined,
           taskClassOverride: 'coding',
+          pinnedModelName: selectedModel === 'auto' ? undefined : selectedModel,
         }),
         signal: controller.signal,
       });
@@ -961,6 +1127,29 @@ ${textToSend}`;
             } else if (eventType === 'reasoning') {
               fullThought += data.text || '';
               setStreamingThought(fullThought);
+            } else if (eventType === 'react_step') {
+              currentTurnSteps.push({
+                step: data.step,
+                thought: data.thought || '',
+                tool: data.tool || '',
+                args: data.args || {},
+              });
+              setStreamingSteps([...currentTurnSteps]);
+            } else if (eventType === 'react_observation') {
+              const existing = currentTurnSteps.find((s) => s.step === data.step);
+              if (existing) {
+                existing.observation = data.observation;
+                existing.isError = data.isError;
+              } else {
+                currentTurnSteps.push({
+                  step: data.step,
+                  thought: '',
+                  tool: 'observation',
+                  observation: data.observation,
+                  isError: data.isError,
+                });
+              }
+              setStreamingSteps([...currentTurnSteps]);
             } else if (eventType === 'done') {
               fullOutput = data.fullText || fullOutput;
               setStreamingOutput(fullOutput);
@@ -1101,6 +1290,7 @@ ${textToSend}`;
         role: 'assistant',
         content: fullOutput,
         thought: fullThought || undefined,
+        steps: currentTurnSteps.length > 0 ? currentTurnSteps : undefined,
         readLog: ['Searched project context', 'Verified workspace state'],
         editedFiles: generatedFiles.length > 0 ? generatedFiles : undefined,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -1122,6 +1312,7 @@ ${textToSend}`;
       setIsStreaming(false);
       setStreamingOutput('');
       setStreamingThought('');
+      setStreamingSteps([]);
     }
   }
 
@@ -1585,6 +1776,11 @@ ${textToSend}`;
                         </div>
                       )}
 
+                      {/* Autonomous Multi-Step ReAct Stepper */}
+                      {msg.steps && msg.steps.length > 0 && (
+                        <ReActStepper steps={msg.steps} />
+                      )}
+
                       {/* Main Text Content */}
                       <MarkdownRenderer content={msg.content} onOpenFile={handleOpenFile} />
 
@@ -1627,6 +1823,11 @@ ${textToSend}`;
                       {streamingThought || `Reading project context & reasoning in ${currentProject?.name || 'workspace'}...`}
                     </span>
                   </div>
+
+                  {/* Live Autonomous ReAct Stepper */}
+                  {streamingSteps.length > 0 && (
+                    <ReActStepper steps={streamingSteps} isLive={true} />
+                  )}
 
                   {streamingOutput ? (
                     <MarkdownRenderer content={streamingOutput} onOpenFile={handleOpenFile} />
@@ -1866,6 +2067,23 @@ ${textToSend}`;
                     <span className="text-[10px] text-amber-400 font-mono">(Sync files)</span>
                   )}
                 </button>
+
+                {/* Model Selector Dropdown Pill */}
+                <div className="relative inline-flex items-center">
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="appearance-none px-2.5 py-1 pr-6 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-[11px] font-medium text-zinc-300 focus:outline-none focus:border-amber-500/40 transition cursor-pointer select-none"
+                    title="Choose AI Model or Auto-Route"
+                  >
+                    <option value="auto" className="bg-[#0f1118] text-zinc-200">⚡ Auto (Smart Route)</option>
+                    <option value="claude-sonnet-5-5" className="bg-[#0f1118] text-zinc-200">🟣 Claude 3.5 Sonnet</option>
+                    <option value="gpt-6.1-terra" className="bg-[#0f1118] text-zinc-200">🟢 GPT-4o</option>
+                    <option value="gemini-3.8-flash" className="bg-[#0f1118] text-zinc-200">🔵 Gemini 2.0 Flash</option>
+                    <option value="deepseek-flash" className="bg-[#0f1118] text-zinc-200">🧠 DeepSeek V3</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-zinc-400 pointer-events-none absolute right-2" />
+                </div>
               </div>
 
               <div className="absolute right-3 bottom-3 flex items-center gap-2">

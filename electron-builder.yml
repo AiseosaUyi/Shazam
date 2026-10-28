@@ -13,6 +13,7 @@ files:
 
 mac:
   category: public.app-category.developer-tools
+  icon: desktop/icon.icns
   target:
     - target: dmg
       arch:

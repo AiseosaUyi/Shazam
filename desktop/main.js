@@ -66,6 +66,7 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 650,
     title: 'Shazam AI Studio',
+    icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#0a0c10',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 16 },

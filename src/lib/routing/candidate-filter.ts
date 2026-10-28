@@ -58,7 +58,11 @@ export function filterCandidates(
         route.modelId.toLowerCase() === pin ||
         model.id.toLowerCase() === pin ||
         model.providerModelId.toLowerCase() === pin ||
-        model.name.toLowerCase() === pin;
+        model.name.toLowerCase() === pin ||
+        (pin.includes('claude') && (model.id.includes('claude') || model.name.toLowerCase().includes('claude'))) ||
+        (pin.includes('gpt') && (model.id.includes('gpt') || model.name.toLowerCase().includes('gpt'))) ||
+        (pin.includes('gemini') && (model.id.includes('gemini') || model.name.toLowerCase().includes('gemini'))) ||
+        (pin.includes('deepseek') && (model.id.includes('deepseek') || model.name.toLowerCase().includes('deepseek')));
       if (!matchesPin) {
         cand.rejection = `Manual pin active on: ${taskSpec.pinnedRouteId}.`;
         rejected.push(cand);
