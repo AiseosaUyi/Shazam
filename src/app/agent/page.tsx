@@ -39,6 +39,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { parsePatchesFromText, applySearchReplace } from '@/lib/agent/patcher';
 
 // Dynamic import of Monaco Editor for the slide-over file preview drawer
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -127,6 +128,7 @@ export default function ClaudeCoWorkStudio() {
   const [executingCmd, setExecutingCmd] = useState(false);
   const [gitPushing, setGitPushing] = useState(false);
   const [showBridgeModal, setShowBridgeModal] = useState(false);
+  const [daemonToken, setDaemonToken] = useState<string>('');
   const terminalLogsEndRef = useRef<HTMLDivElement>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -179,17 +181,41 @@ export default function ClaudeCoWorkStudio() {
     }
   }, [terminalLogs, terminalOpen]);
 
-  // Check local companion daemon health (localhost:4040)
-  const checkDaemon = async () => {
+  // Check local companion daemon health & manage security token
+  const checkDaemon = async (customToken?: string) => {
+    const candidate = customToken !== undefined
+      ? customToken
+      : daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
+
     try {
       const res = await fetch('http://localhost:4040/api/health', {
         method: 'GET',
         signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(2000) : undefined,
       });
+
       if (res.ok) {
         const data = await res.json();
         setDaemonStatus('connected');
         setDaemonInfo(data);
+
+        // Auto-fetch token when developing on localhost
+        if (!candidate && typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+          try {
+            const tokRes = await fetch('http://localhost:4040/api/auth/token');
+            if (tokRes.ok) {
+              const tokData = await tokRes.json();
+              if (tokData.token) {
+                setDaemonToken(tokData.token);
+                localStorage.setItem('shazam_daemon_token', tokData.token);
+                return true;
+              }
+            }
+          } catch {}
+        } else if (candidate) {
+          setDaemonToken(candidate);
+          if (typeof window !== 'undefined') localStorage.setItem('shazam_daemon_token', candidate);
+        }
+
         return true;
       }
     } catch {
@@ -201,9 +227,9 @@ export default function ClaudeCoWorkStudio() {
 
   useEffect(() => {
     checkDaemon();
-    const interval = setInterval(checkDaemon, 8000);
+    const interval = setInterval(() => checkDaemon(), 8000);
     return () => clearInterval(interval);
-  }, []);
+  }, [daemonToken]);
 
   // Execute terminal command on user's machine via local companion daemon
   async function runLocalCommand(cmd: string) {
@@ -218,11 +244,19 @@ export default function ClaudeCoWorkStudio() {
     ]);
 
     try {
+      const activeToken = daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
       const res = await fetch('http://localhost:4040/api/exec', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-shazam-token': activeToken,
+        },
         body: JSON.stringify({ command: cmd }),
       });
+
+      if (res.status === 401) {
+        throw new Error('Unauthorized: Invalid or missing Security Token. Click "Local Bridge" to set token.');
+      }
 
       if (!res.ok) {
         throw new Error(`Companion daemon returned status ${res.status}`);
@@ -293,11 +327,20 @@ export default function ClaudeCoWorkStudio() {
     ]);
 
     try {
+      const activeToken = daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
       const res = await fetch('http://localhost:4040/api/git/push', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-shazam-token': activeToken,
+        },
         body: JSON.stringify({ message: `chore: update from Shazam AI (${new Date().toLocaleTimeString()})` }),
       });
+
+      if (res.status === 401) {
+        throw new Error('Unauthorized: Invalid or missing Security Token.');
+      }
+
       const data = await res.json();
       if (data.success) {
         setTerminalLogs((prev) => [
@@ -800,13 +843,19 @@ Here are the actual workspace files from the project:
 ${fileSnippets}
 
 Instructions:
-- When modifying or creating code, ALWAYS output the target file path in the format:
+- When modifying EXISTING files, ALWAYS use surgical search-and-replace blocks (preserves file integrity):
+<<<< SEARCH: path/to/file.ext
+[exact lines of code to replace]
+====
+[new replacement code]
+>>>>
+- When creating a BRAND NEW file, output:
 ### File: path/to/file.ext
 \`\`\`language
 ...code...
 \`\`\`
 - If the user asks how to run, test, build, or deploy the project locally (e.g. "run local"), inspect the project's package managers, entrypoints, and scripts to give clear, copy-pasteable terminal commands step-by-step.
-- You can reference and update multiple files in a single response using the "### File: <path>" headers.
+- You can reference and update multiple files in a single response.
 
 User Request:
 ${textToSend}`;
@@ -884,46 +933,93 @@ ${textToSend}`;
         }
       }
 
-      // Extract explicit file changes with real target paths
-      const fileBlockRegex = /### File:\s*([^\n]+)\n```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-      const genericCodeRegex = /```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
+      // Parse surgical code patches & new file creations (Claude Code / Antigravity standard)
+      const parsedPatches = parsePatchesFromText(fullOutput);
       const generatedFiles: Array<{ path: string; added: number; deleted: number; code?: string }> = [];
+      const activeToken = daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
 
-      let fileMatch;
-      while ((fileMatch = fileBlockRegex.exec(fullOutput)) !== null) {
-        const filePath = fileMatch[1].trim();
-        const code = fileMatch[2].trim();
-        const lineCount = code.split('\n').length;
-        generatedFiles.push({
-          path: filePath,
-          added: lineCount,
-          deleted: Math.max(1, Math.floor(lineCount / 4)),
-          code,
-        });
+      for (const patch of parsedPatches) {
+        if (patch.type === 'search_replace') {
+          // Surgical Search & Replace
+          const existing = projectFiles.find(
+            (f) => f.path.toLowerCase() === patch.path.toLowerCase() ||
+                   f.path.toLowerCase().endsWith(patch.path.toLowerCase())
+          );
 
-        // Persist real updated file to project in Cloudflare D1
-        if (currentProject) {
-          fetch(`/api/v1/projects/${currentProject.id}/files`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath, content: code }),
-          })
-            .then(() => loadProjectFiles(currentProject.id))
-            .catch(() => {});
-        }
+          if (existing) {
+            const applyRes = applySearchReplace(existing.content, patch);
+            if (applyRes.success && applyRes.updatedContent) {
+              const mergedCode = applyRes.updatedContent;
+              generatedFiles.push({
+                path: patch.path,
+                added: applyRes.linesAdded,
+                deleted: applyRes.linesDeleted,
+                code: mergedCode,
+              });
 
-        // Also write directly to disk if local companion daemon is active!
-        if (daemonStatus === 'connected') {
-          fetch('http://localhost:4040/api/files/write', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filePath, content: code }),
-          }).catch(console.error);
+              if (currentProject) {
+                fetch(`/api/v1/projects/${currentProject.id}/files`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: patch.path, content: mergedCode }),
+                })
+                  .then(() => loadProjectFiles(currentProject.id))
+                  .catch(() => {});
+              }
+            }
+          }
+
+          // Apply surgical patch to local disk via companion daemon
+          if (daemonStatus === 'connected') {
+            fetch('http://localhost:4040/api/files/patch', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-shazam-token': activeToken,
+              },
+              body: JSON.stringify({
+                filePath: patch.path,
+                searchBlock: patch.searchBlock,
+                replaceBlock: patch.replaceBlock,
+              }),
+            }).catch(console.error);
+          }
+        } else if (patch.type === 'full_file') {
+          // Full File Creation
+          const lineCount = patch.content.split('\n').length;
+          generatedFiles.push({
+            path: patch.path,
+            added: lineCount,
+            deleted: 0,
+            code: patch.content,
+          });
+
+          if (currentProject) {
+            fetch(`/api/v1/projects/${currentProject.id}/files`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: patch.path, content: patch.content }),
+            })
+              .then(() => loadProjectFiles(currentProject.id))
+              .catch(() => {});
+          }
+
+          if (daemonStatus === 'connected') {
+            fetch('http://localhost:4040/api/files/write', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-shazam-token': activeToken,
+              },
+              body: JSON.stringify({ filePath: patch.path, content: patch.content }),
+            }).catch(console.error);
+          }
         }
       }
 
-      // Fallback: If model wrote code without "### File: <path>", detect path from preceding comment or prompt
+      // Backward-compatible Fallback: If model wrote generic code block without explicit headers
       if (generatedFiles.length === 0) {
+        const genericCodeRegex = /```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
         const singleMatch = genericCodeRegex.exec(fullOutput);
         if (singleMatch && singleMatch[1]) {
           const code = singleMatch[1].trim();
@@ -949,11 +1045,13 @@ ${textToSend}`;
               .catch(() => {});
           }
 
-          // Also write to local disk
           if (daemonStatus === 'connected') {
             fetch('http://localhost:4040/api/files/write', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'x-shazam-token': activeToken,
+              },
               body: JSON.stringify({ filePath: detectedPath, content: code }),
             }).catch(console.error);
           }
@@ -1957,6 +2055,32 @@ ${textToSend}`;
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   <span>1-click Git Push to your GitHub repository</span>
+                </div>
+              </div>
+
+              {/* Security Token Input */}
+              <div className="pt-2 border-t border-white/5 space-y-1.5">
+                <label className="block text-[11px] font-semibold text-zinc-300">
+                  Security Token <span className="text-zinc-500 font-normal">(Printed by daemon upon startup)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    placeholder="Enter security token (e.g. 8f2c...)"
+                    value={daemonToken}
+                    onChange={(e) => {
+                      setDaemonToken(e.target.value);
+                      localStorage.setItem('shazam_daemon_token', e.target.value);
+                    }}
+                    className="flex-1 px-3 py-1.5 bg-black/50 border border-white/10 rounded-xl font-mono text-xs text-amber-300 placeholder-zinc-600 focus:outline-none focus:border-amber-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => checkDaemon(daemonToken)}
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-xs font-semibold text-zinc-200 border border-white/10"
+                  >
+                    Save
+                  </button>
                 </div>
               </div>
             </div>
