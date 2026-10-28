@@ -19,7 +19,7 @@
   ],
   "vars": {
     "SHAZAM_SHARE_SYSTEM_KEYS": "true",
-    "SHAZAM_ENABLE_SIMULATION": "true",
+    "SHAZAM_ENABLE_SIMULATION": "false",
     "SHAZAM_ALLOW_SIGNUP": "true"
   }
 }
