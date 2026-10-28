@@ -6,9 +6,10 @@ import { Copy, Check, Terminal, AlertTriangle } from 'lucide-react';
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  onOpenFile?: (path: string) => void;
 }
 
-export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, className = '', onOpenFile }: MarkdownRendererProps) {
   // 1. Separate code blocks from regular markdown text
   const blocks = splitCodeBlocks(content);
 
@@ -18,7 +19,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
         if (block.type === 'code') {
           return <CodeBlock key={index} language={block.language} code={block.code} />;
         }
-        return <TextBlock key={index} text={block.text} />;
+        return <TextBlock key={index} text={block.text} onOpenFile={onOpenFile} />;
       })}
     </div>
   );
@@ -107,7 +108,7 @@ function CodeBlock({ language, code = '' }: { language?: string; code?: string }
   );
 }
 
-function TextBlock({ text = '' }: { text?: string }) {
+function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (path: string) => void }) {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
   let currentList: { type: 'ul' | 'ol'; items: string[] } | null = null;
@@ -120,7 +121,7 @@ function TextBlock({ text = '' }: { text?: string }) {
           {currentList.items.map((item, idx) => (
             <li key={idx} className="flex items-start gap-2.5 text-zinc-300 leading-relaxed">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0 opacity-80" />
-              <span className="flex-1">{renderInline(item)}</span>
+              <span className="flex-1">{renderInline(item, onOpenFile)}</span>
             </li>
           ))}
         </ul>
@@ -133,7 +134,7 @@ function TextBlock({ text = '' }: { text?: string }) {
               <span className="px-1.5 py-0.2 rounded bg-white/[0.05] border border-white/10 text-[10px] font-mono text-amber-300 font-semibold shrink-0 mt-0.5">
                 {idx + 1}
               </span>
-              <span className="flex-1">{renderInline(item)}</span>
+              <span className="flex-1">{renderInline(item, onOpenFile)}</span>
             </li>
           ))}
         </ol>
@@ -160,7 +161,7 @@ function TextBlock({ text = '' }: { text?: string }) {
           className="my-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs flex items-start gap-2.5 shadow-md"
         >
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div className="leading-relaxed flex-1">{renderInline(trimmed.replace(/^⚠️\s*/, ''))}</div>
+          <div className="leading-relaxed flex-1">{renderInline(trimmed.replace(/^⚠️\s*/, ''), onOpenFile)}</div>
         </div>
       );
       continue;
@@ -174,7 +175,7 @@ function TextBlock({ text = '' }: { text?: string }) {
           key={`quote-${i}`}
           className="border-l-2 border-amber-500/50 pl-3.5 my-2.5 text-zinc-400 italic text-xs leading-relaxed"
         >
-          {renderInline(trimmed.replace(/^>\s*/, ''))}
+          {renderInline(trimmed.replace(/^>\s*/, ''), onOpenFile)}
         </blockquote>
       );
       continue;
@@ -185,7 +186,7 @@ function TextBlock({ text = '' }: { text?: string }) {
       flushList();
       elements.push(
         <h1 key={`h1-${i}`} className="text-lg font-bold text-white mt-4 mb-2 tracking-tight">
-          {renderInline(trimmed.slice(2).trim())}
+          {renderInline(trimmed.slice(2).trim(), onOpenFile)}
         </h1>
       );
       continue;
@@ -194,7 +195,7 @@ function TextBlock({ text = '' }: { text?: string }) {
       flushList();
       elements.push(
         <h2 key={`h2-${i}`} className="text-base font-bold text-white mt-3.5 mb-1.5 tracking-tight">
-          {renderInline(trimmed.slice(3).trim())}
+          {renderInline(trimmed.slice(3).trim(), onOpenFile)}
         </h2>
       );
       continue;
@@ -203,7 +204,7 @@ function TextBlock({ text = '' }: { text?: string }) {
       flushList();
       elements.push(
         <h3 key={`h3-${i}`} className="text-sm font-bold text-amber-300 mt-3 mb-1 tracking-tight">
-          {renderInline(trimmed.slice(4).trim())}
+          {renderInline(trimmed.slice(4).trim(), onOpenFile)}
         </h3>
       );
       continue;
@@ -212,7 +213,7 @@ function TextBlock({ text = '' }: { text?: string }) {
       flushList();
       elements.push(
         <h4 key={`h4-${i}`} className="text-xs font-semibold text-zinc-100 mt-2.5 mb-1 tracking-tight">
-          {renderInline(trimmed.slice(5).trim())}
+          {renderInline(trimmed.slice(5).trim(), onOpenFile)}
         </h4>
       );
       continue;
@@ -244,7 +245,7 @@ function TextBlock({ text = '' }: { text?: string }) {
     flushList();
     elements.push(
       <p key={`p-${i}`} className="text-zinc-200 leading-relaxed my-1">
-        {renderInline(trimmed)}
+        {renderInline(trimmed, onOpenFile)}
       </p>
     );
   }
@@ -258,10 +259,10 @@ function TextBlock({ text = '' }: { text?: string }) {
  * Parses inline markdown:
  * - **bold**
  * - *italic*
- * - `code`
+ * - `code` (and detects file paths like `06-football-model.md` to make them clickable!)
  * - [label](url)
  */
-function renderInline(text: string): React.ReactNode {
+function renderInline(text: string, onOpenFile?: (path: string) => void): React.ReactNode {
   const tokens: React.ReactNode[] = [];
   // Tokenize `code`, **bold**, *italic*, [link](url)
   const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
@@ -276,14 +277,33 @@ function renderInline(text: string): React.ReactNode {
     const token = match[0];
 
     if (token.startsWith('`') && token.endsWith('`')) {
-      tokens.push(
-        <code
-          key={`code-${match.index}`}
-          className="px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-amber-300 font-mono text-[12px] font-medium"
-        >
-          {token.slice(1, -1)}
-        </code>
-      );
+      const inner = token.slice(1, -1);
+      // Check if the inline code is a file path (e.g. 06-football-model.md, src/App.tsx, kelly.ts)
+      const isFilePath = /\.[a-zA-Z0-9_-]+$/.test(inner) || inner.includes('/');
+
+      if (isFilePath && onOpenFile) {
+        tokens.push(
+          <button
+            key={`file-${match.index}`}
+            type="button"
+            onClick={() => onOpenFile(inner)}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-mono text-[12px] font-medium transition cursor-pointer hover:underline mx-0.5 shadow-sm"
+            title={`Click to open ${inner}`}
+          >
+            <span>📄</span>
+            <span>{inner}</span>
+          </button>
+        );
+      } else {
+        tokens.push(
+          <code
+            key={`code-${match.index}`}
+            className="px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-amber-300 font-mono text-[12px] font-medium"
+          >
+            {inner}
+          </code>
+        );
+      }
     } else if (token.startsWith('**') && token.endsWith('**')) {
       tokens.push(
         <strong key={`bold-${match.index}`} className="font-semibold text-white">

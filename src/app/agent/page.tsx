@@ -635,8 +635,13 @@ Here are the actual workspace files from the project:
 ${fileSnippets}
 
 Instructions:
-- When answering or writing code, reference the actual file structure and dependencies from the files above.
+- When modifying or creating code, ALWAYS output the target file path in the format:
+### File: path/to/file.ext
+\`\`\`language
+...code...
+\`\`\`
 - If the user asks how to run, test, build, or deploy the project locally (e.g. "run local"), inspect the project's package managers, entrypoints, and scripts to give clear, copy-pasteable terminal commands step-by-step.
+- You can reference and update multiple files in a single response using the "### File: <path>" headers.
 
 User Request:
 ${textToSend}`;
@@ -714,30 +719,61 @@ ${textToSend}`;
         }
       }
 
-      // Check if output contains code block to generate clickable file preview capsule
-      const codeMatch = fullOutput.match(/```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/);
+      // Extract explicit file changes with real target paths
+      const fileBlockRegex = /### File:\s*([^\n]+)\n```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
+      const genericCodeRegex = /```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
       const generatedFiles: Array<{ path: string; added: number; deleted: number; code?: string }> = [];
 
-      if (codeMatch && codeMatch[1]) {
-        const samplePath = 'src/App.tsx';
-        const code = codeMatch[1].trim();
+      let fileMatch;
+      while ((fileMatch = fileBlockRegex.exec(fullOutput)) !== null) {
+        const filePath = fileMatch[1].trim();
+        const code = fileMatch[2].trim();
         const lineCount = code.split('\n').length;
         generatedFiles.push({
-          path: samplePath,
+          path: filePath,
           added: lineCount,
           deleted: Math.max(1, Math.floor(lineCount / 4)),
           code,
         });
 
-        // Save generated file to project in Cloudflare D1
+        // Persist real updated file to project in Cloudflare D1
         if (currentProject) {
           fetch(`/api/v1/projects/${currentProject.id}/files`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: samplePath, content: code }),
+            body: JSON.stringify({ path: filePath, content: code }),
           })
             .then(() => loadProjectFiles(currentProject.id))
             .catch(() => {});
+        }
+      }
+
+      // Fallback: If model wrote code without "### File: <path>", detect path from preceding comment or prompt
+      if (generatedFiles.length === 0) {
+        const singleMatch = genericCodeRegex.exec(fullOutput);
+        if (singleMatch && singleMatch[1]) {
+          const code = singleMatch[1].trim();
+          const firstLine = code.split('\n')[0] || '';
+          const commentPathMatch = firstLine.match(/^(?:\/\/|#|\/\*)\s*([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)/);
+          const detectedPath = commentPathMatch ? commentPathMatch[1].trim() : 'src/App.tsx';
+          const lineCount = code.split('\n').length;
+
+          generatedFiles.push({
+            path: detectedPath,
+            added: lineCount,
+            deleted: Math.max(1, Math.floor(lineCount / 4)),
+            code,
+          });
+
+          if (currentProject) {
+            fetch(`/api/v1/projects/${currentProject.id}/files`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: detectedPath, content: code }),
+            })
+              .then(() => loadProjectFiles(currentProject.id))
+              .catch(() => {});
+          }
         }
       }
 
@@ -775,6 +811,24 @@ ${textToSend}`;
     navigator.clipboard.writeText(inspectFile.content);
     setFileCopied(true);
     setTimeout(() => setFileCopied(false), 2000);
+  }
+
+  // Open file in viewer drawer from clickable link in markdown or search
+  function handleOpenFile(targetPath: string) {
+    if (!projectFiles || projectFiles.length === 0) return;
+    const cleanTarget = targetPath.trim().replace(/^['"`]|['"`]$/g, '');
+    const found = projectFiles.find(
+      (f) =>
+        f.path.toLowerCase() === cleanTarget.toLowerCase() ||
+        f.path.toLowerCase().endsWith(cleanTarget.toLowerCase()) ||
+        cleanTarget.toLowerCase().endsWith(f.path.toLowerCase())
+    );
+
+    if (found) {
+      setInspectFile({ path: found.path, content: found.content });
+    } else {
+      setInspectFile({ path: cleanTarget, content: `// File "${cleanTarget}" referenced in conversation.` });
+    }
   }
 
   return (
@@ -1152,7 +1206,7 @@ ${textToSend}`;
                       )}
 
                       {/* Main Text Content */}
-                      <MarkdownRenderer content={msg.content} />
+                      <MarkdownRenderer content={msg.content} onOpenFile={handleOpenFile} />
 
                       {/* Clickable File Change Capsules (Previewable on click!) */}
                       {msg.editedFiles && msg.editedFiles.length > 0 && (
@@ -1195,7 +1249,7 @@ ${textToSend}`;
                   </div>
 
                   {streamingOutput ? (
-                    <MarkdownRenderer content={streamingOutput} />
+                    <MarkdownRenderer content={streamingOutput} onOpenFile={handleOpenFile} />
                   ) : (
                     <div className="flex items-center gap-2 text-zinc-400 text-xs py-1">
                       <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse rounded-sm" />
