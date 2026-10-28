@@ -518,6 +518,27 @@ export default function WorkspacePage() {
           subtext = 'To chat for free, connect a 100% free Google Gemini key in under 30 seconds (no credit card or billing ever required).';
           fixAction = 'Connect Free Key (30s)';
           fixHref = '/connections';
+        } else if (
+          rawMsg.includes('Invalid or missing API key') ||
+          rawMsg.includes('Invalid API key') ||
+          rawMsg.includes('API key not valid') ||
+          rawMsg.includes('unregistered callers') ||
+          rawMsg.includes('API_KEY_INVALID')
+        ) {
+          userMessage = 'API Key Issue';
+          subtext = rawMsg.length > 250 ? rawMsg.slice(0, 250) + '...' : rawMsg;
+          fixAction = 'Update Key in Connections';
+          fixHref = '/connections';
+        } else if (rawMsg.includes('Access denied by') || rawMsg.includes('PERMISSION_DENIED')) {
+          userMessage = 'Provider Access Denied';
+          subtext = rawMsg.length > 250 ? rawMsg.slice(0, 250) + '...' : rawMsg;
+          fixAction = 'Check Key in Connections';
+          fixHref = '/connections';
+        } else if (rawMsg.includes('Google returned:') || rawMsg.includes('Google returned an error')) {
+          userMessage = 'Google Provider Error';
+          subtext = rawMsg;
+          fixAction = 'Manage Keys';
+          fixHref = '/connections';
         } else if (rawMsg.includes('Free-Only policy strictly excludes') || rawMsg.includes('No eligible routes found under policy "free only"')) {
           userMessage = 'No free models are available for this specific task.';
           subtext = 'Switch to Balanced policy or connect a free provider key.';
