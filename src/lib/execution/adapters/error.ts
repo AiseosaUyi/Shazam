@@ -9,10 +9,19 @@ export function normalizeProviderError(
   const rawMsg = err instanceof Error ? err.message : String(err);
   const msg = redactSecrets(rawMsg);
 
-  if (statusCode === 401 || msg.includes('401') || msg.includes('Unauthorized') || msg.includes('invalid_api_key')) {
+  if (
+    statusCode === 401 ||
+    msg.includes('401') ||
+    msg.includes('Unauthorized') ||
+    msg.includes('invalid_api_key') ||
+    msg.includes('API_KEY_INVALID') ||
+    msg.includes('API key not valid') ||
+    msg.includes('API key not found') ||
+    (statusCode === 400 && (msg.includes('API key') || msg.includes('INVALID_ARGUMENT')))
+  ) {
     return {
       type: 'invalid_credentials',
-      message: `Invalid API key for ${providerName}. Please update your credentials in Connections.`,
+      message: `Invalid or missing API key for ${providerName}. Please connect a valid API key in Connections.`,
       statusCode: 401,
       retryable: false,
     };
