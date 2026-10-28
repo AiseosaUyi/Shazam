@@ -10,15 +10,15 @@ export function resolveLiveProviderModel(providerId: string, catalogModelId: str
   switch (providerId) {
     case 'google':
       if (id.includes('flash-lite') || id === 'gemini-3.5-flash-lite') {
-        return 'gemini-2.0-flash-lite';
+        return 'gemini-3.5-flash-lite';
       }
       if (id.includes('flash') || id === 'gemini-3.8-flash') {
-        return 'gemini-2.0-flash';
+        return 'gemini-3.8-flash';
       }
       if (id.includes('argon') || id.includes('pro') || id === 'gemini-4-argon') {
-        return 'gemini-1.5-pro';
+        return 'gemini-3.1-pro-preview';
       }
-      return 'gemini-2.0-flash';
+      return 'gemini-3.8-flash';
 
     case 'openai':
       if (id.includes('luna')) return 'gpt-4o-mini';

@@ -4,9 +4,9 @@ import { resolveLiveProviderModel, createTimeoutSignal } from '../src/lib/execut
 
 describe('Live Upstream Provider Model Resolver Tests', () => {
   test('maps Google catalog models to live Gemini endpoints', () => {
-    assert.strictEqual(resolveLiveProviderModel('google', 'gemini-3.8-flash'), 'gemini-2.0-flash');
-    assert.strictEqual(resolveLiveProviderModel('google', 'gemini-3.5-flash-lite'), 'gemini-2.0-flash-lite');
-    assert.strictEqual(resolveLiveProviderModel('google', 'gemini-4-argon'), 'gemini-1.5-pro');
+    assert.strictEqual(resolveLiveProviderModel('google', 'gemini-3.8-flash'), 'gemini-3.8-flash');
+    assert.strictEqual(resolveLiveProviderModel('google', 'gemini-3.5-flash-lite'), 'gemini-3.5-flash-lite');
+    assert.strictEqual(resolveLiveProviderModel('google', 'gemini-4-argon'), 'gemini-3.1-pro-preview');
   });
 
   test('maps OpenAI catalog models to active endpoints', () => {
