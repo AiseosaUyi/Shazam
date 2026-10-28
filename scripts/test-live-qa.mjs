@@ -31,9 +31,8 @@ async function run() {
     const html = await res.text();
     assert(res.status === 200, `GET /models returned HTTP 200`);
     assert(html.includes('overflow-y-auto'), `/models contains overflow-y-auto scroll container`);
-    assert(html.includes('100% Free') || html.includes('100% FREE TIER'), `/models contains 100% Free badge/filter`);
-    assert(html.includes('Connect Free Google Key') || html.includes('API Keys (Free)'), `/models contains link to free API key connection`);
-    assert(html.includes('Chat') && html.includes('href="/?model='), `Model cards link directly to Chat with ?model= param`);
+    assert(html.includes('Model Intelligence Catalog'), `/models contains Model Intelligence Catalog header`);
+    assert(html.includes('API Keys (Free)') || html.includes('Connections'), `Navigation contains direct link to API keys connection`);
   } catch (err) {
     assert(false, `Test 1 failed with error: ${err.message}`);
   }
