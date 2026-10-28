@@ -61,6 +61,7 @@ export function Navbar() {
     { href: '/cowork', label: 'Co-Work', icon: Zap },
     { href: '/agent', label: 'Code', icon: Code2 },
     { href: '/models', label: 'Models', icon: Cpu },
+    { href: '/connections', label: 'API Keys (Free)', icon: KeyRound },
   ];
 
   return (

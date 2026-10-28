@@ -62,8 +62,9 @@ export default function UsagePage() {
   const percentUsed = Math.min(100, (monthlySpend / (monthlyBudget || 1)) * 100);
 
   return (
-    <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#232736] pb-6">
+    <div className="flex-1 h-full min-h-0 overflow-y-auto">
+      <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#232736] pb-6">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-white font-mono">Usage Ledger</h1>
@@ -225,5 +226,6 @@ export default function UsagePage() {
         )}
       </div>
     </div>
+  </div>
   );
 }

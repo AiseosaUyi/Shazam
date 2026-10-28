@@ -95,7 +95,7 @@ export default function OnboardingPage() {
   const currentOption = PROVIDER_OPTIONS.find((p) => p.id === selectedProvider)!;
 
   return (
-    <div className="flex-1 flex items-center justify-center px-4 py-12">
+    <div className="flex-1 h-full min-h-0 overflow-y-auto flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-xl space-y-6">
         {/* Welcome Header */}
         <div className="text-center space-y-2">
