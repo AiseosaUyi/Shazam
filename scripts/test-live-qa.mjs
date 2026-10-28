@@ -232,6 +232,26 @@ async function run() {
   }
 
   // ----------------------------------------------------------------------
+  // CLEANUP: Remove temporary QA test credentials from database
+  // ----------------------------------------------------------------------
+  try {
+    const listRes = await fetch(`${BASE_URL}/api/v1/credentials`, {
+      headers: { Cookie: sessionCookie }
+    });
+    const listData = await listRes.json();
+    for (const c of (listData.credentials || [])) {
+      if (c.keyMask?.includes('Test') || c.keyMask?.includes('Demo')) {
+        await fetch(`${BASE_URL}/api/v1/credentials/${c.id}`, {
+          method: 'DELETE',
+          headers: { Cookie: sessionCookie }
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // ----------------------------------------------------------------------
   // SUMMARY
   // ----------------------------------------------------------------------
   console.log(`\n==================================================`);
