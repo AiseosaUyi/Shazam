@@ -24,9 +24,16 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Server returned ${res.status} error.`);
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || 'Login failed.');
+        throw new Error(data.error || 'Login failed. Please check your credentials.');
       }
 
       router.push('/');
