@@ -565,13 +565,13 @@ export default function CoWorkStudioPage() {
                     icon: <Mail className="w-4 h-4 text-red-400" />,
                     title: 'Send Launch Email',
                     desc: 'Draft and prepare an email to partners via Google connector',
-                    prompt: 'Send an email to aise@gruve.events with subject Launch Deliverables updating him that Zoqo v2 is ready for deployment',
+                    prompt: 'Send an email to aise@gruve.events with subject Launch Deliverables updating him that Shazam AI is ready for deployment',
                   },
                   {
                     icon: <Globe className="w-4 h-4 text-blue-400" />,
                     title: 'Audit Social Media',
                     desc: 'Open Chrome and analyze Instagram engagement',
-                    prompt: 'Open Chrome, check my Instagram account @zoqo_app, and analyze recent post performance',
+                    prompt: 'Open Chrome, check my social media profiles, and analyze recent post performance',
                   },
                   {
                     icon: <FileText className="w-4 h-4 text-emerald-400" />,

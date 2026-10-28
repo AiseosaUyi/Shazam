@@ -63,6 +63,7 @@ interface ProjectItem {
 }
 
 export default function WorkspacePage() {
+  const [user, setUser] = useState<{ email: string; name?: string; role?: string } | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -132,6 +133,13 @@ export default function WorkspacePage() {
     fetch('/api/v1/catalog')
       .then((res) => (res.ok ? res.json() : { models: [] }))
       .then((data) => setModels(data.models || []))
+      .catch(() => {});
+
+    fetch('/api/v1/auth/me')
+      .then((res) => (res.ok ? res.json() : { user: null }))
+      .then((data) => {
+        if (data.user) setUser(data.user);
+      })
       .catch(() => {});
   }, []);
 
@@ -426,7 +434,12 @@ export default function WorkspacePage() {
         let fixAction: string | undefined = undefined;
         let fixHref: string | undefined = undefined;
 
-        if (rawMsg.includes('No valid API key') || rawMsg.includes('No API key')) {
+        if (rawMsg.includes('Unauthorized')) {
+          userMessage = 'Sign in required to send messages.';
+          subtext = 'Create a free account or sign in with your email to start chatting with intelligent model routing.';
+          fixAction = 'Sign In';
+          fixHref = '/login';
+        } else if (rawMsg.includes('No valid API key') || rawMsg.includes('No API key')) {
           userMessage = 'No AI provider is connected yet.';
           subtext = 'To chat for free, connect a 100% free Google Gemini key in under 30 seconds (no credit card or billing ever required).';
           fixAction = 'Connect Free Key (30s)';
@@ -607,50 +620,79 @@ export default function WorkspacePage() {
           </div>
 
           <div className="space-y-0.5">
-            {conversations
-              .filter((c) => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map((conv) => (
-                <div
-                  key={conv.id}
-                  onClick={() => {
-                    loadConversation(conv.id);
-                    setSidebarOpen(false);
-                  }}
-                  className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                    currentConvId === conv.id
-                      ? 'bg-amber-500/10 text-amber-300 font-medium'
-                      : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
-                  }`}
+            {!user ? (
+              <div className="p-3 mx-1 my-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
+                <Sparkles className="w-4 h-4 text-amber-400 mx-auto mb-1.5" />
+                <p className="text-xs font-medium text-zinc-200">Guest Session</p>
+                <p className="text-[11px] text-zinc-400 mt-1 mb-2.5 leading-relaxed">
+                  Sign in to save and sync your conversations across devices.
+                </p>
+                <Link
+                  href="/login"
+                  className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs transition shadow-sm"
                 >
-                  <div className="flex items-center gap-2 truncate">
-                    <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                    <span className="truncate">{conv.title}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteConversation(e, conv.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition rounded"
-                    title="Delete chat"
+                  Sign In
+                </Link>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="px-2 py-4 text-center text-xs text-zinc-500">
+                No conversations yet
+              </div>
+            ) : (
+              conversations
+                .filter((c) => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                .map((conv) => (
+                  <div
+                    key={conv.id}
+                    onClick={() => {
+                      loadConversation(conv.id);
+                      setSidebarOpen(false);
+                    }}
+                    className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
+                      currentConvId === conv.id
+                        ? 'bg-amber-500/10 text-amber-300 font-medium'
+                        : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
+                    }`}
                   >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2 truncate">
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                      <span className="truncate">{conv.title}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteConversation(e, conv.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition rounded"
+                      title="Delete chat"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))
+            )}
           </div>
         </div>
 
         {/* User Profile */}
         <div className="p-3 border-t border-white/[0.06] bg-black/30 flex items-center justify-between">
-          <div className="flex items-center gap-2 truncate">
-            <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xs font-semibold">
-              AI
+          {user ? (
+            <div className="flex items-center gap-2 truncate">
+              <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xs font-semibold">
+                {user.email.charAt(0).toUpperCase()}
+              </div>
+              <div className="truncate">
+                <p className="text-xs font-medium text-white truncate">{user.name || user.email.split('@')[0]}</p>
+                <p className="text-[10px] text-zinc-500">{user.role === 'admin' ? 'Administrator' : 'Free Tier'}</p>
+              </div>
             </div>
-            <div className="truncate">
-              <p className="text-xs font-medium text-white truncate">Aise Idahor · Free</p>
-              <p className="text-[10px] text-zinc-500">Cloudflare D1 Verified</p>
-            </div>
-          </div>
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          ) : (
+            <Link
+              href="/login"
+              className="w-full py-1.5 px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-300 hover:text-white font-medium text-xs text-center transition"
+            >
+              Sign In to Save History
+            </Link>
+          )}
+          {user && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
         </div>
       </aside>
 

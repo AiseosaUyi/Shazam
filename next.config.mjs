@@ -1,6 +1,12 @@
-import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
-
-initOpenNextCloudflareForDev();
+// Initialize OpenNext for local Cloudflare worker development only
+if (process.env.NODE_ENV === 'development') {
+  try {
+    const { initOpenNextCloudflareForDev } = await import('@opennextjs/cloudflare');
+    initOpenNextCloudflareForDev();
+  } catch {
+    // Ignore in non-Cloudflare environments
+  }
+}
 
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },

@@ -330,11 +330,22 @@ export default function SettingsPage() {
 
   if (!pref) {
     return (
-      <div className="flex-1 max-w-4xl w-full mx-auto p-8">
+      <div className="flex-1 max-w-md w-full mx-auto p-8 flex flex-col items-center justify-center text-center">
         {error ? (
-          <div className="p-4 rounded-xl bg-red-950/40 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+          <div className="p-6 rounded-2xl bg-[#10131d] border border-white/10 text-center space-y-4 shadow-xl w-full">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-white">Sign In Required</h2>
+              <p className="text-xs text-zinc-400 mt-1">{error}</p>
+            </div>
+            <a
+              href="/login"
+              className="inline-block w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs transition shadow-md"
+            >
+              Sign In to Access Settings
+            </a>
           </div>
         ) : (
           <div className="text-zinc-500 text-sm font-sans text-center py-16">Loading settings...</div>

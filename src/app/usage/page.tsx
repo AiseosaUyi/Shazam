@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, DollarSign, Activity, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
+import { BarChart3, TrendingUp, DollarSign, Activity, AlertCircle, Lock } from 'lucide-react';
 
 export default function UsagePage() {
   const [data, setData] = useState<any>(null);
@@ -23,6 +24,36 @@ export default function UsagePage() {
         setLoading(false);
       });
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-12 text-zinc-500 text-sm">
+        Loading usage ledger...
+      </div>
+    );
+  }
+
+  if (!data && error) {
+    return (
+      <div className="flex-1 max-w-md w-full mx-auto p-8 flex flex-col items-center justify-center text-center">
+        <div className="p-6 rounded-2xl bg-[#10131d] border border-white/10 text-center space-y-4 shadow-xl w-full">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-white">Sign In Required</h2>
+            <p className="text-xs text-zinc-400 mt-1">Please sign in to view your token consumption and budget ledger.</p>
+          </div>
+          <Link
+            href="/login"
+            className="inline-block w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs transition shadow-md"
+          >
+            Sign In to View Ledger
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const summary = data?.summary;
   const monthlyBudget = data?.monthlyBudgetUSD ?? 10.0;

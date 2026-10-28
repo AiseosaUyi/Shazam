@@ -250,31 +250,53 @@ export function Navbar() {
               </Link>
             );
           })}
-          <div className="border-t border-white/[0.06] my-2" />
-          <Link
-            href="/connections"
-            onClick={() => setMobileOpen(false)}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
-          >
-            <KeyRound className="w-4 h-4 text-amber-400" />
-            <span>AI Connections (Free & BYOK)</span>
-          </Link>
-          <Link
-            href="/usage"
-            onClick={() => setMobileOpen(false)}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
-          >
-            <BarChart3 className="w-4 h-4 text-blue-400" />
-            <span>Usage & Ledger</span>
-          </Link>
-          <Link
-            href="/settings"
-            onClick={() => setMobileOpen(false)}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
-          >
-            <Sliders className="w-4 h-4 text-purple-400" />
-            <span>Settings</span>
-          </Link>
+          {user ? (
+            <>
+              <div className="border-t border-white/[0.06] my-2" />
+              <Link
+                href="/connections"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <span>AI Connections (Free & BYOK)</span>
+              </Link>
+              <Link
+                href="/usage"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                <BarChart3 className="w-4 h-4 text-blue-400" />
+                <span>Usage & Ledger</span>
+              </Link>
+              <Link
+                href="/settings"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                <Sliders className="w-4 h-4 text-purple-400" />
+                <span>Settings</span>
+              </Link>
+            </>
+          ) : (
+            <>
+              <div className="border-t border-white/[0.06] my-2" />
+              <Link
+                href="/login"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-300 hover:text-white"
+              >
+                <span>Sign In</span>
+              </Link>
+              <Link
+                href="/signup"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500 text-zinc-950 hover:bg-amber-400 transition"
+              >
+                <span>Get Started</span>
+              </Link>
+            </>
+          )}
         </div>
       )}
     </header>

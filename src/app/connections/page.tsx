@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   KeyRound,
   ShieldCheck,
@@ -27,6 +28,7 @@ interface ProviderItem {
 }
 
 export default function ConnectionsPage() {
+  const [user, setUser] = useState<{ email: string } | null>(null);
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<ProviderItem | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -47,6 +49,10 @@ export default function ConnectionsPage() {
   };
 
   useEffect(() => {
+    fetch('/api/v1/auth/me')
+      .then((res) => (res.ok ? res.json() : { user: null }))
+      .then((data) => setUser(data.user))
+      .catch(() => {});
     fetchProviders();
   }, []);
 
@@ -120,6 +126,24 @@ export default function ConnectionsPage() {
           <span>Zero Server Key Leaks</span>
         </div>
       </div>
+
+      {/* Guest Mode Banner */}
+      {!user && !loading && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-zinc-200">
+              You are viewing available AI providers in guest preview mode. Sign in to link your own private API keys in the vault.
+            </span>
+          </div>
+          <Link
+            href="/login"
+            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs shrink-0 transition shadow-sm"
+          >
+            Sign In
+          </Link>
+        </div>
+      )}
 
       {/* Free Tier Guide Banner */}
       <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-[#141824] to-[#141824] border border-amber-500/20 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -244,6 +268,10 @@ export default function ConnectionsPage() {
                 ) : (
                   <button
                     onClick={() => {
+                      if (!user) {
+                        window.location.href = '/login';
+                        return;
+                      }
                       setSelectedProvider(p);
                       setApiKeyInput('');
                       setFeedback(null);
