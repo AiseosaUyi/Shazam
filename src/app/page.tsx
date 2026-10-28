@@ -37,6 +37,7 @@ import {
   Pin,
   Mic,
 } from 'lucide-react';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import type { CostPolicy, TaskClass, Model } from '@/lib/types';
 
 interface Message {
@@ -922,8 +923,8 @@ export default function WorkspacePage() {
                         </details>
                       )}
 
-                      <div className="text-sm leading-relaxed text-zinc-200">
-                        {renderFormattedContent(msg.content)}
+                      <div>
+                        <MarkdownRenderer content={msg.content} />
                       </div>
 
                       <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-zinc-500">
@@ -995,8 +996,8 @@ export default function WorkspacePage() {
                   )}
 
                   {streamingText ? (
-                    <div className="text-sm leading-relaxed text-zinc-200">
-                      {renderFormattedContent(streamingText)}
+                    <div>
+                      <MarkdownRenderer content={streamingText} />
                     </div>
                   ) : (
                     <div className="flex items-center gap-2.5 text-zinc-400 text-xs py-2">

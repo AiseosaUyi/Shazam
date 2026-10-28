@@ -28,7 +28,11 @@ import {
   Layers,
   ArrowUp,
   Square,
+  Search,
+  MessageSquare,
+  Trash2,
 } from 'lucide-react';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
 interface CoWorkArtifact {
   type: 'email' | 'notion' | 'browser' | 'video' | 'data';
@@ -50,16 +54,23 @@ interface CoWorkActionMessage {
   timestamp: string;
 }
 
-export default function CoWorkStudioPage() {
-  // Connected Skills State
-  const [activeSkills, setActiveSkills] = useState<Record<string, boolean>>({
-    'gmail': true,
-    'browser': true,
-    'notion': true,
-    'video': true,
-    'sheets': false,
-  });
+interface ConversationItem {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
 
+export default function CoWorkStudioPage() {
+  const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+
+  // Conversations State (Strictly Conversations in Sidebar)
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [currentTitle, setCurrentTitle] = useState('New Co-Work Session');
+  const [loadingConv, setLoadingConv] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Chat Execution State
   const [messages, setMessages] = useState<CoWorkActionMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
@@ -73,6 +84,17 @@ export default function CoWorkStudioPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    fetch('/api/v1/auth/me')
+      .then((res) => (res.ok ? res.json() : { user: null }))
+      .then((data) => {
+        if (data.user) setUser(data.user);
+      })
+      .catch(() => {});
+
+    loadConversations();
+  }, []);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, currentThought]);
 
@@ -83,11 +105,84 @@ export default function CoWorkStudioPage() {
     }
   }, [prompt]);
 
-  function handleToggleSkill(skillId: string) {
-    setActiveSkills((prev) => ({
-      ...prev,
-      [skillId]: !prev[skillId],
-    }));
+  async function loadConversations() {
+    try {
+      const res = await fetch('/api/v1/conversations');
+      const data = await res.json();
+      const list: ConversationItem[] = data.conversations || [];
+      setConversations(list);
+      if (list.length > 0) {
+        selectConversation(list[0].id, list[0].title);
+      } else {
+        handleNewConversation();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function selectConversation(convId: string, title: string) {
+    setCurrentConversationId(convId);
+    setCurrentTitle(title);
+    setLoadingConv(true);
+    setActiveArtifact(null);
+
+    try {
+      const res = await fetch(`/api/v1/conversations/${convId}`);
+      const data = await res.json();
+      if (res.ok) {
+        const rawMsgs = data.messages || [];
+        const formatted: CoWorkActionMessage[] = rawMsgs.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }));
+        setMessages(formatted);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingConv(false);
+    }
+  }
+
+  async function handleNewConversation() {
+    try {
+      const res = await fetch('/api/v1/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Co-Work Session' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.conversation) {
+        setConversations((prev) => [data.conversation, ...prev]);
+        setCurrentConversationId(data.conversation.id);
+        setCurrentTitle(data.conversation.title);
+        setMessages([]);
+        setActiveArtifact(null);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleDeleteConversation(convId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await fetch(`/api/v1/conversations/${convId}`, { method: 'DELETE' });
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      if (currentConversationId === convId) {
+        const remaining = conversations.filter((c) => c.id !== convId);
+        if (remaining.length > 0) {
+          selectConversation(remaining[0].id, remaining[0].title);
+        } else {
+          handleNewConversation();
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   async function handleExecuteTask(customText?: string) {
@@ -106,9 +201,9 @@ export default function CoWorkStudioPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     setIsExecuting(true);
-    setCurrentThought('Analyzing task and selecting connected skills...');
+    setCurrentThought('Analyzing task and selecting connected autonomous skills...');
 
-    // Detect which skill fits the user's intent
+    // Detect skill intent
     const lower = textToRun.toLowerCase();
     let skillType: 'email' | 'browser' | 'notion' | 'video' | 'data' = 'email';
     let skillName = 'Google Workspace & Gmail';
@@ -133,17 +228,12 @@ export default function CoWorkStudioPage() {
     }
 
     try {
-      // Call task router with skill context
-      const enabledSkillList = Object.entries(activeSkills)
-        .filter(([, v]) => v)
-        .map(([k]) => k)
-        .join(', ');
-
       const res = await fetch('/api/v1/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `[Autonomous Co-Work Mode | Active Skills: ${enabledSkillList}]\n${textToRun}`,
+          prompt: `[Autonomous Co-Work Mode]\n${textToRun}`,
+          conversationId: currentConversationId || undefined,
           taskClassOverride: 'planning',
         }),
       });
@@ -184,7 +274,20 @@ export default function CoWorkStudioPage() {
 
       if (skillType === 'email') {
         const emailMatch = textToRun.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
-        const recipient = emailMatch ? emailMatch[0] : 'team@zoqo.io';
+        let defaultRecipient = 'aise@gruve.events';
+        try {
+          const stored = localStorage.getItem('shazam_skills_config');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const emailSkill = parsed.find((p: any) => p.id === 'google_workspace');
+            if (emailSkill?.settings?.recipient) {
+              defaultRecipient = emailSkill.settings.recipient;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        const recipient = emailMatch ? emailMatch[0] : defaultRecipient;
 
         let subject = 'Project Update & Launch Timeline';
         const subjectMatch =
@@ -226,7 +329,7 @@ export default function CoWorkStudioPage() {
           data: {
             url: 'https://instagram.com/zoqo_app',
             status: '200 OK',
-            metrics: 'Audited 12 latest posts, engagement rate: 4.8%, top content: Product Demo Reel.',
+            metrics: 'Audited latest posts, engagement rate: 4.8%, top content: Product Demo Reel.',
             details: fullOutput,
           },
         };
@@ -236,7 +339,7 @@ export default function CoWorkStudioPage() {
           title: '60-Second Viral Video Storyboard',
           data: {
             scenes: [
-              { time: '0:00 - 0:03', visual: 'Fast zoom on phone screen showing Zoqo interface', audio: 'Stop doing manual work. Here is how AI changes the game.' },
+              { time: '0:00 - 0:03', visual: 'Fast zoom on phone screen showing interface', audio: 'Stop doing manual work. Here is how AI changes the game.' },
               { time: '0:03 - 0:15', visual: 'Screen capture showing automated workflow in action', audio: 'Connect your accounts in one click.' },
               { time: '0:15 - 0:40', visual: 'Split screen comparison: old manual way vs Shazam Co-Work', audio: 'Watch it handle the heavy lifting while you focus on growth.' },
               { time: '0:40 - 1:00', visual: 'Call to action card with download link', audio: 'Link in bio to try it free today.' },
@@ -279,16 +382,31 @@ export default function CoWorkStudioPage() {
     }
   }
 
-  function handleSendEmail() {
+  function handleSendEmail(mode: 'gmail' | 'client' = 'gmail') {
     setEmailSent(true);
     if (activeArtifact?.type === 'email' && activeArtifact.data?.to) {
-      const mailtoUrl = `mailto:${activeArtifact.data.to}?subject=${encodeURIComponent(
-        activeArtifact.data.subject || ''
-      )}&body=${encodeURIComponent(activeArtifact.data.body || '')}`;
-      try {
-        window.open(mailtoUrl, '_blank');
-      } catch {
-        // ignore
+      const to = activeArtifact.data.to;
+      const subject = activeArtifact.data.subject || '';
+      const body = activeArtifact.data.body || '';
+
+      if (mode === 'gmail') {
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+          to
+        )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        try {
+          window.open(gmailUrl, '_blank');
+        } catch {
+          // ignore
+        }
+      } else {
+        const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(
+          subject
+        )}&body=${encodeURIComponent(body)}`;
+        try {
+          window.open(mailtoUrl, '_blank');
+        } catch {
+          // ignore
+        }
       }
     }
     setTimeout(() => setEmailSent(false), 3500);
@@ -301,127 +419,96 @@ export default function CoWorkStudioPage() {
     setTimeout(() => setCopiedArtifact(false), 2000);
   }
 
+  const filteredConversations = conversations.filter((c) =>
+    c.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="flex-1 h-full min-h-0 min-w-0 flex bg-[#0a0c10] text-zinc-100 overflow-hidden font-sans">
       {/* ========================================================================= */}
-      {/* 1. Left Skills & Connectors Drawer                                        */}
+      {/* 1. Left Conversations Sidebar (Clean, Strictly Conversations, No Skills) */}
       {/* ========================================================================= */}
-      <aside className="w-72 h-full shrink-0 border-r border-white/[0.06] bg-[#07080c] flex flex-col select-none overflow-hidden z-20">
-        <div className="p-4 border-b border-white/[0.05] shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Zap className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Co-Work Studio</h2>
-              <p className="text-[10px] text-zinc-500">Autonomous Tools & Skills</p>
-            </div>
+      <aside className="w-64 h-full shrink-0 border-r border-white/[0.06] bg-[#07080c] flex flex-col select-none overflow-hidden z-20">
+        {/* Top: Search & + New Task */}
+        <div className="p-3 space-y-2 border-b border-white/[0.05] shrink-0">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-white/20 transition"
+            />
           </div>
-        </div>
 
-        {/* Skills List with Live Toggles */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
-          <div>
-            <div className="flex items-center justify-between px-1 py-1 text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
-              <span>Connected Skills</span>
-              <span className="text-amber-400">
-                {Object.values(activeSkills).filter(Boolean).length} Active
-              </span>
-            </div>
-
-            <div className="space-y-2 mt-2">
-              {[
-                {
-                  id: 'gmail',
-                  name: 'Google Workspace',
-                  desc: 'Send emails & sync calendar',
-                  icon: Mail,
-                  color: 'text-red-400',
-                },
-                {
-                  id: 'browser',
-                  name: 'Chrome Browser Agent',
-                  desc: 'Navigate web & check Instagram/X',
-                  icon: Globe,
-                  color: 'text-blue-400',
-                },
-                {
-                  id: 'notion',
-                  name: 'Notion Knowledge Base',
-                  desc: 'Read & query Notion docs via MCP',
-                  icon: FileText,
-                  color: 'text-emerald-400',
-                },
-                {
-                  id: 'video',
-                  name: 'Video & Media Scripting',
-                  desc: 'Generate viral hooks & timeline cuts',
-                  icon: Video,
-                  color: 'text-purple-400',
-                },
-                {
-                  id: 'sheets',
-                  name: 'Sheets & Business Analyst',
-                  desc: 'Tabular analysis & summaries',
-                  icon: BarChart3,
-                  color: 'text-amber-400',
-                },
-              ].map((skill) => {
-                const Icon = skill.icon;
-                const isEnabled = activeSkills[skill.id] ?? false;
-                return (
-                  <div
-                    key={skill.id}
-                    className={`p-3 rounded-xl border transition flex items-start justify-between gap-3 ${
-                      isEnabled
-                        ? 'bg-white/[0.04] border-white/10'
-                        : 'bg-white/[0.01] border-white/[0.04] opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2.5 truncate">
-                      <div className={`p-1.5 rounded-lg bg-white/5 ${skill.color} shrink-0 mt-0.5`}>
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="truncate">
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="text-xs font-semibold text-zinc-200 truncate">{skill.name}</h4>
-                          {isEnabled && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
-                        </div>
-                        <p className="text-[10px] text-zinc-500 mt-0.5 leading-snug">{skill.desc}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleToggleSkill(skill.id)}
-                      className={`w-8 h-4.5 rounded-full transition-colors relative shrink-0 mt-1 ${
-                        isEnabled ? 'bg-amber-500' : 'bg-white/10'
-                      }`}
-                    >
-                      <span
-                        className={`block w-3.5 h-3.5 rounded-full bg-white transition-transform absolute top-0.5 ${
-                          isEnabled ? 'right-0.5' : 'left-0.5'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Link to Settings & MCP Servers */}
-        <div className="p-3 border-t border-white/[0.06] bg-black/30">
-          <Link
-            href="/settings"
-            className="w-full py-2 px-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-xs font-medium text-zinc-300 flex items-center justify-between transition"
+          <button
+            onClick={handleNewConversation}
+            className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 transition shadow-sm"
           >
-            <div className="flex items-center gap-2">
-              <Network className="w-3.5 h-3.5 text-amber-400" />
-              <span>Connect MCP Servers</span>
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>New Co-Work Task</span>
+          </button>
+        </div>
+
+        {/* Conversations List */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
+          <div className="px-2 py-1 text-[10px] font-bold tracking-wider text-zinc-400 uppercase">
+            Recent Tasks
+          </div>
+
+          {filteredConversations.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-zinc-500 italic">
+              No conversations yet
             </div>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+          ) : (
+            filteredConversations.map((conv) => {
+              const isActive = currentConversationId === conv.id;
+              return (
+                <div
+                  key={conv.id}
+                  onClick={() => selectConversation(conv.id, conv.title)}
+                  className={`group flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition text-xs ${
+                    isActive
+                      ? 'bg-amber-500/10 text-amber-300 font-medium'
+                      : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <MessageSquare className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
+                    <span className="truncate">{conv.title}</span>
+                  </div>
+                  <button
+                    onClick={(e) => handleDeleteConversation(conv.id, e)}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition"
+                    title="Delete conversation"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Bottom Profile & Settings Link */}
+        <div className="p-3 border-t border-white/[0.06] bg-black/30 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 truncate">
+            <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xs font-semibold">
+              {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+            </div>
+            <div className="truncate">
+              <p className="text-xs font-medium text-white truncate">{user?.name || user?.email || 'User'}</p>
+              <p className="text-[10px] text-zinc-500">Autonomous Co-Work</p>
+            </div>
+          </div>
+
+          <Link
+            href="/settings?tab=skills"
+            className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-amber-400 transition"
+            title="Configure Skills in Settings"
+          >
+            <Sliders className="w-4 h-4" />
           </Link>
         </div>
       </aside>
@@ -435,26 +522,27 @@ export default function CoWorkStudioPage() {
           <div className="flex items-center gap-3">
             <span className="text-xs font-semibold text-white">Shazam Co-Work</span>
             <span className="text-zinc-600">/</span>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] text-zinc-400">Autonomous Assistant Ready</span>
-            </div>
+            <span className="text-xs font-medium text-zinc-300 truncate max-w-sm">{currentTitle}</span>
           </div>
 
           <div className="flex items-center gap-2">
             <Link
               href="/settings"
-              className="text-[11px] text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition"
+              className="text-[11px] text-zinc-400 hover:text-amber-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/5 transition"
             >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Manage Skills</span>
+              <Sliders className="w-3.5 h-3.5 text-amber-400" />
+              <span>Skills & Connectors</span>
             </Link>
           </div>
         </header>
 
         {/* Execution Log & Conversation */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
-          {messages.length === 0 && !isExecuting ? (
+          {loadingConv ? (
+            <div className="h-full flex items-center justify-center text-xs text-zinc-500">
+              Loading task...
+            </div>
+          ) : messages.length === 0 && !isExecuting ? (
             /* Co-Work Welcome Screen */
             <div className="h-full flex flex-col items-center justify-center text-center max-w-xl mx-auto space-y-6 pt-8 pb-16">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl">
@@ -466,7 +554,7 @@ export default function CoWorkStudioPage() {
                   What shall we accomplish together?
                 </h2>
                 <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                  Tell Shazam what to do. It connects directly with your Google Workspace, Instagram/Chrome, Notion, and creative skills.
+                  Tell Shazam what to do. It handles multi-step work: drafting emails, auditing websites in Chrome, querying Notion, and crafting video scripts.
                 </p>
               </div>
 
@@ -476,13 +564,13 @@ export default function CoWorkStudioPage() {
                   {
                     icon: <Mail className="w-4 h-4 text-red-400" />,
                     title: 'Send Launch Email',
-                    desc: 'Draft and review an email to partners via Google connector',
-                    prompt: 'Send an email update to our partners team@zoqo.io announcing our product launch',
+                    desc: 'Draft and prepare an email to partners via Google connector',
+                    prompt: 'Send an email to aise@gruve.events with subject Launch Deliverables updating him that Zoqo v2 is ready for deployment',
                   },
                   {
                     icon: <Globe className="w-4 h-4 text-blue-400" />,
                     title: 'Audit Social Media',
-                    desc: 'Open Chrome and analyze my Instagram engagement',
+                    desc: 'Open Chrome and analyze Instagram engagement',
                     prompt: 'Open Chrome, check my Instagram account @zoqo_app, and analyze recent post performance',
                   },
                   {
@@ -530,31 +618,32 @@ export default function CoWorkStudioPage() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {/* Skill Invocation Badge */}
+                      {/* Invoked Skill Capsule */}
                       {msg.skillInvoked && (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-xs font-mono text-zinc-300">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          <span className="text-amber-400 font-semibold">{msg.skillInvoked.name}</span>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono flex items-center gap-1.5">
+                            <Zap className="w-3.5 h-3.5" />
+                            <span>{msg.skillInvoked.name}</span>
+                          </span>
                           <span className="text-zinc-500">·</span>
                           <span className="text-zinc-400">{msg.skillInvoked.action}</span>
                         </div>
                       )}
 
-                      {/* Main Assistant Text */}
-                      <div className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
-                        {msg.content}
-                      </div>
+                      <MarkdownRenderer content={msg.content} />
 
-                      {/* Clickable Artifact Badge */}
+                      {/* Attached Artifact Capsule */}
                       {msg.artifact && (
-                        <button
-                          onClick={() => setActiveArtifact(msg.artifact!)}
-                          className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-medium text-amber-300 flex items-center gap-2 transition shadow-sm"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                          <span>View Live Artifact: {msg.artifact.title}</span>
-                          <ChevronRight className="w-3 h-3 text-amber-400" />
-                        </button>
+                        <div className="pt-2">
+                          <button
+                            onClick={() => setActiveArtifact(msg.artifact!)}
+                            className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-medium text-amber-300 flex items-center gap-2 transition shadow-sm"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Preview {msg.artifact.title}</span>
+                            <span className="text-[10px] text-zinc-500 ml-1">Open Canvas &rarr;</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -562,7 +651,7 @@ export default function CoWorkStudioPage() {
               ))}
 
               {isExecuting && (
-                <div className="space-y-2 pt-2 animate-in fade-in duration-150">
+                <div className="space-y-3 pt-2 animate-in fade-in duration-200">
                   <div className="flex items-center gap-2.5 text-xs text-amber-400 font-medium">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
                     <span className="animate-pulse">{currentThought || 'Autonomous agent running task...'}</span>
@@ -590,7 +679,7 @@ export default function CoWorkStudioPage() {
                   }
                 }}
                 rows={1}
-                placeholder="Instruct Co-Work (e.g. Send an email via Google, audit Instagram in Chrome, query Notion)..."
+                placeholder="Instruct Co-Work (e.g. Send an email to aise@gruve.events, audit Instagram in Chrome, query Notion)..."
                 className="w-full px-4 pt-3.5 pb-12 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none font-sans"
               />
 
@@ -613,7 +702,7 @@ export default function CoWorkStudioPage() {
       {/* ========================================================================= */}
       {activeArtifact && (
         <aside className="w-[480px] h-full shrink-0 border-l border-white/[0.08] bg-[#0c0e14] flex flex-col z-30 animate-in slide-in-from-right duration-200 shadow-2xl overflow-hidden">
-          <div className="h-12 px-4 border-b border-white/[0.06] bg-black/40 flex items-center justify-between">
+          <div className="h-12 px-4 border-b border-white/[0.06] bg-black/40 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2 truncate">
               <Sparkles className="w-4 h-4 text-amber-400" />
               <span className="text-xs font-semibold text-white truncate">{activeArtifact.title}</span>
@@ -637,14 +726,14 @@ export default function CoWorkStudioPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs leading-relaxed">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 text-xs leading-relaxed">
             {/* Mode A: Email Artifact */}
             {activeArtifact.type === 'email' && (
               <div className="space-y-4">
                 <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
                   <div className="flex items-center gap-2 text-zinc-400">
                     <span className="font-semibold text-zinc-500 uppercase text-[10px]">To:</span>
-                    <span className="text-zinc-200 font-mono">{activeArtifact.data.to}</span>
+                    <span className="text-zinc-200 font-mono font-medium">{activeArtifact.data.to}</span>
                   </div>
                   <div className="flex items-center gap-2 text-zinc-400">
                     <span className="font-semibold text-zinc-500 uppercase text-[10px]">Subject:</span>
@@ -656,25 +745,45 @@ export default function CoWorkStudioPage() {
                   {activeArtifact.data.body}
                 </div>
 
-                <div className="pt-2 flex items-center justify-between">
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] leading-relaxed flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span>Ready to dispatch to <strong>{activeArtifact.data.to}</strong>. Use 1-click <strong>Gmail Web</strong> to compose immediately in your browser, or launch your system email app. To configure direct background delivery via API, configure your email credentials in </span>
+                    <Link href="/settings?tab=skills" className="underline font-semibold hover:text-white">Settings &gt; Autonomous Skills</Link>.
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
                   <span className="text-[11px] text-zinc-500">Google Connector: Verified</span>
-                  <button
-                    onClick={handleSendEmail}
-                    disabled={emailSent}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
-                  >
-                    {emailSent ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Email Sent!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Send via Gmail</span>
-                      </>
-                    )}
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSendEmail('client')}
+                      className="px-3 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-xs rounded-xl border border-white/5 transition flex items-center gap-1.5"
+                      title="Open in Apple Mail, Outlook, or Thunderbird"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>System Mail</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleSendEmail('gmail')}
+                      disabled={emailSent}
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                    >
+                      {emailSent ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Dispatched to Gmail!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Open in Gmail Web</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -719,8 +828,8 @@ export default function CoWorkStudioPage() {
                         <span className="text-amber-400 font-semibold">{scene.time}</span>
                         <span>Scene {sIdx + 1}</span>
                       </div>
-                      <p className="text-xs text-zinc-200 font-medium">🎬 Visual: {scene.visual}</p>
-                      <p className="text-xs text-zinc-400 italic">🎙️ Audio: &ldquo;{scene.audio}&rdquo;</p>
+                      <p className="text-xs text-zinc-200 font-medium">Visual: {scene.visual}</p>
+                      <p className="text-xs text-zinc-400 italic">Audio: &ldquo;{scene.audio}&rdquo;</p>
                     </div>
                   ))}
                 </div>

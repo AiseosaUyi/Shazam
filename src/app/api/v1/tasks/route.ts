@@ -6,7 +6,7 @@ import { runTaskOrchestrator } from '@/lib/execution/orchestrator';
 import type { CostPolicy, TaskClass } from '@/lib/types';
 
 const CreateTaskSchema = z.object({
-  prompt: z.string().min(1, 'Prompt cannot be empty').max(32000),
+  prompt: z.string().min(1, 'Prompt cannot be empty').max(1_000_000, 'Prompt exceeds 1MB limit'),
   conversationId: z.string().optional(),
   projectId: z.string().optional(),
   costPolicy: z

@@ -35,6 +35,7 @@ import {
   Zap,
   MessageSquare,
 } from 'lucide-react';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
 // Dynamic import of Monaco Editor for the slide-over file preview drawer
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -614,15 +615,28 @@ export default function ClaudeCoWorkStudio() {
     let contextualPrompt = textToSend;
     if (currentProject) {
       if (projectFiles.length > 0) {
-        const fileSnippets = projectFiles
-          .slice(0, 25)
-          .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
+        // Prioritize key project configuration and entrypoint files for running & architecture
+        const sortedFiles = [...projectFiles].sort((a, b) => {
+          const isConfigA = /package\.json|requirements\.txt|README|docker|vite|next\.config|manage\.py|Cargo\.toml|go\.mod|main\.|app\./i.test(a.path);
+          const isConfigB = /package\.json|requirements\.txt|README|docker|vite|next\.config|manage\.py|Cargo\.toml|go\.mod|main\.|app\./i.test(b.path);
+          if (isConfigA && !isConfigB) return -1;
+          if (!isConfigA && isConfigB) return 1;
+          return 0;
+        });
+
+        const fileSnippets = sortedFiles
+          .slice(0, 30)
+          .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 4000)}\n\`\`\``)
           .join('\n\n');
 
-        contextualPrompt = `You are an AI assistant working on the user's project "${currentProject.name}".
+        contextualPrompt = `You are an expert AI software engineer working on the user's project "${currentProject.name}".
 Here are the actual workspace files from the project:
 
 ${fileSnippets}
+
+Instructions:
+- When answering or writing code, reference the actual file structure and dependencies from the files above.
+- If the user asks how to run, test, build, or deploy the project locally (e.g. "run local"), inspect the project's package managers, entrypoints, and scripts to give clear, copy-pasteable terminal commands step-by-step.
 
 User Request:
 ${textToSend}`;
@@ -1138,9 +1152,7 @@ ${textToSend}`;
                       )}
 
                       {/* Main Text Content */}
-                      <div className="text-sm text-zinc-200 leading-relaxed space-y-2 whitespace-pre-wrap">
-                        {msg.content}
-                      </div>
+                      <MarkdownRenderer content={msg.content} />
 
                       {/* Clickable File Change Capsules (Previewable on click!) */}
                       {msg.editedFiles && msg.editedFiles.length > 0 && (
@@ -1183,9 +1195,7 @@ ${textToSend}`;
                   </div>
 
                   {streamingOutput ? (
-                    <div className="text-sm text-zinc-200 leading-relaxed whitespace-pre-wrap">
-                      {streamingOutput}
-                    </div>
+                    <MarkdownRenderer content={streamingOutput} />
                   ) : (
                     <div className="flex items-center gap-2 text-zinc-400 text-xs py-1">
                       <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse rounded-sm" />
