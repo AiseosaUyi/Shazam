@@ -34,6 +34,9 @@ import {
   Network,
   Zap,
   MessageSquare,
+  GitBranch,
+  Play,
+  RotateCcw,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
@@ -113,6 +116,19 @@ export default function ClaudeCoWorkStudio() {
   const [syncBannerMessage, setSyncBannerMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Local Companion Bridge Daemon State (localhost:4040)
+  const [daemonStatus, setDaemonStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [daemonInfo, setDaemonInfo] = useState<{ cwd: string; projectName: string } | null>(null);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState<Array<{ type: string; text: string; id: string }>>([
+    { type: 'info', text: 'Shazam AI Execution Terminal ready. Run "npm run daemon" in your local project to link terminal commands.', id: 'init-1' }
+  ]);
+  const [customCmd, setCustomCmd] = useState('');
+  const [executingCmd, setExecutingCmd] = useState(false);
+  const [gitPushing, setGitPushing] = useState(false);
+  const [showBridgeModal, setShowBridgeModal] = useState(false);
+  const terminalLogsEndRef = useRef<HTMLDivElement>(null);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -155,6 +171,155 @@ export default function ClaudeCoWorkStudio() {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
     }
   }, [prompt]);
+
+  // Auto scroll terminal logs
+  useEffect(() => {
+    if (terminalOpen) {
+      terminalLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [terminalLogs, terminalOpen]);
+
+  // Check local companion daemon health (localhost:4040)
+  const checkDaemon = async () => {
+    try {
+      const res = await fetch('http://localhost:4040/api/health', {
+        method: 'GET',
+        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(2000) : undefined,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDaemonStatus('connected');
+        setDaemonInfo(data);
+        return true;
+      }
+    } catch {
+      // offline
+    }
+    setDaemonStatus('disconnected');
+    return false;
+  };
+
+  useEffect(() => {
+    checkDaemon();
+    const interval = setInterval(checkDaemon, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Execute terminal command on user's machine via local companion daemon
+  async function runLocalCommand(cmd: string) {
+    if (!cmd.trim() || executingCmd) return;
+    setExecutingCmd(true);
+    setTerminalOpen(true);
+
+    const cmdId = crypto.randomUUID();
+    setTerminalLogs((prev) => [
+      ...prev,
+      { type: 'cmd', text: `$ ${cmd}`, id: cmdId },
+    ]);
+
+    try {
+      const res = await fetch('http://localhost:4040/api/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: cmd }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Companion daemon returned status ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'stdout' || data.type === 'stderr') {
+              setTerminalLogs((prev) => [
+                ...prev,
+                { type: data.type, text: data.text, id: crypto.randomUUID() },
+              ]);
+            } else if (data.type === 'exit') {
+              setTerminalLogs((prev) => [
+                ...prev,
+                { type: 'exit', text: `[Process completed with exit code ${data.code}]`, id: crypto.randomUUID() },
+              ]);
+            } else if (data.type === 'error') {
+              setTerminalLogs((prev) => [
+                ...prev,
+                { type: 'error', text: `Error: ${data.error}`, id: crypto.randomUUID() },
+              ]);
+            }
+          } catch {
+            // ignore parse chunk
+          }
+        }
+      }
+    } catch (err: any) {
+      setTerminalLogs((prev) => [
+        ...prev,
+        {
+          type: 'error',
+          text: `Execution failed: ${err.message}.\nMake sure "npm run daemon" is running in your terminal on port 4040.`,
+          id: crypto.randomUUID(),
+        },
+      ]);
+    } finally {
+      setExecutingCmd(false);
+      setCustomCmd('');
+    }
+  }
+
+  // Push local repository changes to GitHub via companion daemon
+  async function handleGitPush() {
+    if (gitPushing) return;
+    setGitPushing(true);
+    setTerminalOpen(true);
+    setTerminalLogs((prev) => [
+      ...prev,
+      { type: 'cmd', text: '$ git add -A && git commit && git push', id: crypto.randomUUID() },
+    ]);
+
+    try {
+      const res = await fetch('http://localhost:4040/api/git/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `chore: update from Shazam AI (${new Date().toLocaleTimeString()})` }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTerminalLogs((prev) => [
+          ...prev,
+          { type: 'stdout', text: data.output || 'Push successful!', id: crypto.randomUUID() },
+          { type: 'exit', text: '[Git push completed successfully]', id: crypto.randomUUID() },
+        ]);
+      } else {
+        setTerminalLogs((prev) => [
+          ...prev,
+          { type: 'error', text: `Git push failed: ${data.error}`, id: crypto.randomUUID() },
+        ]);
+      }
+    } catch (err: any) {
+      setTerminalLogs((prev) => [
+        ...prev,
+        { type: 'error', text: `Git push failed: ${err.message}`, id: crypto.randomUUID() },
+      ]);
+    } finally {
+      setGitPushing(false);
+    }
+  }
 
   async function loadProjectsAndConversations() {
     try {
@@ -746,6 +911,15 @@ ${textToSend}`;
             .then(() => loadProjectFiles(currentProject.id))
             .catch(() => {});
         }
+
+        // Also write directly to disk if local companion daemon is active!
+        if (daemonStatus === 'connected') {
+          fetch('http://localhost:4040/api/files/write', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath, content: code }),
+          }).catch(console.error);
+        }
       }
 
       // Fallback: If model wrote code without "### File: <path>", detect path from preceding comment or prompt
@@ -773,6 +947,15 @@ ${textToSend}`;
             })
               .then(() => loadProjectFiles(currentProject.id))
               .catch(() => {});
+          }
+
+          // Also write to local disk
+          if (daemonStatus === 'connected') {
+            fetch('http://localhost:4040/api/files/write', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filePath: detectedPath, content: code }),
+            }).catch(console.error);
           }
         }
       }
@@ -1076,14 +1259,67 @@ ${textToSend}`;
             </span>
           </div>
 
-          {/* Quick MCP Status Badge + Search Button */}
-          <div className="flex items-center gap-3">
+          {/* Actions & Local Bridge Status */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Local Bridge Status Pill */}
+            {daemonStatus === 'connected' ? (
+              <button
+                onClick={() => setTerminalOpen(!terminalOpen)}
+                className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[11px] font-medium text-emerald-300 transition shadow-sm"
+                title={`Connected to local project at ${daemonInfo?.cwd || 'localhost:4040'}. Click to toggle terminal.`}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-mono">Local: Connected</span>
+                <Terminal className="w-3 h-3 text-emerald-400 ml-0.5" />
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowBridgeModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition"
+                title="Connect local companion daemon to run code and push to GitHub directly"
+              >
+                <span className="w-2 h-2 rounded-full bg-zinc-600"></span>
+                <span className="hidden sm:inline">Local Bridge:</span>
+                <span>Offline</span>
+                <span className="text-[10px] text-amber-400 font-mono ml-0.5">(Connect)</span>
+              </button>
+            )}
+
+            {/* Quick Terminal Drawer Toggle Button */}
+            <button
+              onClick={() => setTerminalOpen(!terminalOpen)}
+              className={`p-1.5 rounded-lg border transition text-xs flex items-center gap-1 ${
+                terminalOpen
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                  : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/5 text-zinc-400 hover:text-zinc-200'
+              }`}
+              title="Toggle Terminal Console"
+            >
+              <Terminal className="w-4 h-4" />
+            </button>
+
+            {/* Quick Git Push Button if daemon is connected */}
+            {daemonStatus === 'connected' && (
+              <button
+                onClick={handleGitPush}
+                disabled={gitPushing}
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[11px] font-medium text-zinc-200 transition"
+                title="Push changes to GitHub repository via local git"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-blue-400" />
+                <span>{gitPushing ? 'Pushing...' : 'Git Push'}</span>
+              </button>
+            )}
+
             <Link
               href="/settings"
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-[11px] font-medium text-zinc-400 hover:text-amber-300 transition"
             >
               <Network className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Connectors & MCPs</span>
+              <span>Connectors</span>
             </Link>
 
             <button
@@ -1263,6 +1499,137 @@ ${textToSend}`;
             </div>
           )}
         </div>
+
+        {/* ========================================================================= */}
+        {/* Terminal Console Panel (Docked directly into the chat & execution canvas) */}
+        {/* ========================================================================= */}
+        {terminalOpen && (
+          <div className="shrink-0 border-t border-white/10 bg-[#07090e] flex flex-col z-20 animate-in slide-in-from-bottom duration-150 h-72">
+            {/* Terminal Header */}
+            <div className="h-9 px-3 bg-black/60 border-b border-white/[0.06] flex items-center justify-between select-none">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-mono font-semibold text-zinc-200">
+                  Terminal
+                </span>
+                {daemonStatus === 'connected' ? (
+                  <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                    localhost:4040 · {daemonInfo?.projectName || 'live'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-zinc-500 font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                    Bridge Offline
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Action Commands */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => runLocalCommand('npm run dev')}
+                  disabled={daemonStatus !== 'connected' || executingCmd}
+                  className="px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 border border-white/10 text-[10px] font-mono text-amber-300 flex items-center gap-1 transition"
+                  title="Run local development server"
+                >
+                  <Play className="w-2.5 h-2.5 text-amber-400" />
+                  <span>npm run dev</span>
+                </button>
+
+                <button
+                  onClick={() => runLocalCommand('npm test')}
+                  disabled={daemonStatus !== 'connected' || executingCmd}
+                  className="px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 border border-white/10 text-[10px] font-mono text-zinc-300 flex items-center gap-1 transition"
+                  title="Run test suite"
+                >
+                  <span>npm test</span>
+                </button>
+
+                <button
+                  onClick={handleGitPush}
+                  disabled={daemonStatus !== 'connected' || gitPushing}
+                  className="px-2 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 border border-white/10 text-[10px] font-mono text-blue-300 flex items-center gap-1 transition"
+                  title="Commit and push changes to GitHub"
+                >
+                  <GitBranch className="w-2.5 h-2.5 text-blue-400" />
+                  <span>{gitPushing ? 'pushing...' : 'git push'}</span>
+                </button>
+
+                <button
+                  onClick={() => setTerminalLogs([])}
+                  className="p-1 rounded hover:bg-white/5 text-zinc-500 hover:text-zinc-300 text-[10px] font-mono transition"
+                  title="Clear logs"
+                >
+                  Clear
+                </button>
+
+                <button
+                  onClick={() => setTerminalOpen(false)}
+                  className="p-1 rounded hover:bg-white/5 text-zinc-400 hover:text-white transition"
+                  title="Close Terminal"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Terminal Body / Output */}
+            <div className="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed space-y-1 bg-[#050608]">
+              {daemonStatus !== 'connected' && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] mb-2 flex items-center justify-between">
+                  <span>Companion daemon is not running on localhost:4040. Run <b>npm run daemon</b> in your terminal to enable local commands.</span>
+                  <button onClick={() => setShowBridgeModal(true)} className="underline font-bold hover:text-white">Setup</button>
+                </div>
+              )}
+              {terminalLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className={
+                    log.type === 'cmd'
+                      ? 'text-amber-400 font-semibold'
+                      : log.type === 'stderr' || log.type === 'error'
+                      ? 'text-red-400'
+                      : log.type === 'exit'
+                      ? 'text-emerald-400 font-semibold'
+                      : log.type === 'info'
+                      ? 'text-zinc-500 italic'
+                      : 'text-zinc-300'
+                  }
+                >
+                  <pre className="whitespace-pre-wrap font-mono break-all">{log.text}</pre>
+                </div>
+              ))}
+              <div ref={terminalLogsEndRef} />
+            </div>
+
+            {/* Terminal Input Bar */}
+            <div className="h-9 px-3 bg-black/60 border-t border-white/[0.06] flex items-center gap-2">
+              <span className="text-zinc-500 font-mono text-xs font-bold">$</span>
+              <input
+                type="text"
+                value={customCmd}
+                onChange={(e) => setCustomCmd(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && customCmd.trim()) {
+                    runLocalCommand(customCmd.trim());
+                  }
+                }}
+                disabled={daemonStatus !== 'connected' || executingCmd}
+                placeholder={
+                  daemonStatus === 'connected'
+                    ? 'Type shell command and press Enter (e.g. npm run dev, git status, ls)...'
+                    : 'Start companion daemon ("npm run daemon") to run commands...'
+                }
+                className="flex-1 bg-transparent text-xs font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none"
+              />
+              {executingCmd && (
+                <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                  Running...
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Bottom Floating Prompt Input (shrink-0 ensures it stays permanently fixed at the bottom!) */}
         <div className="shrink-0 p-4 sm:p-6 bg-gradient-to-t from-[#0a0c10] via-[#0a0c10]/95 to-transparent z-20">
@@ -1508,7 +1875,7 @@ ${textToSend}`;
               <input
                 type="text"
                 autoFocus
-                placeholder="e.g. Zoqo, Portfolio, Mobile App"
+                placeholder="e.g. My Next.js App, SaaS, Mobile App"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
                 className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
@@ -1532,6 +1899,91 @@ ${textToSend}`;
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6. Local Companion Bridge Setup Modal                                      */}
+      {/* ========================================================================= */}
+      {showBridgeModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0f1118] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Terminal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Local Companion Bridge</h3>
+                  <p className="text-xs text-zinc-400">Run code, edit disk files, & push to Git</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBridgeModal(false)}
+                className="p-1 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-zinc-300">
+              <p>
+                To enable <b>real terminal execution</b> (e.g. <code className="text-amber-300 font-mono">npm run dev</code>, tests, git push) directly from the web interface, run the local daemon in your project directory:
+              </p>
+
+              <div className="p-3 rounded-xl bg-black/60 border border-white/10 font-mono text-[11px] text-amber-300 space-y-1">
+                <div className="text-zinc-500"># Start local loopback companion daemon (port 4040)</div>
+                <div className="flex items-center justify-between">
+                  <span>npm run daemon</span>
+                  <button
+                    onClick={() => navigator.clipboard.writeText('npm run daemon')}
+                    className="p-1 hover:text-white"
+                    title="Copy command"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1 text-zinc-400 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Updates code files directly on your local machine</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Streams live terminal output to the web console</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>1-click Git Push to your GitHub repository</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-white/10">
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className={`w-2 h-2 rounded-full ${daemonStatus === 'connected' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                <span className={daemonStatus === 'connected' ? 'text-emerald-400' : 'text-zinc-400'}>
+                  {daemonStatus === 'connected' ? 'Connected!' : 'Waiting for connection...'}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const ok = await checkDaemon();
+                  if (ok) {
+                    setShowBridgeModal(false);
+                    setTerminalOpen(true);
+                  }
+                }}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs rounded-xl transition shadow-md flex items-center gap-1.5"
+              >
+                <span>{daemonStatus === 'connected' ? 'Open Terminal' : 'Check Connection'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

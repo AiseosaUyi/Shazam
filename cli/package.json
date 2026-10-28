@@ -1,0 +1,14 @@
+{
+  "name": "@shazam-ai/cli",
+  "version": "0.1.0",
+  "description": "Shazam AI Local Execution Daemon & Bridge",
+  "bin": {
+    "shazam": "./index.js",
+    "shazam-cli": "./index.js"
+  },
+  "main": "index.js",
+  "type": "commonjs",
+  "keywords": ["shazam", "ai", "coding-agent", "daemon"],
+  "author": "Shazam AI",
+  "license": "MIT"
+}

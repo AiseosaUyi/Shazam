@@ -8,6 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-sqlite --no-warnings --import tsx --test tests/*.test.ts",
+    "daemon": "node cli/index.js",
+    "companion": "node cli/index.js",
     "db:migrate:local": "wrangler d1 migrations apply shazam-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply shazam-db --remote",
     "build:cf": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
