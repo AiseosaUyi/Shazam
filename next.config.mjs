@@ -1,5 +1,7 @@
 import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 
+initOpenNextCloudflareForDev();
+
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -31,7 +33,3 @@ const nextConfig = {
 };
 
 export default nextConfig;
-
-if (process.env.NODE_ENV === 'development') {
-  initOpenNextCloudflareForDev();
-}

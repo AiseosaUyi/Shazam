@@ -22,13 +22,21 @@ export function setTestEnv(env: Partial<AppEnv> | null) {
 
 export function getAppEnv(): AppEnv {
   if (testEnv) return testEnv;
-  const { env } = getCloudflareContext();
-  return env as unknown as AppEnv;
+  try {
+    const ctx = getCloudflareContext();
+    if (ctx && ctx.env) return ctx.env as unknown as AppEnv;
+  } catch {
+    // Fall back to process.env in dev/node environments
+  }
+  return (process.env as unknown as AppEnv) || ({} as AppEnv);
 }
 
 export function getDb(): SqlDatabase {
-  const db = getAppEnv().DB;
-  if (!db) throw new Error('D1 binding "DB" is not configured.');
+  const env = getAppEnv();
+  const db = env?.DB;
+  if (!db) {
+    throw new Error('Database service is currently initializing. Please retry in a moment.');
+  }
   return db;
 }
 

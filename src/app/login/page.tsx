@@ -28,11 +28,19 @@ export default function LoginPage() {
       try {
         data = await res.json();
       } catch {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || `Server returned ${res.status} error.`);
+        // Non-JSON response
       }
 
       if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error('Invalid email or password. Please verify and try again.');
+        } else if (res.status === 403) {
+          throw new Error(data.error || 'Access restricted. Please contact your workspace administrator.');
+        } else if (res.status === 429) {
+          throw new Error('Too many login attempts. Please wait a minute and try again.');
+        } else if (res.status >= 500) {
+          throw new Error('Authentication service is temporarily unavailable. Please retry in a few moments.');
+        }
         throw new Error(data.error || 'Login failed. Please check your credentials.');
       }
 

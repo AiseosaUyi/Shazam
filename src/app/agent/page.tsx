@@ -1088,6 +1088,13 @@ ${textToSend}`;
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          throw new Error('Your session has expired. Please sign in to run tasks.');
+        } else if (res.status === 429) {
+          throw new Error('Task rate limit reached. Please wait a moment before sending more requests.');
+        } else if (res.status >= 500) {
+          throw new Error('Execution engine is temporarily unavailable. Please retry in a few moments.');
+        }
         throw new Error(errJson.error || 'Failed to dispatch task.');
       }
 

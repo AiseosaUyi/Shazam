@@ -28,15 +28,18 @@ export default function SignupPage() {
       try {
         data = await res.json();
       } catch {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || `Server returned an error (${res.status}).`);
+        // Non-JSON response
       }
 
       if (!res.ok) {
         if (res.status === 409) {
           throw new Error('An account with this email already exists. Please sign in instead.');
+        } else if (res.status === 429) {
+          throw new Error('Too many registration attempts. Please wait a minute and try again.');
+        } else if (res.status >= 500) {
+          throw new Error('Registration service is temporarily unavailable. Please retry in a few moments.');
         }
-        throw new Error(data.error || 'Registration failed.');
+        throw new Error(data.error || 'Registration failed. Please check your details.');
       }
 
       router.push('/agent');
