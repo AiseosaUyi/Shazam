@@ -15,3 +15,5 @@ next-env.d.ts
 cloudflare-env.d.ts
 data/
 .sync-in.tgz
+dist-desktop
+.shazam-token

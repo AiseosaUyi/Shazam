@@ -1,0 +1,34 @@
+appId: com.shazam.ai
+productName: Shazam AI
+copyright: Copyright © 2026 Shazam AI
+
+directories:
+  output: dist-desktop
+  buildResources: desktop
+
+files:
+  - desktop/**/*
+  - cli/**/*
+  - package.json
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+  darkModeSupport: true
+  identity: null # build unsigned for direct local macOS installation
+
+dmg:
+  title: Shazam AI Installer
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
