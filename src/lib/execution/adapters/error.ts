@@ -8,6 +8,7 @@ export function normalizeProviderError(
 ): ProviderError {
   let rawMsg = '';
   let providerDetail = '';
+  let errorReason = '';
 
   if (err instanceof Error) {
     rawMsg = err.message;
@@ -18,6 +19,9 @@ export function normalizeProviderError(
       const parsed = JSON.parse(err);
       if (parsed?.error?.message) {
         providerDetail = parsed.error.message;
+        if (parsed.error.details?.[0]?.reason) {
+          errorReason = parsed.error.details[0].reason;
+        }
       } else if (parsed?.message) {
         providerDetail = parsed.message;
       } else {
@@ -31,6 +35,9 @@ export function normalizeProviderError(
     if (obj.error?.message) {
       providerDetail = obj.error.message;
       rawMsg = obj.error.message;
+      if (obj.error.details?.[0]?.reason) {
+        errorReason = obj.error.details[0].reason;
+      }
     } else if (obj.message) {
       providerDetail = obj.message;
       rawMsg = obj.message;
@@ -44,7 +51,10 @@ export function normalizeProviderError(
   }
 
   const msg = redactSecrets(rawMsg);
-  const cleanDetail = redactSecrets(providerDetail).trim();
+  let cleanDetail = redactSecrets(providerDetail).trim();
+  if (errorReason && !cleanDetail.includes(errorReason)) {
+    cleanDetail = `${cleanDetail} (${errorReason})`;
+  }
 
   const isAuthError =
     statusCode === 401 ||
