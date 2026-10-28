@@ -21,7 +21,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
   const liveModelId = resolveLiveProviderModel('google', model.providerModelId);
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(liveModelId)}:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
 
-  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 15000);
+  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 45000);
 
   let res: Response;
   try {
@@ -50,7 +50,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
   // If 404 (model not found on target region), fallback to gemini-3.8-flash
   if (res.status === 404 && liveModelId !== 'gemini-3.8-flash') {
     const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
-    const { signal: fbSignal, cleanup: fbCleanup } = createTimeoutSignal(signal, 15000);
+    const { signal: fbSignal, cleanup: fbCleanup } = createTimeoutSignal(signal, 45000);
     try {
       res = await fetch(fallbackEndpoint, {
         method: 'POST',
