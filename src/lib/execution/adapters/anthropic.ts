@@ -1,6 +1,7 @@
 import type { ChatMessage, Model, Route, StreamChunk, Usage } from '@/lib/types';
 import { normalizeProviderError } from './error';
 import { ExecuteOptions, AdapterResult } from './openai-compatible';
+import { resolveLiveProviderModel, createTimeoutSignal } from './model-resolver';
 
 export async function executeAnthropic(options: ExecuteOptions): Promise<AdapterResult> {
   const { model, route, prompt, history = [], apiKey, signal, onChunk } = options;
@@ -10,6 +11,9 @@ export async function executeAnthropic(options: ExecuteOptions): Promise<Adapter
     messages.push({ role: h.role, content: h.content });
   }
   messages.push({ role: 'user', content: prompt });
+
+  const liveModelId = resolveLiveProviderModel('anthropic', model.providerModelId);
+  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 15000);
 
   let res: Response;
   try {
@@ -21,16 +25,19 @@ export async function executeAnthropic(options: ExecuteOptions): Promise<Adapter
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: model.providerModelId,
+        model: liveModelId,
         messages,
         max_tokens: model.maxOutputTokens ?? 4096,
         stream: true,
       }),
-      signal,
+      signal: timedSignal,
     });
   } catch (err: any) {
+    cleanup();
     if (signal?.aborted) throw new Error('Task cancelled');
     throw normalizeProviderError('Anthropic', err);
+  } finally {
+    cleanup();
   }
 
   if (!res.ok) {

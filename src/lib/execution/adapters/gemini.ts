@@ -1,6 +1,7 @@
 import type { ChatMessage, Model, Route, StreamChunk } from '@/lib/types';
 import { normalizeProviderError } from './error';
 import type { ExecuteOptions, AdapterResult } from './openai-compatible';
+import { resolveLiveProviderModel, createTimeoutSignal } from './model-resolver';
 
 export async function executeGemini(options: ExecuteOptions): Promise<AdapterResult> {
   const { model, route, prompt, history = [], apiKey, signal, onChunk } = options;
@@ -17,7 +18,10 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
     parts: [{ text: prompt }],
   });
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model.providerModelId)}:streamGenerateContent?alt=sse`;
+  const liveModelId = resolveLiveProviderModel('google', model.providerModelId);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(liveModelId)}:streamGenerateContent?alt=sse`;
+
+  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 15000);
 
   let res: Response;
   try {
@@ -33,11 +37,42 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
           maxOutputTokens: model.maxOutputTokens ?? 4096,
         },
       }),
-      signal,
+      signal: timedSignal,
     });
   } catch (err: any) {
+    cleanup();
     if (signal?.aborted) throw new Error('Task cancelled');
     throw normalizeProviderError('Google', err);
+  } finally {
+    cleanup();
+  }
+
+  // If 404 (model not found on target region), fallback to gemini-1.5-flash
+  if (res.status === 404 && liveModelId !== 'gemini-1.5-flash') {
+    const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse`;
+    const { signal: fbSignal, cleanup: fbCleanup } = createTimeoutSignal(signal, 15000);
+    try {
+      res = await fetch(fallbackEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig: {
+            maxOutputTokens: model.maxOutputTokens ?? 4096,
+          },
+        }),
+        signal: fbSignal,
+      });
+    } catch (err: any) {
+      fbCleanup();
+      if (signal?.aborted) throw new Error('Task cancelled');
+      throw normalizeProviderError('Google', err);
+    } finally {
+      fbCleanup();
+    }
   }
 
   if (!res.ok) {

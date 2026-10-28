@@ -1,5 +1,6 @@
 import type { ChatMessage, Model, Route, StreamChunk, Usage } from '@/lib/types';
 import { normalizeProviderError } from './error';
+import { resolveLiveProviderModel, createTimeoutSignal } from './model-resolver';
 
 export interface ExecuteOptions {
   model: Model;
@@ -38,21 +39,27 @@ export async function executeOpenAICompatible(options: ExecuteOptions, endpoint:
     headers['X-Title'] = 'Shazam AI';
   }
 
+  const liveModelId = resolveLiveProviderModel(route.providerId, model.providerModelId);
+  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 15000);
+
   let res: Response;
   try {
     res = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: model.providerModelId,
+        model: liveModelId,
         messages,
         stream: true,
       }),
-      signal,
+      signal: timedSignal,
     });
   } catch (err: any) {
+    cleanup();
     if (signal?.aborted) throw new Error('Task cancelled');
     throw normalizeProviderError(route.providerId, err);
+  } finally {
+    cleanup();
   }
 
   if (!res.ok) {
