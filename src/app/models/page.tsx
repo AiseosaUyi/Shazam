@@ -9,18 +9,54 @@ export default function ModelsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [routes, setRoutes] = useState<CatalogRoute[]>([]);
+  const [connectedProviders, setConnectedProviders] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
   const [costFilter, setCostFilter] = useState<'all' | 'free' | 'paid'>('all');
 
   useEffect(() => {
-    fetch('/api/v1/catalog')
-      .then((res) => (res.ok ? res.json() : { models: [], providers: [], routes: [] }))
-      .then((data) => {
-        setModels(data.models || []);
-        setProviders(data.providers || []);
-        setRoutes(data.routes || []);
+    // 1. Optimistic hydration from local storage connections cache
+    try {
+      const raw = localStorage.getItem('shazam_connections_cache');
+      if (raw) {
+        const cache = JSON.parse(raw);
+        const map: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(cache)) {
+          if ((v as any)?.isConnected) map[k] = true;
+        }
+        setConnectedProviders(map);
+      }
+    } catch {}
+
+    // 2. Fetch live catalog and provider credentials simultaneously
+    Promise.all([
+      fetch('/api/v1/catalog').then((res) => (res.ok ? res.json() : { models: [], providers: [], routes: [] })),
+      fetch('/api/v1/providers').then((res) => (res.ok ? res.json() : { providers: [] })),
+    ])
+      .then(([catData, provData]) => {
+        setModels(catData.models || []);
+        setProviders(catData.providers || []);
+        setRoutes(catData.routes || []);
+
+        const map: Record<string, boolean> = {};
+        for (const p of provData.providers || []) {
+          if (p.isConnected) map[p.id] = true;
+        }
+        setConnectedProviders(map);
+        try {
+          localStorage.setItem(
+            'shazam_connections_cache',
+            JSON.stringify(
+              Object.fromEntries(
+                (provData.providers || [])
+                  .filter((p: any) => p.isConnected)
+                  .map((p: any) => [p.id, { isConnected: true, keyMask: p.keyMask }])
+              )
+            )
+          );
+        } catch {}
+
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -138,31 +174,68 @@ export default function ModelsPage() {
         </div>
 
         {/* Free Tier Callout Banner */}
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-white/[0.02] border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
+        {connectedProviders['google'] ? (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-white/[0.02] border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                  Google Gemini Connected
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Free Tier Active
+                  </span>
+                </h4>
+                <p className="text-xs text-zinc-300 mt-0.5 max-w-2xl">
+                  Your Google AI Studio API key is encrypted and active in your personal vault. 1,500 free requests per day ready across Gemini 3.8 Flash and 3.5 Flash Lite with zero server fees.
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                Use Shazam AI 100% Free
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Zero Credit Card
-                </span>
-              </h4>
-              <p className="text-xs text-zinc-300 mt-0.5 max-w-2xl">
-                Get an instant free API key from Google AI Studio in 30 seconds using any standard Google account. Google provides Gemini 3.8 Flash and Flash Lite free of charge with up to 1,000,000 tokens!
-              </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/?model=Gemini%203.8%20Flash"
+                className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+              >
+                <span>Start Free Chat</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+              <Link
+                href="/connections"
+                className="px-3 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-zinc-300 text-xs font-medium border border-white/10 transition"
+              >
+                Manage Keys
+              </Link>
             </div>
           </div>
-          <Link
-            href="/connections"
-            className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition shadow-sm shrink-0"
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Connect Free Google Key</span>
-          </Link>
-        </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-white/[0.02] border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                  Use Shazam AI 100% Free
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Zero Credit Card
+                  </span>
+                </h4>
+                <p className="text-xs text-zinc-300 mt-0.5 max-w-2xl">
+                  Get an instant free API key from Google AI Studio in 30 seconds using any standard Google account. Google provides Gemini 3.8 Flash and Flash Lite free of charge with up to 1,000,000 tokens!
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/connections"
+              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition shadow-sm shrink-0"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Connect Free Google Key</span>
+            </Link>
+          </div>
+        )}
 
         {loading ? (
           <div className="text-center py-20 text-zinc-500 text-sm">Loading verified catalog...</div>
@@ -177,6 +250,7 @@ export default function ModelsPage() {
               const primaryRoute = freeRoute || paidRoute || modelRoutes[0];
               const provider = primaryRoute ? providerMap.get(primaryRoute.providerId) : undefined;
               const isFree = !!freeRoute;
+              const isProviderConnected = Boolean(primaryRoute && connectedProviders[primaryRoute.providerId]);
               const mayTrain = primaryRoute?.privacy.providerMayTrainOnData === true;
 
               return (
@@ -198,14 +272,28 @@ export default function ModelsPage() {
 
                       <div className="flex flex-col items-end gap-1">
                         {isFree ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shadow-sm">
-                            <Sparkles className="w-3 h-3 text-emerald-400" />
-                            100% FREE TIER
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shadow-sm">
+                              <Sparkles className="w-3 h-3 text-emerald-400" />
+                              100% FREE TIER
+                            </span>
+                            {isProviderConnected && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" /> CONNECTED
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] text-zinc-300 bg-white/5 border border-white/10 font-medium">
-                            PAID (BYOK)
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] text-zinc-300 bg-white/5 border border-white/10 font-medium">
+                              PAID (BYOK)
+                            </span>
+                            {isProviderConnected && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" /> CONNECTED
+                              </span>
+                            )}
+                          </div>
                         )}
 
                         {primaryRoute?.status === 'disabled' && (
@@ -260,16 +348,37 @@ export default function ModelsPage() {
 
                     {/* Free tier note */}
                     {isFree && (
-                      <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/15 text-[11px] text-emerald-300/90 flex items-start justify-between gap-2">
-                        <span className="leading-tight">
-                          Free tier quota active: 15 req/min with your Google AI Studio key.
-                        </span>
-                        <Link
-                          href="/connections"
-                          className="shrink-0 text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2"
-                        >
-                          Connect
-                        </Link>
+                      <div className={`p-2.5 rounded-xl border text-[11px] flex items-start justify-between gap-2 ${
+                        isProviderConnected
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-emerald-500/5 border-emerald-500/15 text-emerald-300/90'
+                      }`}>
+                        <div className="flex items-center gap-1.5 leading-tight">
+                          {isProviderConnected ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span>Key connected · Free quota active (15 req/min)</span>
+                            </>
+                          ) : (
+                            <span>Free tier quota active: 15 req/min with your Google AI Studio key.</span>
+                          )}
+                        </div>
+                        {isProviderConnected ? (
+                          <Link
+                            href={`/?model=${encodeURIComponent(model.name)}`}
+                            className="shrink-0 text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2 flex items-center gap-0.5"
+                          >
+                            <span>Chat Now</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
+                        ) : (
+                          <Link
+                            href="/connections"
+                            className="shrink-0 text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2"
+                          >
+                            Connect
+                          </Link>
+                        )}
                       </div>
                     )}
 

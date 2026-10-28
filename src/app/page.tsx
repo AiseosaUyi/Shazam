@@ -81,6 +81,7 @@ export default function WorkspacePage() {
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
 
   const [models, setModels] = useState<Model[]>([]);
+  const [connectedProviders, setConnectedProviders] = useState<Record<string, boolean>>({});
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
@@ -134,6 +135,30 @@ export default function WorkspacePage() {
     fetch('/api/v1/catalog')
       .then((res) => (res.ok ? res.json() : { models: [] }))
       .then((data) => setModels(data.models || []))
+      .catch(() => {});
+
+    // Hydrate connected providers cache and fetch live status
+    try {
+      const raw = localStorage.getItem('shazam_connections_cache');
+      if (raw) {
+        const cache = JSON.parse(raw);
+        const map: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(cache)) {
+          if ((v as any)?.isConnected) map[k] = true;
+        }
+        setConnectedProviders(map);
+      }
+    } catch {}
+
+    fetch('/api/v1/providers')
+      .then((res) => (res.ok ? res.json() : { providers: [] }))
+      .then((data) => {
+        const map: Record<string, boolean> = {};
+        for (const p of data.providers || []) {
+          if (p.isConnected) map[p.id] = true;
+        }
+        setConnectedProviders(map);
+      })
       .catch(() => {});
 
     // Check URL query parameters for model pinning or local storage cache
@@ -972,7 +997,12 @@ export default function WorkspacePage() {
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[11px] text-zinc-300 transition shadow-sm"
                     >
                       <Cpu className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="font-mono">{pinnedModelName || 'Auto · Free Preferred'}</span>
+                      <span className="font-mono">
+                        {pinnedModelName || (connectedProviders['google'] ? 'Auto · Gemini Ready' : 'Auto · Free Preferred')}
+                      </span>
+                      {connectedProviders['google'] && !pinnedModelName && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      )}
                       <ChevronDown className="w-3 h-3 text-zinc-500" />
                     </button>
 
@@ -990,7 +1020,9 @@ export default function WorkspacePage() {
                           }`}
                         >
                           <span>Auto · Free Tier Routing</span>
-                          <span className="text-[10px] text-emerald-400 font-mono">Default</span>
+                          <span className="text-[10px] text-emerald-400 font-mono">
+                            {connectedProviders['google'] ? 'Gemini Active' : 'Default'}
+                          </span>
                         </button>
 
                         <div className="border-t border-white/5 my-1" />
@@ -998,25 +1030,36 @@ export default function WorkspacePage() {
                           Models
                         </div>
 
-                        {models.map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => {
-                              setPinnedModelName(m.name);
-                              try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                              setModelDropdownOpen(false);
-                            }}
-                            className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition truncate ${
-                              pinnedModelName === m.name ? 'bg-amber-500/10 text-amber-300 font-medium' : 'text-zinc-300 hover:bg-white/5'
-                            }`}
-                          >
-                            <span className="truncate">{m.name}</span>
-                            {m.providerModelId?.includes('flash') && (
-                              <span className="text-[9px] text-emerald-400 font-mono shrink-0 ml-1">100% Free</span>
-                            )}
-                          </button>
-                        ))}
+                        {models.map((m) => {
+                          const isGoogle = m.providerModelId?.includes('gemini') || m.id.includes('gemini') || m.name.toLowerCase().includes('gemini');
+                          const isModelConnected = isGoogle ? connectedProviders['google'] : false;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                setPinnedModelName(m.name);
+                                try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
+                                setModelDropdownOpen(false);
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition truncate ${
+                                pinnedModelName === m.name ? 'bg-amber-500/10 text-amber-300 font-medium' : 'text-zinc-300 hover:bg-white/5'
+                              }`}
+                            >
+                              <span className="truncate">{m.name}</span>
+                              <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                                {isModelConnected && (
+                                  <span className="text-[9px] text-emerald-400 font-mono font-semibold flex items-center gap-0.5">
+                                    <Check className="w-2.5 h-2.5" /> Connected
+                                  </span>
+                                )}
+                                {m.providerModelId?.includes('flash') && (
+                                  <span className="text-[9px] text-zinc-400 font-mono">100% Free</span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
