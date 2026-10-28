@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DbRepo } from '@/lib/db/repo';
 import { getCurrentUser } from '@/lib/auth/session';
+import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
 import { getLiveCatalog } from '@/lib/catalog';
 import { envFlag, envVar } from '@/lib/env';
 
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
 
     let userCredentials: any[] = [];
     if (user) {
+      await syncVaultFromCookie(req, user.id, repo);
       userCredentials = await repo.getCredentials(user.id);
     }
     const credMap = new Map(userCredentials.map((c) => [c.providerId, c]));

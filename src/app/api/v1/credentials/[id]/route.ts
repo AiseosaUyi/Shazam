@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { syncVaultFromCookie, setVaultCookieOnResponse } from '@/lib/crypto/vault-cookie';
 
 export async function DELETE(
   req: NextRequest,
@@ -14,6 +15,7 @@ export async function DELETE(
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
 
+  await syncVaultFromCookie(req, user.id, repo);
   const { id: providerId } = await params;
   const deleted = await repo.deleteCredential(user.id, providerId);
 
@@ -26,5 +28,7 @@ export async function DELETE(
     outcome: deleted ? 'success' : 'failure',
   });
 
-  return NextResponse.json({ success: true, revoked: deleted });
+  const response = NextResponse.json({ success: true, revoked: deleted });
+  await setVaultCookieOnResponse(response, user.id, repo);
+  return response;
 }

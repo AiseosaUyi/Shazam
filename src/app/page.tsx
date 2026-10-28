@@ -81,6 +81,7 @@ export default function WorkspacePage() {
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
 
   const [models, setModels] = useState<Model[]>([]);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
   const [streamingReasoning, setStreamingReasoning] = useState<string>('');
@@ -134,6 +135,15 @@ export default function WorkspacePage() {
       .then((res) => (res.ok ? res.json() : { models: [] }))
       .then((data) => setModels(data.models || []))
       .catch(() => {});
+
+    // Check URL query parameters for model pinning (e.g. from Models page)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const m = params.get('model');
+      if (m) {
+        setPinnedModelName(m);
+      }
+    }
 
     fetch('/api/v1/auth/me')
       .then((res) => (res.ok ? res.json() : { user: null }))
@@ -916,9 +926,58 @@ export default function WorkspacePage() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-400">
-                    <span>Opus 5.5 / Auto</span>
-                    <span className="px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 text-[10px]">Free Tier</span>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-[11px] text-zinc-300 transition shadow-sm"
+                    >
+                      <Cpu className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="font-mono">{pinnedModelName || 'Auto · Free Preferred'}</span>
+                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                    </button>
+
+                    {modelDropdownOpen && (
+                      <div className="absolute right-0 bottom-full mb-1.5 w-64 max-h-64 overflow-y-auto rounded-xl bg-[#161822] border border-white/10 shadow-2xl p-1.5 space-y-0.5 z-40 text-xs font-sans">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPinnedModelName('');
+                            setModelDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition ${
+                            !pinnedModelName ? 'bg-amber-500/10 text-amber-300 font-medium' : 'text-zinc-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <span>Auto · Free Tier Routing</span>
+                          <span className="text-[10px] text-emerald-400 font-mono">Default</span>
+                        </button>
+
+                        <div className="border-t border-white/5 my-1" />
+                        <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                          Models
+                        </div>
+
+                        {models.map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              setPinnedModelName(m.name);
+                              setModelDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition truncate ${
+                              pinnedModelName === m.name ? 'bg-amber-500/10 text-amber-300 font-medium' : 'text-zinc-300 hover:bg-white/5'
+                            }`}
+                          >
+                            <span className="truncate">{m.name}</span>
+                            {m.providerModelId?.includes('flash') && (
+                              <span className="text-[9px] text-emerald-400 font-mono shrink-0 ml-1">100% Free</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1094,6 +1153,13 @@ export default function WorkspacePage() {
                       <Folder className="w-3.5 h-3.5 text-amber-400" />
                       <span>{selectedProject ? selectedProject.name : 'Context'}</span>
                     </button>
+
+                    <div className="h-3 w-px bg-white/10" />
+
+                    <div className="flex items-center gap-1 text-[11px] font-mono text-zinc-400">
+                      <Cpu className="w-3 h-3 text-amber-400" />
+                      <span className="truncate max-w-[120px]">{pinnedModelName || 'Auto (Free)'}</span>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">

@@ -234,6 +234,21 @@ export class DbRepo {
     }));
   }
 
+  async getCredentialsWithSecrets(userId: string): Promise<Array<{ id: string; providerId: string; encryptedKey: string; keyHint: string; status: 'valid' | 'invalid' | 'untested'; lastValidatedAt?: string }>> {
+    const { results } = await this.db
+      .prepare('SELECT id, provider_id, encrypted_key, key_hint, status, last_validated_at FROM provider_credentials WHERE user_id = ?')
+      .bind(userId)
+      .all<any>();
+    return results.map((r) => ({
+      id: r.id,
+      providerId: r.provider_id,
+      encryptedKey: r.encrypted_key,
+      keyHint: r.key_hint,
+      status: (r.status as any) || 'valid',
+      lastValidatedAt: r.last_validated_at,
+    }));
+  }
+
   async getCredential(userId: string, providerId: string): Promise<{ id: string; encryptedKey: string; keyHint: string; status: string } | null> {
     const row = await this.db
       .prepare('SELECT id, encrypted_key, key_hint, status FROM provider_credentials WHERE user_id = ? AND provider_id = ?')

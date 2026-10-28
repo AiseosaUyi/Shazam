@@ -295,16 +295,25 @@ export default function ModelsPage() {
                         </span>
                       )}
                     </div>
-                    {primaryRoute?.sourceUrl && (
-                      <a
-                        href={primaryRoute.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition"
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/?model=${encodeURIComponent(model.name)}`}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 hover:border-amber-500/40 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
                       >
-                        Official docs <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
+                        <span>Chat</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </Link>
+                      {primaryRoute?.sourceUrl && (
+                        <a
+                          href={primaryRoute.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-zinc-400 hover:text-amber-400 flex items-center gap-1 transition"
+                        >
+                          Docs
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

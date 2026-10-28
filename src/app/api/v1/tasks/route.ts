@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
 import { runTaskOrchestrator } from '@/lib/execution/orchestrator';
 import type { CostPolicy, TaskClass } from '@/lib/types';
 
@@ -37,6 +38,9 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  // Hydrate user credentials from vault cookie if needed across serverless containers
+  await syncVaultFromCookie(req, user.id, repo);
 
   // Rate limit by user: 20 task dispatches per minute
   const allowed = await repo.checkRateLimit(`tasks:${user.id}`, 20, 60);

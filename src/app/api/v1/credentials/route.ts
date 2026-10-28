@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { encryptSecret, maskKey } from '@/lib/crypto/vault';
+import { syncVaultFromCookie, setVaultCookieOnResponse } from '@/lib/crypto/vault-cookie';
 
 const CredentialSchema = z.object({
   providerId: z.string().min(1),
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
 
+  await syncVaultFromCookie(req, user.id, repo);
   const credentials = await repo.getCredentials(user.id);
   const safeCredentials = credentials.map((c) => ({
     id: c.id,
@@ -27,7 +29,9 @@ export async function GET(req: NextRequest) {
     lastValidatedAt: c.lastValidatedAt,
   }));
 
-  return NextResponse.json({ credentials: safeCredentials });
+  const response = NextResponse.json({ credentials: safeCredentials });
+  await setVaultCookieOnResponse(response, user.id, repo);
+  return response;
 }
 
 export async function POST(req: NextRequest) {
@@ -38,6 +42,8 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
+
+  await syncVaultFromCookie(req, user.id, repo);
 
   let body: any;
   try {
@@ -80,7 +86,7 @@ export async function POST(req: NextRequest) {
     status: 'valid',
   });
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     credential: {
       id,
@@ -90,4 +96,9 @@ export async function POST(req: NextRequest) {
       lastValidatedAt: now,
     },
   });
+
+  // Pack credentials into encrypted, persistent cookie for cross-container serverless durability
+  await setVaultCookieOnResponse(response, user.id, repo);
+
+  return response;
 }
