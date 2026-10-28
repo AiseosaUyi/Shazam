@@ -130,6 +130,7 @@ export default function ClaudeCoWorkStudio() {
   const [gitPushing, setGitPushing] = useState(false);
   const [showBridgeModal, setShowBridgeModal] = useState(false);
   const [daemonToken, setDaemonToken] = useState<string>('');
+  const [isDesktopApp, setIsDesktopApp] = useState<boolean>(false);
   const terminalLogsEndRef = useRef<HTMLDivElement>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -184,6 +185,20 @@ export default function ClaudeCoWorkStudio() {
 
   // Check local companion daemon health & manage security token
   const checkDaemon = async (customToken?: string) => {
+    // 0. Native Desktop App detection (Zero-config automated bridge)
+    if (typeof window !== 'undefined' && (window as any).shazamDesktop) {
+      setIsDesktopApp(true);
+      try {
+        const config = await (window as any).shazamDesktop.getDaemonConfig();
+        if (config && config.token) {
+          setDaemonToken(config.token);
+          setDaemonStatus('connected');
+          setDaemonInfo({ cwd: config.cwd, projectName: config.cwd.split('/').pop() || 'Project' });
+          return true;
+        }
+      } catch {}
+    }
+
     const candidate = customToken !== undefined
       ? customToken
       : daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
@@ -677,11 +692,46 @@ export default function ClaudeCoWorkStudio() {
     }
   }
 
-  // Sync or bind local folder (Works across Chrome, Edge, Safari, Firefox)
+  // Sync or bind local folder (Works across Chrome, Edge, Safari, Firefox, and Electron Desktop)
   async function handleConnectOrSyncFolder(targetProjectId?: string) {
     const activeTargetProj = targetProjectId
       ? projects.find((p) => p.id === targetProjectId) || currentProject
       : currentProject;
+
+    // 0. Native Desktop App Folder Picker (Electron)
+    if (typeof window !== 'undefined' && (window as any).shazamDesktop) {
+      try {
+        const selectedDir = await (window as any).shazamDesktop.selectFolder();
+        if (selectedDir) {
+          const folderName = selectedDir.split('/').pop() || 'Workspace';
+          let proj = activeTargetProj;
+          if (!proj || proj.name !== folderName) {
+            const existing = projects.find((p) => p.name.toLowerCase() === folderName.toLowerCase());
+            if (existing) {
+              proj = existing;
+            } else {
+              const res = await fetch('/api/v1/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: folderName, rootDir: selectedDir }),
+              });
+              const data = await res.json();
+              if (data.project) {
+                proj = data.project;
+                setProjects((prev) => [data.project, ...prev]);
+              }
+            }
+          }
+          if (proj) {
+            setCurrentProject(proj);
+            setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+            setSyncBannerMessage(`✓ Bound native desktop folder: "${selectedDir}"`);
+            setTimeout(() => setSyncBannerMessage(null), 4000);
+          }
+          return;
+        }
+      } catch {}
+    }
 
     // A. Native File System Access API (Chrome, Edge, Opera)
     if ('showDirectoryPicker' in window) {
@@ -1347,6 +1397,14 @@ ${textToSend}`;
 
           {/* Actions & Local Bridge Status */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Desktop Native App Badge */}
+            {isDesktopApp && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[11px] font-mono text-amber-300 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="font-semibold">Native Desktop</span>
+              </div>
+            )}
+
             {/* Local Bridge Status Pill */}
             {daemonStatus === 'connected' ? (
               <button
