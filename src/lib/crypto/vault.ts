@@ -26,7 +26,21 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 }
 
 function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
+  let clean = base64.trim();
+  if (clean.startsWith('"') && clean.endsWith('"')) {
+    clean = clean.slice(1, -1);
+  }
+  try {
+    clean = decodeURIComponent(clean);
+  } catch {
+    // ignore
+  }
+  // Convert URL-safe base64 to standard base64 and recover spaces converted from +
+  clean = clean.replace(/-/g, '+').replace(/_/g, '/').replace(/ /g, '+');
+  while (clean.length % 4 !== 0) {
+    clean += '=';
+  }
+  const binary = atob(clean);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DbRepo } from '@/lib/db/repo';
 import { getCurrentUser } from '@/lib/auth/session';
-import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
+import { syncVaultFromCookie, setVaultCookieOnResponse } from '@/lib/crypto/vault-cookie';
 import { getLiveCatalog } from '@/lib/catalog';
 import { envFlag, envVar } from '@/lib/env';
 
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     let userCredentials: any[] = [];
     if (user) {
-      await syncVaultFromCookie(req, user.id, repo);
+      await syncVaultFromCookie(req, user.id, repo, user.email);
       userCredentials = await repo.getCredentials(user.id);
     }
     const credMap = new Map(userCredentials.map((c) => [c.providerId, c]));
@@ -37,13 +37,17 @@ export async function GET(req: NextRequest) {
         ...p,
         isConnected,
         isSystemProvided: !cred && hasSystem,
-        keyMask: cred?.keyMask || (hasSystem ? 'System Configured' : null),
+        keyMask: cred?.keyHint || cred?.keyMask || (hasSystem ? 'System Configured' : null),
         credentialStatus: cred ? cred.status : hasSystem ? 'valid' : 'unconnected',
         lastValidatedAt: cred?.lastValidatedAt ?? null,
       };
     });
 
-    return NextResponse.json({ providers });
+    const response = NextResponse.json({ providers });
+    if (user && userCredentials.length > 0) {
+      await setVaultCookieOnResponse(response, user.id, repo, user.email);
+    }
+    return response;
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to list providers.' }, { status: 500 });
   }

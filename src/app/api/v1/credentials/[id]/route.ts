@@ -15,7 +15,7 @@ export async function DELETE(
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
 
-  await syncVaultFromCookie(req, user.id, repo);
+  await syncVaultFromCookie(req, user.id, repo, user.email);
   const { id: providerId } = await params;
   const deleted = await repo.deleteCredential(user.id, providerId);
 
@@ -29,6 +29,11 @@ export async function DELETE(
   });
 
   const response = NextResponse.json({ success: true, revoked: deleted });
-  await setVaultCookieOnResponse(response, user.id, repo);
+  const remaining = await repo.getCredentials(user.id);
+  if (remaining.length === 0) {
+    response.cookies.delete('shazam_vault');
+  } else {
+    await setVaultCookieOnResponse(response, user.id, repo, user.email);
+  }
   return response;
 }

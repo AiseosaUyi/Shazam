@@ -40,7 +40,19 @@ export default function ConnectionsPage() {
     try {
       const res = await fetch('/api/v1/providers');
       const json = await res.json();
-      setProviders(json.providers || []);
+      const list: ProviderItem[] = json.providers || [];
+      setProviders(list);
+
+      // Cache connected status locally so refreshes never flash disconnected
+      try {
+        const cache: Record<string, { isConnected: boolean; keyMask?: string | null }> = {};
+        for (const p of list) {
+          if (p.isConnected) {
+            cache[p.id] = { isConnected: true, keyMask: p.keyMask };
+          }
+        }
+        localStorage.setItem('shazam_connections_cache', JSON.stringify(cache));
+      } catch {}
     } catch {
       // ignore
     } finally {
@@ -53,6 +65,18 @@ export default function ConnectionsPage() {
       .then((res) => (res.ok ? res.json() : { user: null }))
       .then((data) => setUser(data.user))
       .catch(() => {});
+
+    // Optimistically hydrate cached connection status from local storage
+    try {
+      const raw = localStorage.getItem('shazam_connections_cache');
+      if (raw) {
+        const cache = JSON.parse(raw);
+        setProviders((prev) =>
+          prev.map((p) => (cache[p.id] ? { ...p, isConnected: true, keyMask: cache[p.id].keyMask } : p))
+        );
+      }
+    } catch {}
+
     fetchProviders();
   }, []);
 
@@ -100,6 +124,14 @@ export default function ConnectionsPage() {
       if (!res.ok) throw new Error(json.error || 'Failed to revoke credential.');
 
       setFeedback({ type: 'success', message: `Revoked credential for ${providerName}.` });
+      try {
+        const raw = localStorage.getItem('shazam_connections_cache');
+        if (raw) {
+          const cache = JSON.parse(raw);
+          delete cache[providerId];
+          localStorage.setItem('shazam_connections_cache', JSON.stringify(cache));
+        }
+      } catch {}
       await fetchProviders();
     } catch (err: any) {
       setFeedback({ type: 'error', message: err.message });

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
 
-  await syncVaultFromCookie(req, user.id, repo);
+  await syncVaultFromCookie(req, user.id, repo, user.email);
   const credentials = await repo.getCredentials(user.id);
   const safeCredentials = credentials.map((c) => ({
     id: c.id,
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   }));
 
   const response = NextResponse.json({ credentials: safeCredentials });
-  await setVaultCookieOnResponse(response, user.id, repo);
+  await setVaultCookieOnResponse(response, user.id, repo, user.email);
   return response;
 }
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
 
-  await syncVaultFromCookie(req, user.id, repo);
+  await syncVaultFromCookie(req, user.id, repo, user.email);
 
   let body: any;
   try {
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   });
 
   // Pack credentials into encrypted, persistent cookie for cross-container serverless durability
-  await setVaultCookieOnResponse(response, user.id, repo);
+  await setVaultCookieOnResponse(response, user.id, repo, user.email);
 
   return response;
 }

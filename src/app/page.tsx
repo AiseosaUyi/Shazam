@@ -136,12 +136,18 @@ export default function WorkspacePage() {
       .then((data) => setModels(data.models || []))
       .catch(() => {});
 
-    // Check URL query parameters for model pinning (e.g. from Models page)
+    // Check URL query parameters for model pinning or local storage cache
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const m = params.get('model');
       if (m) {
         setPinnedModelName(m);
+        try { localStorage.setItem('shazam_pinned_model', m); } catch {}
+      } else {
+        try {
+          const cached = localStorage.getItem('shazam_pinned_model');
+          if (cached) setPinnedModelName(cached);
+        } catch {}
       }
     }
 
@@ -976,6 +982,7 @@ export default function WorkspacePage() {
                           type="button"
                           onClick={() => {
                             setPinnedModelName('');
+                            try { localStorage.removeItem('shazam_pinned_model'); } catch {}
                             setModelDropdownOpen(false);
                           }}
                           className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition ${
@@ -997,6 +1004,7 @@ export default function WorkspacePage() {
                             type="button"
                             onClick={() => {
                               setPinnedModelName(m.name);
+                              try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
                               setModelDropdownOpen(false);
                             }}
                             className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition truncate ${

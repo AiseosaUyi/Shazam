@@ -84,21 +84,33 @@ export async function getCurrentUser(req: NextRequest, repo = new DbRepo()): Pro
     }
 
     // Hydrate user in current runtime database so relational joins & rate-limits succeed
+    let resolvedUserId = claim.u;
     try {
       const db = getDb();
-      await db
-        .prepare(
-          `INSERT OR IGNORE INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
-           VALUES (?, ?, ?, ?, ?, 'active', 1, datetime('now'))`
-        )
-        .bind(claim.u, claim.e, claim.e.split('@')[0], '', role)
-        .run();
+      // Check if user with this email already exists in runtime DB with a pre-seeded ID (e.g. usr_admin_01)
+      const existing = await db
+        .prepare('SELECT id, role FROM users WHERE email = ?')
+        .bind(claim.e.toLowerCase().trim())
+        .first<{ id: string; role?: string }>();
+
+      if (existing) {
+        resolvedUserId = existing.id;
+        if (existing.role === 'admin') role = 'admin';
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
+             VALUES (?, ?, ?, ?, ?, 'active', 1, datetime('now'))`
+          )
+          .bind(claim.u, claim.e.toLowerCase().trim(), claim.e.split('@')[0], '', role)
+          .run();
+      }
     } catch {
       // ignore
     }
 
     const user: User = {
-      id: claim.u,
+      id: resolvedUserId,
       email: claim.e,
       name: claim.e.split('@')[0],
       role,

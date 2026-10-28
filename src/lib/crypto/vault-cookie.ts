@@ -7,6 +7,7 @@ export const VAULT_COOKIE_NAME = 'shazam_vault';
 
 export interface VaultCookiePayload {
   userId: string;
+  email?: string;
   credentials: Array<{
     providerId: string;
     encryptedKey: string;
@@ -20,26 +21,47 @@ export interface VaultCookiePayload {
  * Hydrates credentials from the request's shazam_vault cookie into the repo
  * if the database has 0 credentials for the user (e.g. across serverless Lambda containers).
  */
-export async function syncVaultFromCookie(req: NextRequest, userId: string, repo: DbRepo): Promise<void> {
-  const cookieVal = req.cookies.get(VAULT_COOKIE_NAME)?.value;
+export async function syncVaultFromCookie(
+  req: NextRequest,
+  userId: string,
+  repo: DbRepo,
+  userEmail?: string
+): Promise<void> {
+  let cookieVal = req.cookies.get(VAULT_COOKIE_NAME)?.value;
   if (!cookieVal) return;
 
   try {
+    try {
+      cookieVal = decodeURIComponent(cookieVal);
+    } catch {
+      // ignore
+    }
+
     const jsonStr = await decryptSecret(cookieVal);
     const data = JSON.parse(jsonStr) as VaultCookiePayload;
-    if (data.userId !== userId || !Array.isArray(data.credentials)) return;
+    if (!data || !Array.isArray(data.credentials) || data.credentials.length === 0) return;
+
+    // Verify identity via userId or email
+    const isMatch =
+      data.userId === userId ||
+      (Boolean(userEmail) && Boolean(data.email) && (data.email as string).toLowerCase().trim() === (userEmail as string).toLowerCase().trim());
+    if (!isMatch) return;
 
     // Ensure user row exists in current database so foreign key constraints succeed
     try {
       const db = (repo as any).db;
       if (db) {
-        await db
-          .prepare(
-            `INSERT OR IGNORE INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
-             VALUES (?, ?, ?, '', 'user', 'active', 1, datetime('now'))`
-          )
-          .bind(userId, `${userId}@shazam.ai`, userId)
-          .run();
+        const existing = await db.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+        if (!existing) {
+          const emailToUse = userEmail || data.email || `${userId}@shazam.ai`;
+          await db
+            .prepare(
+              `INSERT OR IGNORE INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
+               VALUES (?, ?, ?, '', 'user', 'active', 1, datetime('now'))`
+            )
+            .bind(userId, emailToUse.toLowerCase().trim(), userId)
+            .run();
+        }
       }
     } catch {
       // ignore
@@ -64,11 +86,19 @@ export async function syncVaultFromCookie(req: NextRequest, userId: string, repo
  * Packs all of a user's current credentials into an encrypted, HttpOnly shazam_vault cookie
  * and sets it on the response so they persist across any serverless container.
  */
-export async function setVaultCookieOnResponse(response: NextResponse, userId: string, repo: DbRepo): Promise<void> {
+export async function setVaultCookieOnResponse(
+  response: NextResponse,
+  userId: string,
+  repo: DbRepo,
+  userEmail?: string
+): Promise<void> {
   try {
     const creds = await repo.getCredentialsWithSecrets(userId);
+    if (creds.length === 0) return;
+
     const payload: VaultCookiePayload = {
       userId,
+      email: userEmail,
       credentials: creds.map((c) => ({
         providerId: c.providerId,
         encryptedKey: c.encryptedKey,

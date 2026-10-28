@@ -27,7 +27,7 @@ describe('Vault Cookie Cross-Container Durability Tests', () => {
     });
 
     const response = NextResponse.json({ success: true });
-    await setVaultCookieOnResponse(response, userId, repoA);
+    await setVaultCookieOnResponse(response, userId, repoA, `${userId}@shazam.ai`);
 
     const vaultCookie = response.cookies.get(VAULT_COOKIE_NAME)?.value;
     assert.ok(vaultCookie, 'shazam_vault cookie must be set');
@@ -44,7 +44,7 @@ describe('Vault Cookie Cross-Container Durability Tests', () => {
       },
     });
 
-    await syncVaultFromCookie(req, userId, repoB);
+    await syncVaultFromCookie(req, userId, repoB, `${userId}@shazam.ai`);
 
     // 4. Container B should now have the credential hydrated
     const credsAfter = await repoB.getCredentials(userId);
@@ -52,5 +52,60 @@ describe('Vault Cookie Cross-Container Durability Tests', () => {
     assert.strictEqual(credsAfter[0].providerId, 'google');
     assert.strictEqual(credsAfter[0].keyHint, 'AIz...1234');
     assert.strictEqual(credsAfter[0].status, 'valid');
+  });
+
+  it('handles URL-encoded cookies and email-based matching across pre-seeded admin IDs', async () => {
+    const repoA = createTestRepo();
+    const registrationUserId = 'uuid-user-registration-123';
+    const email = 'aiseosauyiidahor@gmail.com';
+
+    await repoA.createUser({
+      id: registrationUserId,
+      email,
+      name: 'Admin User',
+      passwordHash: 'dummy-hash',
+      role: 'admin',
+    });
+
+    await repoA.setCredential({
+      id: `${registrationUserId}:google`,
+      userId: registrationUserId,
+      providerId: 'google',
+      encryptedKey: 'mock-enc-key-abc',
+      keyHint: 'AIz...9999',
+      status: 'valid',
+    });
+
+    const response = NextResponse.json({ success: true });
+    await setVaultCookieOnResponse(response, registrationUserId, repoA, email);
+    const vaultCookie = response.cookies.get(VAULT_COOKIE_NAME)?.value;
+    assert.ok(vaultCookie);
+
+    // URL-encode the cookie payload as browsers or CDNs sometimes do
+    const urlEncodedCookie = encodeURIComponent(vaultCookie);
+
+    // Container B pre-seeded with usr_admin_01 for the same email
+    const repoB = createTestRepo();
+    const preseededUserId = 'usr_admin_01';
+    await repoB.createUser({
+      id: preseededUserId,
+      email,
+      name: 'Admin Preseeded',
+      passwordHash: 'dummy-hash',
+      role: 'admin',
+    });
+
+    const req = new NextRequest('http://localhost:3000/api/v1/providers', {
+      headers: {
+        cookie: `${VAULT_COOKIE_NAME}=${urlEncodedCookie}`,
+      },
+    });
+
+    // Hydrate using resolved preseededUserId and email
+    await syncVaultFromCookie(req, preseededUserId, repoB, email);
+
+    const credsInB = await repoB.getCredentials(preseededUserId);
+    assert.strictEqual(credsInB.length, 1, 'Credentials should be hydrated using preseeded admin ID');
+    assert.strictEqual(credsInB[0].keyHint, 'AIz...9999');
   });
 });

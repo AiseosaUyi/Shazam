@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Hydrate user credentials from vault cookie if needed across serverless containers
-  await syncVaultFromCookie(req, user.id, repo);
+  await syncVaultFromCookie(req, user.id, repo, user.email);
 
   // Rate limit by user: 20 task dispatches per minute
   const allowed = await repo.checkRateLimit(`tasks:${user.id}`, 20, 60);
