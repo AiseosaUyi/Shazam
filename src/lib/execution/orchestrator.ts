@@ -4,6 +4,7 @@ import { resolveTaskRoute, determineFallback, type RouteResolution } from '@/lib
 import { dispatchExecution } from './dispatcher';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { envFlag, envVar } from '@/lib/env';
+import { buildProjectIndex } from '@/lib/agent/indexer';
 import type {
   CostPolicy,
   TaskClass,
@@ -71,11 +72,8 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
           const project = await repo.getProject(user.id, activeProjId);
           const files = await repo.getProjectFiles(user.id, activeProjId);
           if (files && files.length > 0) {
-            const snippets = files
-              .slice(0, 25)
-              .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
-              .join('\n\n');
-            projectContextBlock = `[Project Context: ${project?.name || 'Workspace'}]\n${snippets}`;
+            const index = buildProjectIndex(files);
+            projectContextBlock = `[Project Context: ${project?.name || 'Workspace'}]\n${index.summaryPrompt}`;
           } else if (project) {
             projectContextBlock = `[Project Context: ${project.name}]\nProject Name: ${project.name}${project.description ? `\nDescription: ${project.description}` : ''}`;
           }
@@ -93,11 +91,8 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
         const project = await repo.getProject(user.id, projectId);
         const files = await repo.getProjectFiles(user.id, projectId);
         if (files && files.length > 0) {
-          const snippets = files
-            .slice(0, 25)
-            .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 3000)}\n\`\`\``)
-            .join('\n\n');
-          projectContextBlock = `[Project Context: ${project?.name || 'Workspace'}]\n${snippets}`;
+          const index = buildProjectIndex(files);
+          projectContextBlock = `[Project Context: ${project?.name || 'Workspace'}]\n${index.summaryPrompt}`;
         } else if (project) {
           projectContextBlock = `[Project Context: ${project.name}]\nProject Name: ${project.name}${project.description ? `\nDescription: ${project.description}` : ''}`;
         }

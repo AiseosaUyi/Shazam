@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { parsePatchesFromText, applySearchReplace } from '@/lib/agent/patcher';
+import { buildProjectIndex } from '@/lib/agent/indexer';
 
 // Dynamic import of Monaco Editor for the slide-over file preview drawer
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -823,24 +824,11 @@ export default function ClaudeCoWorkStudio() {
     let contextualPrompt = textToSend;
     if (currentProject) {
       if (projectFiles.length > 0) {
-        // Prioritize key project configuration and entrypoint files for running & architecture
-        const sortedFiles = [...projectFiles].sort((a, b) => {
-          const isConfigA = /package\.json|requirements\.txt|README|docker|vite|next\.config|manage\.py|Cargo\.toml|go\.mod|main\.|app\./i.test(a.path);
-          const isConfigB = /package\.json|requirements\.txt|README|docker|vite|next\.config|manage\.py|Cargo\.toml|go\.mod|main\.|app\./i.test(b.path);
-          if (isConfigA && !isConfigB) return -1;
-          if (!isConfigA && isConfigB) return 1;
-          return 0;
-        });
-
-        const fileSnippets = sortedFiles
-          .slice(0, 30)
-          .map((f) => `### File: ${f.path}\n\`\`\`\n${f.content.slice(0, 4000)}\n\`\`\``)
-          .join('\n\n');
+        const index = buildProjectIndex(projectFiles);
 
         contextualPrompt = `You are an expert AI software engineer working on the user's project "${currentProject.name}".
-Here are the actual workspace files from the project:
-
-${fileSnippets}
+Codebase Architecture & Symbols:
+${index.summaryPrompt}
 
 Instructions:
 - When modifying EXISTING files, ALWAYS use surgical search-and-replace blocks (preserves file integrity):
