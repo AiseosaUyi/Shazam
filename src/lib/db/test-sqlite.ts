@@ -66,13 +66,17 @@ export class SqliteDatabaseAdapter implements SqlDatabase {
   }
 }
 
-export function createTestDatabase(): SqliteDatabaseAdapter {
-  const db = new SqliteDatabaseAdapter(':memory:');
+export function createTestDatabase(filePath = ':memory:'): SqliteDatabaseAdapter {
+  const db = new SqliteDatabaseAdapter(filePath);
   const migrationsDir = path.resolve(process.cwd(), 'migrations');
   if (fs.existsSync(migrationsDir)) {
     const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
     for (const file of files) {
-      db.applyMigrationFile(path.join(migrationsDir, file));
+      try {
+        db.applyMigrationFile(path.join(migrationsDir, file));
+      } catch {
+        // Migration statement might already exist in persistent DB file
+      }
     }
   }
   return db;

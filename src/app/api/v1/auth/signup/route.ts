@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { hashPassword, hashSessionToken } from '@/lib/crypto/auth';
+import { createSignedSessionToken } from '@/lib/crypto/session-token';
 import { envFlag, isProduction } from '@/lib/env';
 import { getAdminEmails, isEmailConfiguredAdmin, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS, verifyCsrfOrigin } from '@/lib/auth/session';
 
@@ -75,8 +76,11 @@ export async function POST(req: NextRequest) {
       role,
     });
 
-    // Create session
-    const sessionToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    // Create signed session (valid both via DB lookup and statelessly across serverless containers)
+    const sessionToken = await createSignedSessionToken(
+      { id: user.id, email: user.email, role: user.role },
+      SESSION_MAX_AGE_SECONDS
+    );
     const tokenHash = await hashSessionToken(sessionToken);
     const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
 

@@ -36,7 +36,18 @@ function getFallbackDb(): SqlDatabase {
   if (fallbackDbInstance) return fallbackDbInstance;
   try {
     const { createTestDatabase } = require('@/lib/db/test-sqlite');
-    const db = createTestDatabase();
+    let dbPath = ':memory:';
+    if (process.env.VERCEL || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production')) {
+      try {
+        const fs = require('node:fs');
+        if (fs.existsSync('/tmp')) {
+          dbPath = '/tmp/shazam.sqlite';
+        }
+      } catch {
+        // fallback to :memory:
+      }
+    }
+    const db = createTestDatabase(dbPath);
 
     // Pre-seed default administrator & QA tester accounts in fallback DB
     try {

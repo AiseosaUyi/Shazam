@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { DbRepo } from '@/lib/db/repo';
 import { hashSessionToken } from '@/lib/crypto/auth';
-import { envVar, isProduction } from '@/lib/env';
+import { verifySignedSessionToken } from '@/lib/crypto/session-token';
+import { envVar, getDb, isProduction } from '@/lib/env';
 import type { User } from '@/lib/types';
 
 export const SESSION_COOKIE_NAME = 'shazam_session';
@@ -59,20 +60,57 @@ export async function getCurrentUser(req: NextRequest, repo = new DbRepo()): Pro
     return null;
   }
 
-  const tokenHash = await hashSessionToken(token);
-  const sessionResult = await repo.getSession(tokenHash);
-  if (!sessionResult) {
-    return null;
+  // 1. Check DB session first (Cloudflare D1 or local SQLite)
+  try {
+    const tokenHash = await hashSessionToken(token);
+    const sessionResult = await repo.getSession(tokenHash);
+    if (sessionResult) {
+      let user = sessionResult.user;
+      if (user.role !== 'admin' && isEmailConfiguredAdmin(user.email)) {
+        user = { ...user, role: 'admin' };
+      }
+      return user;
+    }
+  } catch {
+    // Continue to cryptographic fallback
   }
 
-  let user = sessionResult.user;
+  // 2. Cryptographic signed token fallback (resilient across serverless Lambda containers)
+  const claim = await verifySignedSessionToken(token);
+  if (claim) {
+    let role = (claim.r as 'admin' | 'user') || 'user';
+    if (role !== 'admin' && isEmailConfiguredAdmin(claim.e)) {
+      role = 'admin';
+    }
 
-  // Upgrade to admin if email is in ADMIN_EMAILS
-  if (user.role !== 'admin' && isEmailConfiguredAdmin(user.email)) {
-    user = { ...user, role: 'admin' };
+    // Hydrate user in current runtime database so relational joins & rate-limits succeed
+    try {
+      const db = getDb();
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
+           VALUES (?, ?, ?, ?, ?, 'active', 1, datetime('now'))`
+        )
+        .bind(claim.u, claim.e, claim.e.split('@')[0], '', role)
+        .run();
+    } catch {
+      // ignore
+    }
+
+    const user: User = {
+      id: claim.u,
+      email: claim.e,
+      name: claim.e.split('@')[0],
+      role,
+      status: 'active',
+      onboarded: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    return user;
   }
 
-  return user;
+  return null;
 }
 
 export async function requireUser(req: NextRequest, repo = new DbRepo()): Promise<User> {
