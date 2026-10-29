@@ -44,15 +44,6 @@ function resolveSecurityToken() {
 
 const DAEMON_TOKEN = resolveSecurityToken();
 
-console.log('\n======================================================');
-console.log('⚡ Shazam AI Local Execution Companion Daemon (Hardened)');
-console.log('======================================================');
-console.log(`📂 Working Directory: ${CWD}`);
-console.log(`🔌 Listening on:       http://localhost:${PORT}`);
-console.log(`🔑 Security Token:     ${DAEMON_TOKEN}`);
-console.log('======================================================');
-console.log('Security: CORS restricted & Token validation enforced.\n');
-
 // Allowed origins
 const ALLOWED_ORIGIN_PATTERNS = [
   /^http:\/\/localhost(:\d+)?$/,
@@ -387,6 +378,76 @@ function listProjectFiles(dir, baseDir, fileList = []) {
   return fileList;
 }
 
-server.listen(PORT, '127.0.0.1', () => {
-  // ready
-});
+function openBrowser(url) {
+  const isWindows = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+  const cmd = isMac ? 'open' : isWindows ? 'start' : 'xdg-open';
+
+  try {
+    const child = spawn(cmd, [url], {
+      detached: true,
+      stdio: 'ignore',
+      shell: isWindows,
+    });
+    child.unref();
+  } catch (err) {
+    // Console fallback
+  }
+}
+
+function isDevServerRunning() {
+  return new Promise((resolve) => {
+    const req = http.get('http://localhost:3000', { timeout: 300 }, (res) => {
+      resolve(true);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function startServer(port, maxAttempts = 10) {
+  server.once('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      if (maxAttempts > 0) {
+        startServer(port + 1, maxAttempts - 1);
+      } else {
+        console.error(`❌ Could not bind an available port between 4040 and ${port}.`);
+        process.exit(1);
+      }
+    } else {
+      console.error('Daemon server error:', err);
+      process.exit(1);
+    }
+  });
+
+  server.listen(port, '127.0.0.1', async () => {
+    const boundPort = port;
+    const isDev = await isDevServerRunning();
+    const webBaseUrl = isDev ? 'http://localhost:3000' : 'https://shazam-opal.vercel.app';
+    const targetUrl = `${webBaseUrl}/agent?token=${DAEMON_TOKEN}&port=${boundPort}`;
+
+    console.log('\n================================================================');
+    console.log('⚡ Shazam AI Local Companion Daemon (Zero-Config Bridge)');
+    console.log('================================================================');
+    console.log(`📂 Local Workspace: ${CWD}`);
+    console.log(`🔌 Daemon Port:     http://localhost:${boundPort}`);
+    console.log(`🔑 Security Token:  ${DAEMON_TOKEN}`);
+    console.log('================================================================');
+
+    const noOpen = process.argv.includes('--no-open');
+    if (!noOpen) {
+      console.log(`🚀 Launching browser connected to your workspace...`);
+      openBrowser(targetUrl);
+    }
+
+    console.log(`🌐 Web App Link:    ${targetUrl}\n`);
+    console.log('🟢 Code Studio is linked with full terminal and file access.');
+    console.log('   (Press Ctrl+C to disconnect local workspace)\n');
+  });
+}
+
+const requestedPort = parseInt(process.env.SHAZAM_PORT || '4040', 10);
+startServer(requestedPort);

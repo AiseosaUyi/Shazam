@@ -341,9 +341,28 @@ export default function ClaudeCoWorkStudio() {
     }
   }, [terminalLogs, terminalOpen]);
 
+  // Local Companion Bridge URL Helper (supports dynamic ports from npx shazam-agent)
+  const getDaemonUrl = (path: string) => {
+    const port = typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_port') || '4040' : '4040';
+    return `http://localhost:${port}${path.startsWith('/') ? path : `/${path}`}`;
+  };
+
   // Check local companion daemon health & manage security token
   const checkDaemon = async (customToken?: string) => {
-    // 0. Native Desktop App detection (Zero-config automated bridge)
+    // 0. Auto-extract token and port from URL query params (Zero-config handoff from npx shazam-agent)
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      const urlPort = urlParams.get('port');
+      if (urlToken && !daemonToken) {
+        setDaemonToken(urlToken);
+        localStorage.setItem('shazam_daemon_token', urlToken);
+        if (urlPort) localStorage.setItem('shazam_daemon_port', urlPort);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+
+    // Native Desktop App detection (Zero-config automated bridge)
     if (typeof window !== 'undefined' && (window as any).shazamDesktop) {
       setIsDesktopApp(true);
       try {
@@ -362,7 +381,7 @@ export default function ClaudeCoWorkStudio() {
       : daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
 
     try {
-      const res = await fetch('http://localhost:4040/api/health', {
+      const res = await fetch(getDaemonUrl('/api/health'), {
         method: 'GET',
         signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(2000) : undefined,
       });
@@ -375,7 +394,7 @@ export default function ClaudeCoWorkStudio() {
         // Auto-fetch token when developing on localhost
         if (!candidate && typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
           try {
-            const tokRes = await fetch('http://localhost:4040/api/auth/token');
+            const tokRes = await fetch(getDaemonUrl('/api/auth/token'));
             if (tokRes.ok) {
               const tokData = await tokRes.json();
               if (tokData.token) {
@@ -419,7 +438,7 @@ export default function ClaudeCoWorkStudio() {
 
     try {
       const activeToken = daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
-      const res = await fetch('http://localhost:4040/api/exec', {
+      const res = await fetch(getDaemonUrl('/api/exec'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -502,7 +521,7 @@ export default function ClaudeCoWorkStudio() {
 
     try {
       const activeToken = daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
-      const res = await fetch('http://localhost:4040/api/git/push', {
+      const res = await fetch(getDaemonUrl('/api/git/push'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1327,7 +1346,7 @@ ${textToSend}`;
 
           // Apply surgical patch to local disk via companion daemon
           if (daemonStatus === 'connected') {
-            fetch('http://localhost:4040/api/files/patch', {
+            fetch(getDaemonUrl('/api/files/patch'), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1361,7 +1380,7 @@ ${textToSend}`;
           }
 
           if (daemonStatus === 'connected') {
-            fetch('http://localhost:4040/api/files/write', {
+            fetch(getDaemonUrl('/api/files/write'), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -1402,7 +1421,7 @@ ${textToSend}`;
           }
 
           if (daemonStatus === 'connected') {
-            fetch('http://localhost:4040/api/files/write', {
+            fetch(getDaemonUrl('/api/files/write'), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -2117,7 +2136,7 @@ ${textToSend}`;
             <div className="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed space-y-1 bg-[#050608]">
               {daemonStatus !== 'connected' && (
                 <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] mb-2 flex items-center justify-between">
-                  <span>Companion daemon is not running on localhost:4040. Run <b>npm run daemon</b> in your terminal to enable local commands.</span>
+                  <span>Local companion daemon is not connected. Run <code className="bg-black/40 px-1.5 py-0.5 rounded text-amber-200 font-mono">npx shazam-agent</code> in your project terminal to link files & commands.</span>
                   <button onClick={() => setShowBridgeModal(true)} className="underline font-bold hover:text-white">Setup</button>
                 </div>
               )}
