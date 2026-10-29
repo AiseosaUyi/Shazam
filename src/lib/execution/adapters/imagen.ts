@@ -55,8 +55,9 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
   // Strategy 1: Attempt official Gemini Image endpoint (gemini-2.5-flash-image:generateContent)
   const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`;
   
-  let res: Response;
+  let res: Response | undefined;
   let lastErrorText = '';
+  let lastStatusCode = 500;
 
   try {
     res = await fetch(geminiEndpoint, {
@@ -119,6 +120,7 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
         };
       }
     } else {
+      lastStatusCode = res.status;
       lastErrorText = await res.text();
     }
   } catch (err: any) {
@@ -179,6 +181,7 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
         };
       }
     } else {
+      lastStatusCode = res.status;
       lastErrorText = await res.text();
     }
   } catch (err: any) {
@@ -192,5 +195,5 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
   }
 
   // Strictly throw normalized error — never silently substitute a different provider
-  throw normalizeProviderError('Google Imagen', lastErrorText, res?.status || 500);
+  throw normalizeProviderError('Google Imagen', lastErrorText, lastStatusCode);
 }
