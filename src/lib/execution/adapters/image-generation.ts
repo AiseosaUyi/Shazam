@@ -44,31 +44,14 @@ export async function executeImageGeneration(options: ExecuteOptions): Promise<A
   const encodedPrompt = encodeURIComponent(cleanPrompt);
   const imageUrl = `/api/v1/image?prompt=${encodedPrompt}&seed=${seed}`;
 
-  // Emit progress step
-  if (signal?.aborted) throw new Error('Task cancelled');
-  onChunk({
-    type: 'delta',
-    text: `🎨 **Generating high-resolution image with FLUX.1 Schnell...**\n\n`,
-  });
-
-  // Small delay for natural streaming pacing
-  await new Promise((r) => setTimeout(r, 200));
-
   if (signal?.aborted) throw new Error('Task cancelled');
 
-  const imageMarkdown = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})\n\n`;
+  const fullText = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
+
   onChunk({
     type: 'delta',
-    text: imageMarkdown,
+    text: fullText,
   });
-
-  const metadataMarkdown = `> **Model:** FLUX.1 Schnell (12B Rectified Flow) · **Provider:** Pollinations AI · **Cost:** $0.00 (Verified Free)\n> **Parameters:** 1024×1024 · Seed: \`${seed}\`\n\n*Prompt:* "${cleanPrompt}"`;
-  onChunk({
-    type: 'delta',
-    text: metadataMarkdown,
-  });
-
-  const fullText = `🎨 **Generating high-resolution image with FLUX.1 Schnell...**\n\n${imageMarkdown}${metadataMarkdown}`;
 
   const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
   const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));

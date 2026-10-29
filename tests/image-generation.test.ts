@@ -70,7 +70,6 @@ describe('Free Image Generation & FLUX.1 Schnell Routing Tests', () => {
 
     assert.ok(result.fullText.includes('![majestic lion with golden armor in a savanna]'));
     assert.ok(result.fullText.includes('/api/v1/image?prompt='));
-    assert.ok(result.fullText.includes('FLUX.1 Schnell'));
     assert.strictEqual(result.costUSD, 0);
     assert.strictEqual(result.costKind, 'zero');
   });
@@ -100,5 +99,32 @@ describe('Free Image Generation & FLUX.1 Schnell Routing Tests', () => {
 
     assert.strictEqual(resolution.selectedModel.id, 'model_flux_1_schnell');
     assert.strictEqual(resolution.selectedRoute.id, 'route_pollinations_flux_1_schnell');
+  });
+
+  it('routes to Google Imagen 3 (Nano Banana) when user has Google credentials and selects it', async () => {
+    const repo = new DbRepo();
+    await repo.createUser({
+      id: dummyUser.id,
+      email: dummyUser.email,
+      name: 'Test User',
+      passwordHash: 'dummy_hash',
+      role: 'user',
+    });
+    await repo.setCredential({
+      id: `${dummyUser.id}:google`,
+      userId: dummyUser.id,
+      providerId: 'google',
+      encryptedKey: 'secret_key',
+      keyHint: 'AIza...xxxx',
+      status: 'valid',
+    });
+    const spec = classifyTask('draw an artistic portrait of an astronaut on mars', {
+      pinnedRouteId: 'route_google_imagen_3_free',
+    });
+    spec.outputModality = 'image';
+    spec.taskClass = 'image_generation';
+    const resolution = await resolveTaskRoute(spec, dummyUser, repo);
+    assert.strictEqual(resolution.selectedModel.id, 'model_google_imagen_3');
+    assert.strictEqual(resolution.selectedProvider.id, 'google');
   });
 });

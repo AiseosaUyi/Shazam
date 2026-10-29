@@ -206,15 +206,6 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
           </button>
         </div>
       </div>
-
-      {alt && alt !== 'Generated Image' && (
-        <div className="px-4 py-2.5 bg-white/[0.02] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
-          <span className="truncate pr-2 italic font-mono text-[11px] text-zinc-300">{alt}</span>
-          <span className="shrink-0 text-[10px] font-semibold tracking-wider uppercase text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-            FLUX.1 Schnell
-          </span>
-        </div>
-      )}
     </div>
   );
 }

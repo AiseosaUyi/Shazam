@@ -175,6 +175,21 @@ export const STATIC_MODELS: Model[] = [
     qualityTier: 5,
     strengths: ['reasoning', 'planning', 'coding', 'document_analysis'],
   },
+  {
+    id: 'model_google_imagen_3',
+    providerId: 'google',
+    name: 'Google Imagen 3 (Nano Banana)',
+    providerModelId: 'imagen-3.0-generate-002',
+    description: 'Google AI Studio state-of-the-art text-to-image foundation model. Photorealistic fidelity, high-precision typography, and rich lighting.',
+    inputModalities: ['text'],
+    outputModality: 'image',
+    contextWindowTokens: 4096,
+    maxOutputTokens: 1024,
+    supportsTools: false,
+    supportsReasoning: false,
+    qualityTier: 5,
+    strengths: ['image_generation', 'vision'],
+  },
 
   // --- OpenAI ---
   {
@@ -436,6 +451,18 @@ export const STATIC_ROUTES: Route[] = [
     defaultStatus: 'enabled',
     verifiedAt: '2026-10-27',
     sourceUrl: 'https://ai.google.dev/gemini-api/docs/pricing',
+  },
+  {
+    id: 'route_google_imagen_3_free',
+    modelId: 'model_google_imagen_3',
+    providerId: 'google',
+    costClass: 'verified_free',
+    pricing: { inputPer1M: 0, outputPer1M: 0, note: 'Google AI Studio developer tier evaluation quota.' },
+    quotaConfidence: 'observed',
+    privacy: { providerMayTrainOnData: true, note: 'Google AI Studio terms: free tier data may be logged and used for model training.' },
+    defaultStatus: 'enabled',
+    verifiedAt: '2026-10-29',
+    sourceUrl: 'https://ai.google.dev/gemini-api/docs/imagen',
   },
 
   // OpenAI
