@@ -138,10 +138,9 @@ export function normalizeProviderError(
   if (msg.includes('is not found for API version v1beta') || msg.includes('not supported for predict')) {
     return {
       type: 'model_unavailable',
-      message: 'Google Imagen 3 is not supported on standard Google AI Studio developer keys (requires Google Cloud Vertex AI with billing enabled). Please switch model to FLUX.1 Schnell or Auto Routing for free image generation.',
+      message: 'Google Imagen 3 (Nano Banana) is not supported on standard Google AI Studio developer keys (it requires Google Cloud Vertex AI with billing enabled). For photorealistic human portraits and pristine anatomy without watermarks, please connect an OpenAI API key for DALL-E 3 or use Cloudflare Workers AI.',
       statusCode: 404,
-      retryable: true,
-      retryAfterSeconds: 5,
+      retryable: false,
     };
   }
 

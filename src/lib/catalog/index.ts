@@ -248,6 +248,21 @@ export const STATIC_MODELS: Model[] = [
     qualityTier: 5,
     strengths: ['planning', 'reasoning'],
   },
+  {
+    id: 'model_openai_dalle_3',
+    providerId: 'openai',
+    name: 'OpenAI DALL-E 3',
+    providerModelId: 'dall-e-3',
+    description: 'OpenAI flagship photorealistic image generation model. Industry-leading human anatomy, skin fidelity, authentic lighting, and precise prompt adherence.',
+    inputModalities: ['text'],
+    outputModality: 'image',
+    contextWindowTokens: 4096,
+    maxOutputTokens: 1024,
+    supportsTools: false,
+    supportsReasoning: false,
+    qualityTier: 5,
+    strengths: ['image_generation'],
+  },
 
   // --- Anthropic ---
   {
@@ -514,6 +529,18 @@ export const STATIC_ROUTES: Route[] = [
     disabledReason: 'Account access and live endpoint entitlement unconfirmed.',
     verifiedAt: '2026-10-27',
     sourceUrl: 'https://developers.openai.com/api/docs/pricing',
+  },
+  {
+    id: 'route_openai_dalle_3',
+    modelId: 'model_openai_dalle_3',
+    providerId: 'openai',
+    costClass: 'paid',
+    pricing: { inputPer1M: 40.0, outputPer1M: 40.0, note: '$0.040 per 1024x1024 image' },
+    quotaConfidence: 'observed',
+    privacy: { providerMayTrainOnData: false },
+    defaultStatus: 'enabled',
+    verifiedAt: '2026-10-29',
+    sourceUrl: 'https://platform.openai.com/docs/guides/images',
   },
 
   // Anthropic

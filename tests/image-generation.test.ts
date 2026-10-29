@@ -305,4 +305,64 @@ describe('Free Image Generation & FLUX.1 Schnell Routing Tests', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('routes and executes OpenAI DALL-E 3 with pristine base64 payload and zero watermarks', async () => {
+    const { executeOpenAIDalle } = await import('@/lib/execution/adapters/dalle');
+    const originalFetch = globalThis.fetch;
+    const fakeDalleB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    globalThis.fetch = async (url: any, init?: any) => {
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              b64_json: fakeDalleB64,
+              revised_prompt: 'A photorealistic portrait of an African boy in Lagos, 35mm lens, golden hour',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      const result = await executeOpenAIDalle({
+        model: {
+          id: 'model_openai_dalle_3',
+          providerId: 'openai',
+          name: 'OpenAI DALL-E 3',
+          providerModelId: 'dall-e-3',
+          inputModalities: ['text'],
+          outputModality: 'image',
+          contextWindowTokens: 4096,
+          maxOutputTokens: 1024,
+          supportsTools: false,
+          supportsReasoning: false,
+          qualityTier: 5,
+          strengths: ['image_generation'],
+        },
+        route: {
+          id: 'route_openai_dalle_3',
+          modelId: 'model_openai_dalle_3',
+          providerId: 'openai',
+          costClass: 'paid',
+          pricing: { inputPer1M: 40.0, outputPer1M: 40.0 },
+          quotaConfidence: 'observed',
+          privacy: { providerMayTrainOnData: false },
+          defaultStatus: 'enabled',
+          verifiedAt: '2026-10-29',
+          sourceUrl: 'https://platform.openai.com/docs/guides/images',
+        },
+        prompt: 'An Igbo boy in Lagos wearing traditional attire, cinematic natural lighting',
+        apiKey: 'sk-test-valid-openai-key',
+        onChunk: () => {},
+      });
+
+      assert.ok(result.fullText.includes(`data:image/png;base64,${fakeDalleB64}`));
+      assert.ok(!result.fullText.includes('pollinations.ai'));
+      assert.strictEqual(result.costUSD, 0.08);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

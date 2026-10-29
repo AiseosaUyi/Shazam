@@ -131,19 +131,11 @@ export async function determineFallback(
     return null;
   }
 
-  // 2. A pinned route never switches (unless it is Google Imagen on a standard AI Studio key where Imagen 3 is unavailable)
-  let fallbackSpec: TaskSpec = taskSpec;
+  // 2. A pinned route never switches or falls back to a different model
   if (taskSpec.pinnedRouteId) {
-    const isGoogleImagePin =
-      taskSpec.outputModality === 'image' &&
-      (failedRoute.providerId === 'google' || failedRoute.modelId.includes('imagen'));
-    if (isGoogleImagePin && error.type === 'model_unavailable') {
-      // Clear pin for fallback resolution so it can route to verified free image engine
-      fallbackSpec = { ...taskSpec, pinnedRouteId: null };
-    } else {
-      return null;
-    }
+    return null;
   }
+  let fallbackSpec: TaskSpec = taskSpec;
 
   // 3. Check retryable error type
   const isRetryableError =

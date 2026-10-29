@@ -5,6 +5,8 @@ import { executeGemini } from './adapters/gemini';
 import { executeSimulation } from './adapters/simulation';
 import { executeImageGeneration } from './adapters/image-generation';
 import { executeGoogleImagen } from './adapters/imagen';
+import { executeOpenAIDalle } from './adapters/dalle';
+import { executeCloudflareImage } from './adapters/cloudflare-image';
 import { executeOllama } from './adapters/ollama';
 
 export interface DispatcherOptions {
@@ -20,11 +22,16 @@ export interface DispatcherOptions {
 export async function dispatchExecution(options: DispatcherOptions): Promise<AdapterResult> {
   const { route, model } = options;
 
-  if (route.providerId === 'google' && model.outputModality === 'image') {
-    return executeGoogleImagen(options);
-  }
-
-  if (route.providerId === 'pollinations' || model.outputModality === 'image') {
+  if (model.outputModality === 'image') {
+    if (route.providerId === 'google') {
+      return executeGoogleImagen(options);
+    }
+    if (route.providerId === 'openai') {
+      return executeOpenAIDalle(options);
+    }
+    if (route.providerId === 'cloudflare') {
+      return executeCloudflareImage(options);
+    }
     return executeImageGeneration(options);
   }
 
