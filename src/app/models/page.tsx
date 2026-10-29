@@ -318,16 +318,14 @@ export default function ModelsPage() {
                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 shadow-sm font-mono ${
                               isZeroKey
                                 ? 'bg-pink-500/15 text-pink-300 border border-pink-500/30'
+                                : isFree
+                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                                 : 'bg-white/5 text-zinc-300 border border-white/10'
                             }`}>
                               <Palette className="w-3 h-3 text-zinc-400" />
-                              {isZeroKey ? 'FREE IMAGE GEN' : 'VERTEX AI (BYOK)'}
+                              {isZeroKey ? 'FREE IMAGE GEN' : isFree ? '100% FREE (BYOK)' : 'PAID (BYOK)'}
                             </span>
-                            {model.providerId === 'google' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                                VERTEX AI
-                              </span>
-                            ) : isProviderConnected && (
+                            {isProviderConnected && (
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                                 <Check className="w-2.5 h-2.5" /> CONNECTED
                               </span>
@@ -446,34 +444,6 @@ export default function ModelsPage() {
                           <span>Chat Now</span>
                           <ExternalLink className="w-3 h-3" />
                         </Link>
-                      </div>
-                    ) : model.outputModality === 'image' && model.providerId === 'google' ? (
-                      <div className="p-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 text-[11px] text-amber-300 flex items-start justify-between gap-2 shadow-sm">
-                        <div className="flex items-start gap-1.5 leading-tight">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-amber-200">Requires Google Cloud Vertex AI</span>
-                            <span className="block text-[10px] text-zinc-400 mt-0.5">
-                              Standard Google AI Studio keys are for text chat. Imagen 3 requires Google Cloud Vertex AI with billing enabled.
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <Link
-                            href="/?model=FLUX.1%20Schnell%20(Free)"
-                            className="px-2 py-0.5 rounded-md bg-pink-500/20 hover:bg-pink-500/30 text-pink-200 text-[10px] font-semibold transition"
-                          >
-                            Use Free FLUX
-                          </Link>
-                          <a
-                            href="https://cloud.google.com/vertex-ai/generative-ai/docs/image/generate-images"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[9px] text-zinc-400 hover:text-white underline flex items-center gap-0.5"
-                          >
-                            Vertex Docs <ExternalLink className="w-2 h-2" />
-                          </a>
-                        </div>
                       </div>
                     ) : (
                       <div className={`p-2.5 rounded-xl border text-[11px] flex items-center justify-between gap-2 ${

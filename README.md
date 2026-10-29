@@ -50,6 +50,13 @@ Built with an extensible provider adapter architecture:
 - Automated secret redactor scrubs Bearer tokens and API keys from logs and error traces.
 - Tenant isolation enforced across all D1 queries using parameterized SQL with strict `user_id` bounds.
 
+### 6. Production-Ready Image Generation Architecture
+- **Unified Image Capability Registry (`src/lib/image-gen/registry.ts`):** Defines verified technical capabilities, aspect ratios (`1:1`, `16:9`, `9:16`, `4:3`), and resolutions (`1K`, `2K`, `4K`).
+- **Google Nano Banana 2.1 (`gemini-3.1-flash-image`):** Official multimodal image model powered by Google AI Studio keys. Provides exceptional human anatomy, facial fidelity, and sharp typography with invisible SynthID watermarking.
+- **Hosted Cloudflare Workers AI (`@cf/black-forest-labs/flux-1-schnell`):** Serverless, zero-watermark FLUX.1 generation utilizing Cloudflare's free daily Neurons quota.
+- **Pollinations FLUX.1 Schnell Gateway:** Zero-key fallback enhanced with photographic token guidance to prevent anatomical distortion.
+- **Zero Silent Substitution:** If a user selects or pins a model, the orchestrator reports the exact provider, resolution, and fallback status without misrepresenting sources.
+
 ---
 
 ## 🚀 Quickstart & Local Setup

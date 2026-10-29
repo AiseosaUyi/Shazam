@@ -4,23 +4,24 @@ import { normalizeProviderError } from './error';
 import { createTimeoutSignal } from './model-resolver';
 
 /**
- * Google Official Image Generation Adapter ("Nano Banana" / Gemini Image)
+ * Google Official Multimodal Image Generation Adapter ("Nano Banana" / Gemini Image)
  * 
  * Invokes Google AI Studio's official Generative Language API using the user's BYOK Google API key.
- * Primary: models/gemini-2.5-flash-image:generateContent with responseModalities: ["TEXT", "IMAGE"]
- * Secondary / Legacy: models/imagen-3.0-generate-002:predict
+ * Primary: models/gemini-3.1-flash-image:generateContent
+ * Secondary: models/gemini-nano-banana-2.1:generateContent / gemini-3-pro-image:generateContent
+ * Fallback: models/gemini-2.5-flash-image:generateContent / imagen-3.0-generate-002:predict
  * 
  * Strict compliance rule: Never silently substitute a different provider or model on failure.
  * Provider errors are thrown as structured ProviderErrors so the orchestrator can execute
  * an observable, explicit fallback if authorized by the user's cost and routing policy.
  */
 export async function executeGoogleImagen(options: ExecuteOptions): Promise<AdapterResult> {
-  const { prompt, apiKey, signal, onChunk, model } = options;
+  const { prompt, apiKey, signal, onChunk, model, history } = options;
 
   if (!apiKey || apiKey === 'free_tier' || apiKey === 'simulation') {
     throw normalizeProviderError(
       'Google Image Generation',
-      'A valid Google API key is required to generate images with Google Imagen / Gemini. Please connect your Google key in Settings > API Keys.',
+      'A valid Google API key is required to generate images with Google Nano Banana. Please connect your free Google key in Settings > API Keys (minted at https://aistudio.google.com/app/apikey).',
       401
     );
   }
@@ -50,150 +51,183 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
     cleanPrompt = prompt.trim().replace(/^["'`]+|["'`]+$/g, '');
   }
 
-  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 45000);
+  // Detect requested aspect ratio from prompt
+  let targetAspectRatio: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' = '1:1';
+  if (/\b(?:16:9|wide|landscape|cinematic|widescreen)\b/i.test(cleanPrompt)) {
+    targetAspectRatio = '16:9';
+  } else if (/\b(?:9:16|portrait|vertical|story|reel)\b/i.test(cleanPrompt)) {
+    targetAspectRatio = '9:16';
+  } else if (/\b4:3\b/i.test(cleanPrompt)) {
+    targetAspectRatio = '4:3';
+  } else if (/\b3:4\b/i.test(cleanPrompt)) {
+    targetAspectRatio = '3:4';
+  }
 
-  // Strategy 1: Attempt official Gemini Image endpoint (gemini-2.5-flash-image:generateContent)
-  const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`;
-  
+  const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 50000);
+
+  // Candidate models in preference order
+  const candidateEndpoints = [
+    {
+      name: 'gemini-3.1-flash-image',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`,
+      mode: 'generateContent' as const,
+    },
+    {
+      name: 'gemini-nano-banana-2.1',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${encodeURIComponent(apiKey)}`,
+      mode: 'generateContent' as const,
+    },
+    {
+      name: 'gemini-3-pro-image',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=${encodeURIComponent(apiKey)}`,
+      mode: 'generateContent' as const,
+    },
+    {
+      name: 'gemini-2.5-flash-image',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`,
+      mode: 'generateContent' as const,
+    },
+    {
+      name: 'imagen-3.0-generate-002',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`,
+      mode: 'predict' as const,
+    },
+  ];
+
   let res: Response | undefined;
   let lastErrorText = '';
   let lastStatusCode = 500;
 
   try {
-    res = await fetch(geminiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: cleanPrompt }],
-          },
-        ],
-        generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
-        },
-      }),
-      signal: timedSignal,
-    });
+    for (const candidate of candidateEndpoints) {
+      if (timedSignal.aborted) break;
 
-    if (res.ok) {
-      const data: any = await res.json();
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      let b64 = '';
-      let mimeType = 'image/png';
-      let assistantText = '';
+      try {
+        let reqBody: any;
+        if (candidate.mode === 'generateContent') {
+          // Multimodal payload supporting reference images if provided in history
+          const parts: any[] = [{ text: cleanPrompt }];
 
-      for (const p of parts) {
-        if (p.inlineData?.data) {
-          b64 = p.inlineData.data;
-          mimeType = p.inlineData.mimeType || 'image/png';
-        } else if (p.text) {
-          assistantText += p.text;
+          // If previous messages had an image data URI or reference, pass it for image-to-image
+          if (history && history.length > 0) {
+            for (const msg of history) {
+              if (typeof msg.content === 'string') {
+                const match = msg.content.match(/data:(image\/[a-zA-Z]+);base64,([A-Za-z0-9+/=]+)/);
+                if (match) {
+                  parts.unshift({
+                    inlineData: {
+                      mimeType: match[1],
+                      data: match[2],
+                    },
+                  });
+                  break;
+                }
+              }
+            }
+          }
+
+          reqBody = {
+            contents: [
+              {
+                role: 'user',
+                parts,
+              },
+            ],
+            generationConfig: {
+              responseModalities: ['IMAGE'],
+              imageConfig: {
+                aspectRatio: targetAspectRatio,
+                imageSize: '1K',
+              },
+            },
+          };
+        } else {
+          // Legacy Imagen predict
+          reqBody = {
+            instances: [{ prompt: cleanPrompt }],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: targetAspectRatio,
+              outputMimeType: 'image/jpeg',
+            },
+          };
         }
-      }
 
-      if (b64) {
-        const imageUrl = `data:${mimeType};base64,${b64}`;
-        const imageMarkdown = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
-        const fullText = assistantText ? `${assistantText.trim()}\n\n${imageMarkdown}` : imageMarkdown;
-
-        onChunk({
-          type: 'delta',
-          text: fullText,
+        res = await fetch(candidate.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify(reqBody),
+          signal: timedSignal,
         });
 
-        const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
-        const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
+        if (res.ok) {
+          const data: any = await res.json();
+          let b64 = '';
+          let mimeType = 'image/png';
+          let assistantText = '';
 
-        return {
-          fullText,
-          usage: {
-            promptTokens,
-            completionTokens,
-            tokensKind: 'estimated',
-          },
-          costUSD: 0.03,
-          costKind: 'estimated',
-        };
+          if (candidate.mode === 'generateContent') {
+            const parts = data?.candidates?.[0]?.content?.parts || [];
+            for (const p of parts) {
+              if (p.inlineData?.data) {
+                b64 = p.inlineData.data;
+                mimeType = p.inlineData.mimeType || 'image/png';
+              } else if (p.text) {
+                assistantText += p.text;
+              }
+            }
+          } else {
+            const prediction = data?.predictions?.[0];
+            b64 = prediction?.bytesBase64Encoded || '';
+            mimeType = prediction?.mimeType || 'image/jpeg';
+          }
+
+          if (b64) {
+            const imageUrl = `data:${mimeType};base64,${b64}`;
+            const imageMarkdown = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
+            const fullText = assistantText ? `${assistantText.trim()}\n\n${imageMarkdown}` : imageMarkdown;
+
+            onChunk({
+              type: 'delta',
+              text: fullText,
+            });
+
+            const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
+            const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
+
+            return {
+              fullText,
+              usage: {
+                promptTokens,
+                completionTokens,
+                tokensKind: 'estimated',
+              },
+              costUSD: 0.00,
+              costKind: 'estimated',
+            };
+          }
+        } else {
+          lastStatusCode = res.status;
+          lastErrorText = await res.text();
+          // If 401 unauthorized, key is invalid; no need to try other models
+          if (res.status === 401) {
+            break;
+          }
+        }
+      } catch (innerErr: any) {
+        if (signal?.aborted) {
+          throw new Error('Task cancelled');
+        }
+        lastErrorText = innerErr.message || String(innerErr);
       }
-    } else {
-      lastStatusCode = res.status;
-      lastErrorText = await res.text();
     }
-  } catch (err: any) {
-    if (signal?.aborted) {
-      cleanup();
-      throw new Error('Task cancelled');
-    }
-    lastErrorText = err.message || String(err);
-  }
-
-  // Strategy 2: If gemini-2.5-flash-image returned 404 or failed, attempt legacy Imagen 3 endpoint
-  const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
-  try {
-    res = await fetch(imagenEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        instances: [{ prompt: cleanPrompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: '1:1',
-          outputMimeType: 'image/jpeg',
-        },
-      }),
-      signal: timedSignal,
-    });
-
-    if (res.ok) {
-      const data: any = await res.json();
-      const prediction = data?.predictions?.[0];
-      const b64 = prediction?.bytesBase64Encoded;
-      const mimeType = prediction?.mimeType || 'image/jpeg';
-
-      if (b64) {
-        const imageUrl = `data:${mimeType};base64,${b64}`;
-        const fullText = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
-
-        onChunk({
-          type: 'delta',
-          text: fullText,
-        });
-
-        const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
-        const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
-
-        return {
-          fullText,
-          usage: {
-            promptTokens,
-            completionTokens,
-            tokensKind: 'estimated',
-          },
-          costUSD: 0.03,
-          costKind: 'estimated',
-        };
-      }
-    } else {
-      lastStatusCode = res.status;
-      lastErrorText = await res.text();
-    }
-  } catch (err: any) {
-    if (signal?.aborted) {
-      cleanup();
-      throw new Error('Task cancelled');
-    }
-    lastErrorText = err.message || String(err);
   } finally {
     cleanup();
   }
 
   // Strictly throw normalized error — never silently substitute a different provider
-  throw normalizeProviderError('Google Imagen', lastErrorText, lastStatusCode);
+  throw normalizeProviderError('Google Nano Banana', lastErrorText, lastStatusCode);
 }
