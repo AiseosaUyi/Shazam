@@ -1,0 +1,104 @@
+{
+  "name": "shazam-vscode",
+  "displayName": "Shazam AI - Multi-Provider Coding Assistant",
+  "description": "Transparent zero-markup AI router, Cmd+K inline diffing, self-healing diagnostics fixes, and local Ollama support.",
+  "version": "0.1.0",
+  "publisher": "shazam-ai",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Machine Learning",
+    "Linters"
+  ],
+  "keywords": [
+    "ai",
+    "router",
+    "ollama",
+    "claude",
+    "gemini",
+    "coding agent",
+    "diff"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "shazam.edit",
+        "title": "Shazam: Inline Code Edit (Cmd+K)",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "shazam.fix",
+        "title": "Shazam: Fix with AI",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "shazam.status",
+        "title": "Shazam: Check Router & Local Companion Health",
+        "icon": "$(radio-tower)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "shazam.edit",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "editorTextFocus && !editorReadonly"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "shazam.edit",
+          "group": "shazam@1"
+        },
+        {
+          "command": "shazam.fix",
+          "group": "shazam@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Shazam AI",
+      "properties": {
+        "shazam.daemonUrl": {
+          "type": "string",
+          "default": "http://localhost:4040",
+          "description": "Local companion daemon loopback URL (from npx shazam-agent)"
+        },
+        "shazam.cloudUrl": {
+          "type": "string",
+          "default": "https://shazam-opal.vercel.app",
+          "description": "Shazam AI production cloud endpoint"
+        },
+        "shazam.preferredModel": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "claude-sonnet-5-5",
+            "gpt-6.1-terra",
+            "gemini-3.8-flash",
+            "ollama-local"
+          ],
+          "description": "Preferred model target or smart multi-provider routing"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}
