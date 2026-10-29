@@ -377,11 +377,16 @@ export default function WorkspacePage() {
 
     // Check if this is an image generation request
     const isImagePrompt = /^(draw|paint|sketch|illustrate|render|generate (an? )?(image|picture|photo)|create (an? )?(image|picture|photo)|picture of|photo of|illustration of)\b/i.test(userPrompt.trim());
-    const isPinnedImage = pinnedModelName && (pinnedModelName.toLowerCase().includes('flux') || pinnedModelName.toLowerCase().includes('image'));
+    const isPinnedImage = pinnedModelName && (
+      pinnedModelName.toLowerCase().includes('flux') ||
+      pinnedModelName.toLowerCase().includes('image') ||
+      pinnedModelName.toLowerCase().includes('banana') ||
+      pinnedModelName.toLowerCase().includes('imagen')
+    );
     
-    // If prompt is an image request, avoid passing a text-only pinned model that would cause collision
+    // If prompt is an image request, avoid passing a text-only pinned model that would cause collision; prefer Google Nano Banana if Google key is active
     const effectivePinned = isImagePrompt && !isPinnedImage
-      ? undefined
+      ? (connectedProviders['google'] ? 'Google Imagen 3 (Nano Banana)' : undefined)
       : (pinnedModelName || undefined);
 
     const effectiveTaskClass = isPinnedImage || isImagePrompt
@@ -652,15 +657,195 @@ export default function WorkspacePage() {
     });
   }
 
+  function handleToggleImageMode() {
+    const isImagePinned = pinnedModelName && (
+      pinnedModelName.toLowerCase().includes('flux') ||
+      pinnedModelName.toLowerCase().includes('banana') ||
+      pinnedModelName.toLowerCase().includes('imagen')
+    );
+    if (isImagePinned) {
+      setPinnedModelName('');
+      try { localStorage.removeItem('shazam_pinned_model'); } catch {}
+    } else {
+      const nanoBanana = models.find((m) => m.id === 'model_google_imagen_3' || m.name.toLowerCase().includes('banana') || m.name.toLowerCase().includes('imagen'));
+      const flux = models.find((m) => m.id === 'model_flux_1_schnell' || m.name.toLowerCase().includes('flux'));
+      const target = (connectedProviders['google'] && nanoBanana) ? nanoBanana.name : (flux?.name || 'Google Imagen 3 (Nano Banana)');
+      setPinnedModelName(target);
+      try { localStorage.setItem('shazam_pinned_model', target); } catch {}
+    }
+  }
+
+  function getModelButtonLabel() {
+    if (!pinnedModelName) {
+      return connectedProviders['google'] ? 'Gemini Ready' : 'Auto';
+    }
+    if (pinnedModelName.toLowerCase().includes('banana') || pinnedModelName.toLowerCase().includes('imagen')) {
+      return 'Google Nano Banana';
+    }
+    if (pinnedModelName.toLowerCase().includes('flux')) {
+      return 'FLUX.1 Schnell';
+    }
+    return pinnedModelName;
+  }
+
+  function renderModelDropdown() {
+    return (
+      <div className="absolute right-0 bottom-full mb-2 w-72 max-h-80 overflow-y-auto rounded-2xl bg-[#12131a] border border-white/10 shadow-2xl p-2 space-y-1 z-50 text-xs font-sans backdrop-blur-2xl">
+        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+          Intelligent Routing
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPinnedModelName('');
+            try { localStorage.removeItem('shazam_pinned_model'); } catch {}
+            setModelDropdownOpen(false);
+          }}
+          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
+            !pinnedModelName ? 'bg-white/10 text-white font-medium border border-white/15' : 'text-zinc-300 hover:bg-white/5'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Zap className="w-3.5 h-3.5 text-zinc-400" />
+            <div>
+              <div className="font-medium text-zinc-200">Auto Routing</div>
+              <div className="text-[10px] text-zinc-500">Automatically routes per task</div>
+            </div>
+          </div>
+          <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+            {connectedProviders['google'] ? 'Gemini Ready' : 'Auto'}
+          </span>
+        </button>
+
+        <div className="border-t border-white/5 my-1" />
+        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+          Image Generation
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            const target = 'Google Imagen 3 (Nano Banana)';
+            setPinnedModelName(target);
+            try { localStorage.setItem('shazam_pinned_model', target); } catch {}
+            setModelDropdownOpen(false);
+          }}
+          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
+            pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
+              ? 'bg-white/10 text-white font-medium border border-white/15'
+              : 'text-zinc-300 hover:bg-white/5'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <div className="truncate">
+              <div className="font-medium text-zinc-200 truncate">Google Imagen 3 (Nano Banana)</div>
+              <div className="text-[10px] text-zinc-500 truncate">High-fidelity Google model</div>
+            </div>
+          </div>
+          <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+            {connectedProviders['google'] ? 'Connected' : 'Google AI'}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const target = 'FLUX.1 Schnell (Free)';
+            setPinnedModelName(target);
+            try { localStorage.setItem('shazam_pinned_model', target); } catch {}
+            setModelDropdownOpen(false);
+          }}
+          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
+            pinnedModelName?.toLowerCase().includes('flux')
+              ? 'bg-white/10 text-white font-medium border border-white/15'
+              : 'text-zinc-300 hover:bg-white/5'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Palette className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <div className="truncate">
+              <div className="font-medium text-zinc-200 truncate">FLUX.1 Schnell</div>
+              <div className="text-[10px] text-zinc-500 truncate">Fast image generation</div>
+            </div>
+          </div>
+        </button>
+
+        <div className="border-t border-white/5 my-1" />
+        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+          Google Gemini
+        </div>
+
+        {models
+          .filter((m) => (m.providerModelId?.includes('gemini') || m.id.includes('gemini') || m.name.toLowerCase().includes('gemini')) && m.outputModality !== 'image')
+          .map((m) => {
+            const isModelConnected = connectedProviders['google'];
+            const isPinned = pinnedModelName === m.name;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  setPinnedModelName(m.name);
+                  try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
+                  setModelDropdownOpen(false);
+                }}
+                className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
+                  isPinned ? 'bg-white/10 text-white font-medium border border-white/15' : 'text-zinc-300 hover:bg-white/5'
+                }`}
+              >
+                <span className="truncate text-zinc-200">{m.name}</span>
+                {isModelConnected && (
+                  <span className="text-[9px] text-zinc-400 font-mono shrink-0 ml-1 flex items-center gap-0.5">
+                    <Check className="w-2.5 h-2.5" /> Connected
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+        {models.some((m) => m.providerId === 'ollama') && (
+          <>
+            <div className="border-t border-white/5 my-1" />
+            <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+              Local Compute
+            </div>
+            {models
+              .filter((m) => m.providerId === 'ollama')
+              .map((m) => {
+                const isPinned = pinnedModelName === m.name;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setPinnedModelName(m.name);
+                      try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
+                      setModelDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
+                      isPinned ? 'bg-white/10 text-white font-medium border border-white/15' : 'text-zinc-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="truncate text-zinc-200">{m.name}</span>
+                    <span className="text-[9px] text-zinc-400 font-mono">Local</span>
+                  </button>
+                );
+              })}
+          </>
+        )}
+      </div>
+    );
+  }
+
   const activeRoutingLabel = pinnedModelName
     ? pinnedModelName
-    : costPolicy === 'free_only'
-    ? 'Free Tier Only'
     : costPolicy === 'best_quality'
     ? 'Best Quality'
     : costPolicy === 'lowest_cost'
     ? 'Lowest Cost'
-    : 'Auto · Free Tier';
+    : 'Auto';
 
   return (
     <div className="flex-1 h-full min-h-0 min-w-0 flex overflow-hidden ambient-glow relative font-sans">
@@ -1055,236 +1240,38 @@ export default function WorkspacePage() {
                     )}
                   </div>
 
-                  <div className="relative flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     {/* One-Click Image Mode Toggle Chip */}
                     <button
                       type="button"
-                      onClick={() => {
-                        if (pinnedModelName?.toLowerCase().includes('flux')) {
-                          setPinnedModelName('');
-                          try { localStorage.removeItem('shazam_pinned_model'); } catch {}
-                        } else {
-                          const flux = models.find((m) => m.id === 'model_flux_1_schnell' || m.name.toLowerCase().includes('flux'));
-                          const target = flux?.name || 'FLUX.1 Schnell (Free)';
-                          setPinnedModelName(target);
-                          try { localStorage.setItem('shazam_pinned_model', target); } catch {}
-                        }
-                      }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-medium transition shadow-sm border ${
-                        pinnedModelName?.toLowerCase().includes('flux')
-                          ? 'bg-pink-500/20 text-pink-300 border-pink-500/40 shadow-pink-500/10'
-                          : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-400 hover:text-zinc-200'
+                      onClick={handleToggleImageMode}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition border ${
+                        pinnedModelName?.toLowerCase().includes('flux') || pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
+                          ? 'bg-white/10 text-white border-white/20'
+                          : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 text-zinc-400 hover:text-zinc-200'
                       }`}
-                      title={pinnedModelName?.toLowerCase().includes('flux') ? 'Image Mode Active (Click to return to Auto)' : 'Switch to FLUX.1 Free Image Generation'}
+                      title="Toggle Image Generation"
                     >
-                      <Palette className="w-3.5 h-3.5 text-pink-400" />
+                      <Palette className="w-3.5 h-3.5 text-zinc-400" />
                       <span>Image Gen</span>
-                      {pinnedModelName?.toLowerCase().includes('flux') && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse" />
-                      )}
                     </button>
 
                     {/* Model Dropdown Button */}
-                    <button
-                      type="button"
-                      onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] transition shadow-sm ${
-                        pinnedModelName?.toLowerCase().includes('flux')
-                          ? 'bg-pink-500/10 border-pink-500/30 text-pink-200'
-                          : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-300'
-                      }`}
-                    >
-                      {pinnedModelName?.toLowerCase().includes('flux') ? (
-                        <Palette className="w-3.5 h-3.5 text-pink-400" />
-                      ) : (
-                        <Cpu className="w-3.5 h-3.5 text-amber-400" />
-                      )}
-                      <span className="font-mono truncate max-w-[140px]">
-                        {pinnedModelName
-                          ? (pinnedModelName.toLowerCase().includes('flux') ? 'FLUX.1 Schnell' : pinnedModelName)
-                          : (connectedProviders['google'] ? 'Auto · Gemini Ready' : 'Auto · Free Preferred')}
-                      </span>
-                      {pinnedModelName?.toLowerCase().includes('flux') ? (
-                        <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse" />
-                      ) : connectedProviders['google'] && !pinnedModelName ? (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      ) : null}
-                      <ChevronDown className="w-3 h-3 text-zinc-500" />
-                    </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-zinc-300 text-xs transition"
+                      >
+                        <Cpu className="w-3.5 h-3.5 text-zinc-400" />
+                        <span className="font-mono truncate max-w-[140px]">
+                          {getModelButtonLabel()}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-zinc-500" />
+                      </button>
 
-                    {modelDropdownOpen && (
-                      <div className="absolute right-0 bottom-full mb-1.5 w-72 max-h-80 overflow-y-auto rounded-2xl bg-[#161822] border border-white/10 shadow-2xl p-2 space-y-1 z-40 text-xs font-sans backdrop-blur-xl">
-                        {/* Auto Routing Section */}
-                        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                          Intelligent Auto Routing
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPinnedModelName('');
-                            try { localStorage.removeItem('shazam_pinned_model'); } catch {}
-                            setModelDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
-                            !pinnedModelName ? 'bg-amber-500/15 text-amber-300 font-medium border border-amber-500/20' : 'text-zinc-300 hover:bg-white/5'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Zap className="w-3.5 h-3.5 text-amber-400" />
-                            <div>
-                              <div className="font-medium">Auto · Free Tier Routing</div>
-                              <div className="text-[10px] text-zinc-400">Routes to best free model per task</div>
-                            </div>
-                          </div>
-                          <span className="text-[10px] text-emerald-400 font-mono font-medium shrink-0 ml-1">
-                            {connectedProviders['google'] ? 'Gemini Active' : 'Default'}
-                          </span>
-                        </button>
-
-                        {/* Image Generation Section */}
-                        <div className="border-t border-white/5 my-1.5" />
-                        <div className="px-2 py-0.5 text-[10px] font-semibold text-pink-400 uppercase tracking-wider flex items-center justify-between">
-                          <span>🎨 Free Image Generation</span>
-                          <span className="text-[9px] text-zinc-500 font-mono lowercase">no key needed</span>
-                        </div>
-
-                        {models
-                          .filter((m) => m.outputModality === 'image' || m.id.includes('flux') || m.name.toLowerCase().includes('flux'))
-                          .map((m) => {
-                            const isPinned = pinnedModelName === m.name || (pinnedModelName?.toLowerCase().includes('flux') && m.name.toLowerCase().includes('flux'));
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => {
-                                  setPinnedModelName(m.name);
-                                  try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                                  setModelDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
-                                  isPinned ? 'bg-pink-500/15 text-pink-300 font-medium border border-pink-500/30' : 'text-zinc-300 hover:bg-white/5'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <Palette className="w-3.5 h-3.5 text-pink-400 shrink-0" />
-                                  <div className="truncate">
-                                    <div className="font-medium truncate">{m.name}</div>
-                                    <div className="text-[10px] text-zinc-400 truncate">12B Rectified Flow · Photorealistic</div>
-                                  </div>
-                                </div>
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 font-mono font-semibold shrink-0 ml-1">
-                                  100% Free
-                                </span>
-                              </button>
-                            );
-                          })}
-
-                        {/* Google Gemini Section */}
-                        <div className="border-t border-white/5 my-1.5" />
-                        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                          <span>Google Gemini</span>
-                          <span className="text-[9px] text-emerald-400 font-mono">Free Tier Ready</span>
-                        </div>
-
-                        {models
-                          .filter((m) => (m.providerModelId?.includes('gemini') || m.id.includes('gemini') || m.name.toLowerCase().includes('gemini')) && m.outputModality !== 'image')
-                          .map((m) => {
-                            const isModelConnected = connectedProviders['google'];
-                            const isPinned = pinnedModelName === m.name;
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => {
-                                  setPinnedModelName(m.name);
-                                  try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                                  setModelDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                                  isPinned ? 'bg-amber-500/15 text-amber-300 font-medium border border-amber-500/20' : 'text-zinc-300 hover:bg-white/5'
-                                }`}
-                              >
-                                <span className="truncate">{m.name}</span>
-                                <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                                  {isModelConnected && (
-                                    <span className="text-[9px] text-emerald-400 font-mono font-semibold flex items-center gap-0.5">
-                                      <Check className="w-2.5 h-2.5" /> Connected
-                                    </span>
-                                  )}
-                                  <span className="text-[9px] text-zinc-400 font-mono">100% Free</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-
-                        {/* Local Compute (Ollama) */}
-                        {models.some((m) => m.providerId === 'ollama') && (
-                          <>
-                            <div className="border-t border-white/5 my-1.5" />
-                            <div className="px-2 py-0.5 text-[10px] font-semibold text-cyan-400 uppercase tracking-wider flex items-center justify-between">
-                              <span>Local Compute (Ollama)</span>
-                              <span className="text-[9px] text-cyan-400/80 font-mono">$0.00 Private</span>
-                            </div>
-                            {models
-                              .filter((m) => m.providerId === 'ollama')
-                              .map((m) => {
-                                const isPinned = pinnedModelName === m.name;
-                                return (
-                                  <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setPinnedModelName(m.name);
-                                      try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                                      setModelDropdownOpen(false);
-                                    }}
-                                    className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                                      isPinned ? 'bg-cyan-500/15 text-cyan-300 font-medium border border-cyan-500/20' : 'text-zinc-300 hover:bg-white/5'
-                                    }`}
-                                  >
-                                    <span className="truncate">{m.name}</span>
-                                    <span className="text-[9px] text-cyan-400 font-mono">Local</span>
-                                  </button>
-                                );
-                              })}
-                          </>
-                        )}
-
-                        {/* Frontier Cloud Models */}
-                        <div className="border-t border-white/5 my-1.5" />
-                        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-                          Frontier Models (BYOK)
-                        </div>
-                        {models
-                          .filter((m) => 
-                            !m.providerModelId?.includes('gemini') && 
-                            !m.id.includes('gemini') && 
-                            !m.name.toLowerCase().includes('gemini') &&
-                            m.outputModality !== 'image' &&
-                            m.providerId !== 'ollama'
-                          )
-                          .map((m) => {
-                            const isPinned = pinnedModelName === m.name;
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => {
-                                  setPinnedModelName(m.name);
-                                  try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                                  setModelDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                                  isPinned ? 'bg-amber-500/15 text-amber-300 font-medium border border-amber-500/20' : 'text-zinc-300 hover:bg-white/5'
-                                }`}
-                              >
-                                <span className="truncate">{m.name}</span>
-                              </button>
-                            );
-                          })}
-                      </div>
-                    )}
+                      {modelDropdownOpen && renderModelDropdown()}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1438,7 +1425,9 @@ export default function WorkspacePage() {
                   }}
                   rows={1}
                   placeholder={
-                    pinnedModelName?.toLowerCase().includes('flux')
+                    pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
+                      ? "Describe an image to generate with Google Nano Banana (e.g. Cyberpunk samurai in neon Lagos)..."
+                      : pinnedModelName?.toLowerCase().includes('flux')
                       ? "Describe an image to generate with FLUX.1 (e.g. Cyberpunk samurai in neon Tokyo rain)..."
                       : "Ask anything, build an app, or type 'draw ...' to generate images..."
                   }
@@ -1461,56 +1450,41 @@ export default function WorkspacePage() {
                       onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
                       className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
                     >
-                      <Folder className="w-3.5 h-3.5 text-amber-400" />
+                      <Folder className="w-3.5 h-3.5 text-zinc-400" />
                       <span>{selectedProject ? selectedProject.name : 'Context'}</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (pinnedModelName?.toLowerCase().includes('flux')) {
-                          setPinnedModelName('');
-                          try { localStorage.removeItem('shazam_pinned_model'); } catch {}
-                        } else {
-                          const flux = models.find((m) => m.id === 'model_flux_1_schnell' || m.name.toLowerCase().includes('flux'));
-                          const target = flux?.name || 'FLUX.1 Schnell (Free)';
-                          setPinnedModelName(target);
-                          try { localStorage.setItem('shazam_pinned_model', target); } catch {}
-                        }
-                      }}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium transition ${
-                        pinnedModelName?.toLowerCase().includes('flux')
-                          ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 shadow-sm'
-                          : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-200'
+                      onClick={handleToggleImageMode}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition border ${
+                        pinnedModelName?.toLowerCase().includes('flux') || pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
+                          ? 'bg-white/10 text-white border-white/20'
+                          : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 text-zinc-400 hover:text-zinc-200'
                       }`}
-                      title={pinnedModelName?.toLowerCase().includes('flux') ? 'Image Mode Active (Click to return to Auto)' : 'Switch to FLUX.1 Free Image Generation'}
+                      title="Toggle Image Generation"
                     >
-                      <Palette className="w-3.5 h-3.5 text-pink-400" />
+                      <Palette className="w-3.5 h-3.5 text-zinc-400" />
                       <span>Image</span>
-                      {pinnedModelName?.toLowerCase().includes('flux') && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse" />
-                      )}
                     </button>
 
                     <div className="h-3 w-px bg-white/10" />
 
-                    <button
-                      type="button"
-                      onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                      className="flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition"
-                    >
-                      {pinnedModelName?.toLowerCase().includes('flux') ? (
-                        <Palette className="w-3 h-3 text-pink-400" />
-                      ) : (
-                        <Cpu className="w-3 h-3 text-amber-400" />
-                      )}
-                      <span className="truncate max-w-[120px]">
-                        {pinnedModelName
-                          ? (pinnedModelName.toLowerCase().includes('flux') ? 'FLUX.1 Schnell' : pinnedModelName)
-                          : (connectedProviders['google'] ? 'Gemini Ready' : 'Auto (Free)')}
-                      </span>
-                      <ChevronDown className="w-2.5 h-2.5 text-zinc-500" />
-                    </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-zinc-300 text-xs transition"
+                      >
+                        <Cpu className="w-3.5 h-3.5 text-zinc-400" />
+                        <span className="font-mono truncate max-w-[130px]">
+                          {getModelButtonLabel()}
+                        </span>
+                        <ChevronDown className="w-3 h-3 text-zinc-500" />
+                      </button>
+
+                      {modelDropdownOpen && renderModelDropdown()}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">

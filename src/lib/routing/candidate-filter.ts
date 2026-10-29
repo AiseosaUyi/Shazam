@@ -28,18 +28,23 @@ export function filterCandidates(
     const pinSupportsModality = routes.some((r) => {
       const m = models.get(r.modelId);
       if (!m) return false;
-      const matchesPin =
+      const isDirectMatch =
         r.id.toLowerCase() === pin ||
         r.modelId.toLowerCase() === pin ||
         m.id.toLowerCase() === pin ||
         m.providerModelId.toLowerCase() === pin ||
-        m.name.toLowerCase() === pin ||
-        (pin.includes('claude') && (m.id.includes('claude') || m.name.toLowerCase().includes('claude'))) ||
-        (pin.includes('gpt') && (m.id.includes('gpt') || m.name.toLowerCase().includes('gpt'))) ||
-        (pin.includes('gemini') && (m.id.includes('gemini') || m.name.toLowerCase().includes('gemini'))) ||
-        (pin.includes('deepseek') && (m.id.includes('deepseek') || m.name.toLowerCase().includes('deepseek'))) ||
+        m.name.toLowerCase() === pin;
+
+      if (isDirectMatch) {
+        return m.outputModality === taskSpec.outputModality;
+      }
+
+      const isSemanticImagePin =
+        (pin.includes('banana') && (m.id.includes('imagen') || m.name.toLowerCase().includes('banana'))) ||
+        (pin.includes('imagen') && (m.id.includes('imagen') || m.name.toLowerCase().includes('imagen'))) ||
         (pin.includes('flux') && (m.id.includes('flux') || m.name.toLowerCase().includes('flux')));
-      return matchesPin && m.outputModality === taskSpec.outputModality;
+
+      return isSemanticImagePin && m.outputModality === taskSpec.outputModality;
     });
 
     if (!pinSupportsModality) {
@@ -81,17 +86,22 @@ export function filterCandidates(
     // 2. Pinned route / model check
     if (effectivePinnedRouteId) {
       const pin = effectivePinnedRouteId.toLowerCase();
+      const isRouteIdPin = pin.startsWith('route_');
       const matchesPin =
         route.id.toLowerCase() === pin ||
         route.modelId.toLowerCase() === pin ||
         model.id.toLowerCase() === pin ||
         model.providerModelId.toLowerCase() === pin ||
         model.name.toLowerCase() === pin ||
-        (pin.includes('claude') && (model.id.includes('claude') || model.name.toLowerCase().includes('claude'))) ||
-        (pin.includes('gpt') && (model.id.includes('gpt') || model.name.toLowerCase().includes('gpt'))) ||
-        (pin.includes('gemini') && (model.id.includes('gemini') || model.name.toLowerCase().includes('gemini'))) ||
-        (pin.includes('deepseek') && (model.id.includes('deepseek') || model.name.toLowerCase().includes('deepseek'))) ||
-        (pin.includes('flux') && (model.id.includes('flux') || model.name.toLowerCase().includes('flux')));
+        (!isRouteIdPin && (
+          (pin.includes('claude') && (model.id.includes('claude') || model.name.toLowerCase().includes('claude'))) ||
+          (pin.includes('gpt') && (model.id.includes('gpt') || model.name.toLowerCase().includes('gpt'))) ||
+          (pin.includes('gemini') && (model.id.includes('gemini') || model.name.toLowerCase().includes('gemini') || (taskSpec.outputModality === 'image' && model.providerId === 'google'))) ||
+          (pin.includes('deepseek') && (model.id.includes('deepseek') || model.name.toLowerCase().includes('deepseek'))) ||
+          (pin.includes('flux') && (model.id.includes('flux') || model.name.toLowerCase().includes('flux'))) ||
+          (pin.includes('imagen') && (model.id.includes('imagen') || model.name.toLowerCase().includes('imagen'))) ||
+          (pin.includes('banana') && (model.id.includes('imagen') || model.name.toLowerCase().includes('banana')))
+        ));
       if (!matchesPin) {
         cand.rejection = `Manual pin active on: ${effectivePinnedRouteId}.`;
         rejected.push(cand);

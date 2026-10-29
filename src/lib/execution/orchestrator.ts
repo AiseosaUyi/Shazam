@@ -118,7 +118,9 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
 
   const isImagePin = pinnedModelName && (
     pinnedModelName.toLowerCase().includes('flux') ||
-    pinnedModelName.toLowerCase().includes('image')
+    pinnedModelName.toLowerCase().includes('image') ||
+    pinnedModelName.toLowerCase().includes('banana') ||
+    pinnedModelName.toLowerCase().includes('imagen')
   );
 
   const taskSpec = {

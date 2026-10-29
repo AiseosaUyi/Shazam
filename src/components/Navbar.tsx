@@ -60,30 +60,23 @@ export function Navbar() {
     { href: '/', label: 'Chat', icon: MessageSquare },
     { href: '/cowork', label: 'Co-Work', icon: Zap },
     { href: '/agent', label: 'Code', icon: Code2 },
-    { href: '/models', label: 'Models', icon: Cpu },
-    { href: '/connections', label: 'API Keys (Free)', icon: KeyRound },
   ];
 
   return (
     <header className="h-14 shrink-0 border-b border-white/[0.06] bg-[#08090c]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center z-50">
       <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
-        {/* Brand & Primary Navigation */}
-        <div className="flex items-center gap-8">
+        {/* Brand & Primary Navigation (Left-aligned together) */}
+        <div className="flex items-center gap-6">
           <Link
             href="/"
             className="flex items-center gap-2.5 group focus:outline-none"
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform duration-200">
+            <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform duration-200">
               <Zap className="w-4 h-4 text-zinc-950 fill-zinc-950 stroke-[2.5]" />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-base tracking-tight text-white font-sans">
-                Shazam
-              </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 tracking-wider uppercase font-mono">
-                AI
-              </span>
-            </div>
+            <span className="font-bold text-base tracking-tight text-white font-sans">
+              Shazam
+            </span>
           </Link>
 
           {/* Primary View Switcher */}
@@ -101,7 +94,7 @@ export function Navbar() {
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-amber-400' : 'text-zinc-500'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-zinc-200' : 'text-zinc-500'}`} />
                   <span>{tab.label}</span>
                 </Link>
               );
@@ -109,21 +102,8 @@ export function Navbar() {
           </nav>
         </div>
 
-        {/* Right Side: Quick Action + Profile Dropdown */}
+        {/* Right Side: Profile Dropdown */}
         <div className="flex items-center gap-3">
-          {pathname === '/' && (
-            <Link
-              href="/"
-              onClick={() => {
-                window.location.href = '/';
-              }}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium transition"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Chat</span>
-            </Link>
-          )}
-
           {loading ? null : user ? (
             <div className="relative" ref={userMenuRef}>
               <button
@@ -131,7 +111,7 @@ export function Navbar() {
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition text-xs text-zinc-300 focus:outline-none"
               >
-                <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-semibold text-xs">
+                <div className="w-6 h-6 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center text-zinc-200 font-semibold text-xs">
                   {user.email.charAt(0).toUpperCase()}
                 </div>
                 <span className="max-w-[120px] truncate text-zinc-300 font-medium hidden sm:inline">
@@ -142,23 +122,28 @@ export function Navbar() {
 
               {/* Glass Dropdown Menu */}
               {userMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-[#0f1117]/95 border border-white/[0.08] shadow-2xl backdrop-blur-2xl py-2 z-50 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-[#0f1117]/95 border border-white/[0.08] shadow-2xl backdrop-blur-2xl py-2 z-50 text-xs text-zinc-300 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-3 py-2 border-b border-white/[0.06] mb-1">
                     <p className="text-[11px] text-zinc-500">Signed in as</p>
                     <p className="font-medium text-white truncate mt-0.5">{user.email}</p>
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-[10px] text-emerald-400 font-medium">Free Tier Active</span>
-                    </div>
                   </div>
+
+                  <Link
+                    href="/models"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] hover:text-white transition"
+                  >
+                    <Cpu className="w-4 h-4 text-zinc-400" />
+                    <span>Models & Routing</span>
+                  </Link>
 
                   <Link
                     href="/connections"
                     onClick={() => setUserMenuOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] hover:text-white transition"
                   >
-                    <KeyRound className="w-4 h-4 text-amber-400" />
-                    <span>AI Provider Keys (Free & BYOK)</span>
+                    <KeyRound className="w-4 h-4 text-zinc-400" />
+                    <span>API Keys & Providers</span>
                   </Link>
 
                   <Link
@@ -166,8 +151,8 @@ export function Navbar() {
                     onClick={() => setUserMenuOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] hover:text-white transition"
                   >
-                    <BarChart3 className="w-4 h-4 text-blue-400" />
-                    <span>Usage & Budget Ledger</span>
+                    <BarChart3 className="w-4 h-4 text-zinc-400" />
+                    <span>Usage & Ledger</span>
                   </Link>
 
                   <Link
@@ -175,18 +160,18 @@ export function Navbar() {
                     onClick={() => setUserMenuOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] hover:text-white transition"
                   >
-                    <Sliders className="w-4 h-4 text-purple-400" />
-                    <span>Routing & Privacy Settings</span>
+                    <Sliders className="w-4 h-4 text-zinc-400" />
+                    <span>Settings</span>
                   </Link>
 
                   {user.role === 'admin' && (
                     <Link
                       href="/admin"
                       onClick={() => setUserMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] hover:text-white transition text-amber-300"
+                      className="flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] hover:text-white transition"
                     >
-                      <ShieldAlert className="w-4 h-4 text-amber-400" />
-                      <span>Admin Kill Switches</span>
+                      <ShieldAlert className="w-4 h-4 text-zinc-400" />
+                      <span>Admin Settings</span>
                     </Link>
                   )}
 
