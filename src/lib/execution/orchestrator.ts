@@ -116,8 +116,14 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
   const classified = classifyPrompt(prompt, taskClassOverride);
   const costPolicy = requestedCostPolicy || preferences.defaultCostPolicy;
 
+  const isImagePin = pinnedModelName && (
+    pinnedModelName.toLowerCase().includes('flux') ||
+    pinnedModelName.toLowerCase().includes('image')
+  );
+
   const taskSpec = {
     ...classified,
+    ...(isImagePin ? { outputModality: 'image' as const, taskClass: 'image_generation' as const } : {}),
     costPolicy,
     privacyMode: preferences.privacyMode,
     maxCostUSD: preferences.maxCostPerTaskUSD,

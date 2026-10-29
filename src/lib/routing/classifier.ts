@@ -38,7 +38,7 @@ export function classifyTask(
   const requiredCapabilities: ('tools' | 'reasoning')[] = [];
 
   if (!options?.taskClassOverride) {
-    if (
+    const isImageIntent =
       p.includes('generate image') ||
       p.includes('generate an image') ||
       p.includes('create an image') ||
@@ -49,11 +49,19 @@ export function classifyTask(
       p.includes('draw an ') ||
       p.includes('draw me ') ||
       p.includes('paint a ') ||
+      p.includes('paint an ') ||
+      p.includes('paint me ') ||
       p.includes('create an illustration') ||
       p.includes('render an image') ||
       p.includes('make an image') ||
-      p.includes('illustration of')
-    ) {
+      p.includes('illustration of') ||
+      p.includes('painting of') ||
+      p.includes('sketch of') ||
+      p.includes('picture of') ||
+      p.includes('photo of') ||
+      /^(draw|paint|sketch|illustrate|render)\b/i.test(p);
+
+    if (isImageIntent) {
       taskClass = 'image_generation';
       outputModality = 'image';
       confidence = 'keyword';

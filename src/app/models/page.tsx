@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Cpu, ExternalLink, ShieldAlert, Sparkles, Search, Check, AlertTriangle, KeyRound, CheckCircle2 } from 'lucide-react';
+import { Cpu, ExternalLink, ShieldAlert, Sparkles, Search, Check, AlertTriangle, KeyRound, CheckCircle2, Palette } from 'lucide-react';
 import type { Model, Provider, CatalogRoute } from '@/lib/types';
 
 export default function ModelsPage() {
@@ -14,6 +14,7 @@ export default function ModelsPage() {
   const [search, setSearch] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
   const [costFilter, setCostFilter] = useState<'all' | 'free' | 'paid'>('all');
+  const [modalityFilter, setModalityFilter] = useState<'all' | 'text' | 'image'>('all');
 
   useEffect(() => {
     // 1. Optimistic hydration from local storage connections cache
@@ -92,7 +93,14 @@ export default function ModelsPage() {
         ? hasFreeRoute
         : hasPaidRoute && !hasFreeRoute;
 
-    return matchesSearch && matchesProvider && matchesCost;
+    const matchesModality =
+      modalityFilter === 'all'
+        ? true
+        : modalityFilter === 'image'
+        ? m.outputModality === 'image' || m.id.includes('flux') || m.name.toLowerCase().includes('flux')
+        : m.outputModality !== 'image';
+
+    return matchesSearch && matchesProvider && matchesCost && matchesModality;
   });
 
   return (
@@ -125,6 +133,38 @@ export default function ModelsPage() {
               />
             </div>
 
+            {/* Modality Filter */}
+            <div className="flex items-center p-0.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => setModalityFilter('all')}
+                className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                  modalityFilter === 'all' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalityFilter('text')}
+                className={`px-2.5 py-1 rounded-lg transition font-medium ${
+                  modalityFilter === 'text' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Chat & Code
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalityFilter('image')}
+                className={`px-2.5 py-1 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                  modalityFilter === 'image' ? 'bg-pink-500/20 text-pink-300 font-semibold border border-pink-500/30' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Palette className="w-3.5 h-3.5 text-pink-400" />
+                <span>Image Gen</span>
+              </button>
+            </div>
+
             {/* Cost Filter */}
             <div className="flex items-center p-0.5 bg-white/[0.03] border border-white/10 rounded-xl text-xs">
               <button
@@ -134,7 +174,7 @@ export default function ModelsPage() {
                   costFilter === 'all' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                All
+                All Costs
               </button>
               <button
                 type="button"
@@ -271,7 +311,14 @@ export default function ModelsPage() {
                       </div>
 
                       <div className="flex flex-col items-end gap-1">
-                        {isFree ? (
+                        {model.outputModality === 'image' ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/30 flex items-center gap-1 shadow-sm font-mono">
+                              <Palette className="w-3 h-3 text-pink-400" />
+                              FREE IMAGE GEN
+                            </span>
+                          </div>
+                        ) : isFree ? (
                           <div className="flex items-center gap-1.5">
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1 shadow-sm">
                               <Sparkles className="w-3 h-3 text-emerald-400" />
@@ -407,10 +454,23 @@ export default function ModelsPage() {
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/?model=${encodeURIComponent(model.name)}`}
-                        className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 hover:border-amber-500/40 text-[11px] font-medium transition flex items-center gap-1 shadow-sm"
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition flex items-center gap-1 shadow-sm ${
+                          model.outputModality === 'image'
+                            ? 'bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 hover:border-pink-500/50'
+                            : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 hover:border-amber-500/40'
+                        }`}
                       >
-                        <span>Chat</span>
-                        <ExternalLink className="w-2.5 h-2.5" />
+                        {model.outputModality === 'image' ? (
+                          <>
+                            <Palette className="w-3 h-3 text-pink-400" />
+                            <span>Generate</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Chat</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </>
+                        )}
                       </Link>
                       {primaryRoute?.sourceUrl && (
                         <a

@@ -74,4 +74,31 @@ describe('Free Image Generation & FLUX.1 Schnell Routing Tests', () => {
     assert.strictEqual(result.costUSD, 0);
     assert.strictEqual(result.costKind, 'zero');
   });
+
+  it('bypasses text model pin (e.g. Gemini) when image generation is requested, preventing "No models match" collision', async () => {
+    const repo = new DbRepo();
+    // Simulate user having Gemini 3.8 Flash pinned in chat bar, but asking to draw an image
+    const spec = classifyTask('Draw a futuristic cyberpunk samurai standing in a rain-slicked neon Tokyo alleyway', {
+      pinnedRouteId: 'route_google_gemini_3_8_flash_free',
+    });
+    const resolution = await resolveTaskRoute(spec, dummyUser, repo);
+
+    assert.strictEqual(resolution.selectedModel.id, 'model_flux_1_schnell');
+    assert.strictEqual(resolution.selectedProvider.id, 'pollinations');
+    assert.strictEqual(resolution.selectedRoute.id, 'route_pollinations_flux_1_schnell');
+  });
+
+  it('honors FLUX.1 Schnell pin directly for any prompt', async () => {
+    const repo = new DbRepo();
+    const spec = classifyTask('a golden retriever wearing sunglasses on the beach', {
+      pinnedRouteId: 'route_pollinations_flux_1_schnell',
+    });
+    // Even if prompt didn't say "draw", pinning FLUX enforces image output
+    spec.outputModality = 'image';
+    spec.taskClass = 'image_generation';
+    const resolution = await resolveTaskRoute(spec, dummyUser, repo);
+
+    assert.strictEqual(resolution.selectedModel.id, 'model_flux_1_schnell');
+    assert.strictEqual(resolution.selectedRoute.id, 'route_pollinations_flux_1_schnell');
+  });
 });
