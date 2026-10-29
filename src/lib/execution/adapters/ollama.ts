@@ -103,7 +103,7 @@ export async function executeOllama(options: ExecuteOptions): Promise<AdapterRes
     usage: {
       promptTokens,
       completionTokens,
-      tokensKind: 'observed',
+      tokensKind: 'provider_reported',
     },
     costUSD: 0,
     costKind: 'zero',
