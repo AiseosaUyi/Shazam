@@ -125,7 +125,7 @@ export function filterCandidates(
 
     // 8. Cost Policy check
     if (taskSpec.costPolicy === 'free_only') {
-      if (route.costClass !== 'verified_free') {
+      if (route.costClass !== 'verified_free' && route.costClass !== 'local_compute') {
         cand.rejection = `Free-Only policy strictly excludes ${route.costClass} routes.`;
         rejected.push(cand);
         continue;

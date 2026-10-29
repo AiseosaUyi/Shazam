@@ -106,6 +106,18 @@ export const STATIC_PROVIDERS: Provider[] = [
     notes: 'Free high-speed image generation powered by FLUX.1 Schnell (Black Forest Labs 12B transformer).',
   },
   {
+    id: 'ollama',
+    name: 'Ollama (Local Offline LLM)',
+    category: 'direct',
+    docsUrl: 'https://ollama.com',
+    pricingUrl: 'https://ollama.com',
+    termsUrl: 'https://ollama.com',
+    requiresApiKey: false,
+    verification: 'verified',
+    defaultStatus: 'enabled',
+    notes: 'Zero-cost private local inference executing directly on user device RAM and GPU/Metal.',
+  },
+  {
     id: 'simulation',
     name: 'Shazam Simulator (Demo)',
     category: 'demo',
@@ -311,6 +323,38 @@ export const STATIC_MODELS: Model[] = [
     supportsReasoning: false,
     qualityTier: 5,
     strengths: ['image_generation'],
+  },
+
+  // --- Ollama (Local Models) ---
+  {
+    id: 'model_ollama_qwen2_5_coder_7b',
+    providerId: 'ollama',
+    name: 'Qwen 2.5 Coder 7B (Local)',
+    providerModelId: 'qwen2.5-coder:7b',
+    description: 'Local private coding assistant running 100% on device memory with zero latency and zero API fees.',
+    inputModalities: ['text'],
+    outputModality: 'text',
+    contextWindowTokens: 32768,
+    maxOutputTokens: 8192,
+    supportsTools: true,
+    supportsReasoning: false,
+    qualityTier: 4,
+    strengths: ['coding', 'general_chat', 'writing'],
+  },
+  {
+    id: 'model_ollama_deepseek_r1_8b',
+    providerId: 'ollama',
+    name: 'DeepSeek R1 8B (Local Reasoning)',
+    providerModelId: 'deepseek-r1:8b',
+    description: 'Local chain-of-thought mathematical and algorithmic reasoning executed entirely offline.',
+    inputModalities: ['text'],
+    outputModality: 'text',
+    contextWindowTokens: 32768,
+    maxOutputTokens: 8192,
+    supportsTools: false,
+    supportsReasoning: true,
+    qualityTier: 4,
+    strengths: ['reasoning', 'planning', 'coding'],
   },
 
   // --- Simulation (Demo only) ---
@@ -532,6 +576,48 @@ export const STATIC_ROUTES: Route[] = [
     defaultStatus: 'enabled',
     verifiedAt: '2026-10-29',
     sourceUrl: 'https://pollinations.ai',
+  },
+
+  // Ollama (Local Compute)
+  {
+    id: 'route_ollama_qwen2_5_coder_7b',
+    modelId: 'model_ollama_qwen2_5_coder_7b',
+    providerId: 'ollama',
+    costClass: 'local_compute',
+    pricing: {
+      inputPer1M: 0,
+      outputPer1M: 0,
+      note: 'Local Compute · $0.00 (Device Memory)',
+    },
+    quotaConfidence: 'observed',
+    quotaNote: 'Unlimited offline local compute on user hardware',
+    privacy: {
+      providerMayTrainOnData: false,
+      note: 'Strict local privacy: no data leaves user machine.',
+    },
+    defaultStatus: 'enabled',
+    verifiedAt: '2026-10-29',
+    sourceUrl: 'https://ollama.com',
+  },
+  {
+    id: 'route_ollama_deepseek_r1_8b',
+    modelId: 'model_ollama_deepseek_r1_8b',
+    providerId: 'ollama',
+    costClass: 'local_compute',
+    pricing: {
+      inputPer1M: 0,
+      outputPer1M: 0,
+      note: 'Local Compute · $0.00 (Device Memory)',
+    },
+    quotaConfidence: 'observed',
+    quotaNote: 'Unlimited offline local compute on user hardware',
+    privacy: {
+      providerMayTrainOnData: false,
+      note: 'Strict local privacy: no data leaves user machine.',
+    },
+    defaultStatus: 'enabled',
+    verifiedAt: '2026-10-29',
+    sourceUrl: 'https://ollama.com',
   },
 
   // Simulation (Demo only)

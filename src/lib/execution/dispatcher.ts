@@ -4,6 +4,7 @@ import { executeAnthropic } from './adapters/anthropic';
 import { executeGemini } from './adapters/gemini';
 import { executeSimulation } from './adapters/simulation';
 import { executeImageGeneration } from './adapters/image-generation';
+import { executeOllama } from './adapters/ollama';
 
 export interface DispatcherOptions {
   model: Model;
@@ -33,6 +34,8 @@ export async function dispatchExecution(options: DispatcherOptions): Promise<Ada
       return executeOpenAICompatible(options, 'https://api.deepseek.com/chat/completions');
     case 'openrouter':
       return executeOpenAICompatible(options, 'https://openrouter.ai/api/v1/chat/completions');
+    case 'ollama':
+      return executeOllama(options);
     case 'simulation':
       return executeSimulation(options);
     default:

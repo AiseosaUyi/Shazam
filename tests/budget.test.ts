@@ -49,7 +49,10 @@ describe('Budget & Per-Task Cap Enforcement Tests', () => {
     assert.ok(paidRejections.length > 0, 'Paid routes should be rejected due to per-task cap');
 
     for (const el of eligible) {
-      assert.strictEqual(el.costClass, 'verified_free');
+      assert.ok(
+        el.costClass === 'verified_free' || el.costClass === 'local_compute',
+        'Eligible routes under strict $0 budget cap must be verified_free or local_compute'
+      );
     }
   });
 
