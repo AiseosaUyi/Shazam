@@ -10,11 +10,18 @@ export async function GET(req: NextRequest) {
   }
 
   // Clean prompt and remove enclosing quotes
-  const cleanPrompt = prompt.replace(/^["'`]+|["'`]+$/g, '').trim();
+  let cleanPrompt = prompt.replace(/^["'`]+|["'`]+$/g, '').trim();
+
+  // If prompt depicts people/portraits, enhance details for natural anatomy, facial fidelity and skin texture
+  const isHumanSubject = /\b(girl|woman|man|boy|person|portrait|human|face|people|rider|lady|guy|model|pedestrian)\b/i.test(cleanPrompt);
+  if (isHumanSubject && !cleanPrompt.toLowerCase().includes('photorealistic')) {
+    cleanPrompt = `${cleanPrompt}, 8k resolution, photorealistic, natural skin texture, sharp detailed eyes and facial features, realistic proportions, cinematic lighting, 35mm photograph`;
+  }
+
   const encoded = encodeURIComponent(cleanPrompt);
 
-  // Redirect directly to high-fidelity generator with prompt enhancement for photorealistic quality
-  const targetUrl = `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
+  // Redirect directly to high-fidelity FLUX generator with seed and enhancement
+  const targetUrl = `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=1024&height=1024&nologo=true&enhance=false&seed=${seed}`;
 
   return NextResponse.redirect(targetUrl, 307);
 }

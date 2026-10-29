@@ -136,8 +136,12 @@ export function normalizeProviderError(
   }
 
   if (
+    statusCode === 404 ||
     statusCode === 503 ||
     statusCode === 502 ||
+    msg.includes('not found') ||
+    msg.includes('NOT_FOUND') ||
+    msg.includes('not supported') ||
     msg.includes('overloaded') ||
     msg.includes('temporarily unavailable') ||
     msg.includes('fetch failed') ||
@@ -146,7 +150,7 @@ export function normalizeProviderError(
   ) {
     return {
       type: 'model_unavailable',
-      message: `${providerName} service is overloaded or unavailable.`,
+      message: `${providerName} model or service is unavailable (${cleanDetail || 'not found'}).`,
       statusCode: statusCode || 503,
       retryable: true,
       retryAfterSeconds: 5,

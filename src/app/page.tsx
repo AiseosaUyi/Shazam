@@ -384,9 +384,9 @@ export default function WorkspacePage() {
       pinnedModelName.toLowerCase().includes('imagen')
     );
     
-    // If prompt is an image request, avoid passing a text-only pinned model that would cause collision; prefer Google Nano Banana if Google key is active
+    // If prompt is an image request, clear text-only pins to avoid collision; only retain an explicit image pin if chosen
     const effectivePinned = isImagePrompt && !isPinnedImage
-      ? (connectedProviders['google'] ? 'Google Imagen 3 (Nano Banana)' : undefined)
+      ? undefined
       : (pinnedModelName || undefined);
 
     const effectiveTaskClass = isPinnedImage || isImagePrompt
@@ -1301,6 +1301,11 @@ export default function WorkspacePage() {
                         {msg.routeInfo?.route?.costClass && (
                           <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-mono border border-emerald-500/20">
                             {msg.routeInfo.route.costClass}
+                          </span>
+                        )}
+                        {msg.routeInfo?.fallback && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 text-[10px] font-mono border border-amber-500/20" title={msg.routeInfo.fallback.reason || 'Primary provider unavailable'}>
+                            fallback
                           </span>
                         )}
                       </div>

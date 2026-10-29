@@ -127,4 +127,182 @@ describe('Free Image Generation & FLUX.1 Schnell Routing Tests', () => {
     assert.strictEqual(resolution.selectedModel.id, 'model_google_imagen_3');
     assert.strictEqual(resolution.selectedProvider.id, 'google');
   });
+
+  it('strictly rejects execution with 401 when Google Imagen is called without a valid API key', async () => {
+    const { executeGoogleImagen } = await import('@/lib/execution/adapters/imagen');
+    await assert.rejects(
+      async () => {
+        await executeGoogleImagen({
+          model: {
+            id: 'model_google_imagen_3',
+            providerId: 'google',
+            name: 'Google Imagen 3',
+            providerModelId: 'gemini-2.5-flash-image',
+            inputModalities: ['text'],
+            outputModality: 'image',
+            contextWindowTokens: 4096,
+            maxOutputTokens: 1024,
+            supportsTools: false,
+            supportsReasoning: false,
+            qualityTier: 5,
+            strengths: ['image_generation'],
+          },
+          route: {
+            id: 'route_google_imagen_3_free',
+            modelId: 'model_google_imagen_3',
+            providerId: 'google',
+            costClass: 'verified_free',
+            pricing: { inputPer1M: 0, outputPer1M: 0 },
+            quotaConfidence: 'observed',
+            privacy: { providerMayTrainOnData: false },
+            defaultStatus: 'enabled',
+            verifiedAt: '2026-10-29',
+            sourceUrl: 'https://ai.google.dev',
+          },
+          prompt: 'draw a portrait of a doctor',
+          apiKey: '',
+          onChunk: () => {},
+        });
+      },
+      (err: any) => {
+        assert.strictEqual(err.statusCode, 401);
+        assert.ok(err.message.includes('Google API key is required'));
+        return true;
+      }
+    );
+  });
+
+  it('parses Google Gemini Image generateContent Base64 inlineData without watermarks or proxies', async () => {
+    const { executeGoogleImagen } = await import('@/lib/execution/adapters/imagen');
+    const originalFetch = globalThis.fetch;
+
+    const fakeBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    globalThis.fetch = async (input: any, init?: any) => {
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: 'image/png',
+                      data: fakeBase64,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      const chunks: string[] = [];
+      const result = await executeGoogleImagen({
+        model: {
+          id: 'model_google_imagen_3',
+          providerId: 'google',
+          name: 'Google Imagen 3',
+          providerModelId: 'gemini-2.5-flash-image',
+          inputModalities: ['text'],
+          outputModality: 'image',
+          contextWindowTokens: 4096,
+          maxOutputTokens: 1024,
+          supportsTools: false,
+          supportsReasoning: false,
+          qualityTier: 5,
+          strengths: ['image_generation'],
+        },
+        route: {
+          id: 'route_google_imagen_3_free',
+          modelId: 'model_google_imagen_3',
+          providerId: 'google',
+          costClass: 'verified_free',
+          pricing: { inputPer1M: 0, outputPer1M: 0 },
+          quotaConfidence: 'observed',
+          privacy: { providerMayTrainOnData: false },
+          defaultStatus: 'enabled',
+          verifiedAt: '2026-10-29',
+          sourceUrl: 'https://ai.google.dev',
+        },
+        prompt: 'portrait of a warrior',
+        apiKey: 'fake_valid_google_key',
+        onChunk: (c) => {
+          if (c.type === 'delta') chunks.push(c.text);
+        },
+      });
+
+      assert.ok(result.fullText.startsWith('![portrait of a warrior](data:image/png;base64,'));
+      assert.ok(result.fullText.includes(fakeBase64));
+      assert.ok(!result.fullText.includes('pollinations.ai'));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('strictly throws provider error on upstream failure and never silently returns third-party proxy', async () => {
+    const { executeGoogleImagen } = await import('@/lib/execution/adapters/imagen');
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async () => {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 404,
+            message: 'models/gemini-2.5-flash-image is not found or not supported for generateContent',
+            status: 'NOT_FOUND',
+          },
+        }),
+        { status: 404, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      await assert.rejects(
+        async () => {
+          await executeGoogleImagen({
+            model: {
+              id: 'model_google_imagen_3',
+              providerId: 'google',
+              name: 'Google Imagen 3',
+              providerModelId: 'gemini-2.5-flash-image',
+              inputModalities: ['text'],
+              outputModality: 'image',
+              contextWindowTokens: 4096,
+              maxOutputTokens: 1024,
+              supportsTools: false,
+              supportsReasoning: false,
+              qualityTier: 5,
+              strengths: ['image_generation'],
+            },
+            route: {
+              id: 'route_google_imagen_3_free',
+              modelId: 'model_google_imagen_3',
+              providerId: 'google',
+              costClass: 'verified_free',
+              pricing: { inputPer1M: 0, outputPer1M: 0 },
+              quotaConfidence: 'observed',
+              privacy: { providerMayTrainOnData: false },
+              defaultStatus: 'enabled',
+              verifiedAt: '2026-10-29',
+              sourceUrl: 'https://ai.google.dev',
+            },
+            prompt: 'scenic mountains',
+            apiKey: 'fake_valid_google_key',
+            onChunk: () => {},
+          });
+        },
+        (err: any) => {
+          assert.strictEqual(err.statusCode, 404);
+          assert.strictEqual(err.type, 'model_unavailable');
+          return true;
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

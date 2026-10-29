@@ -1,17 +1,29 @@
 import type { StreamChunk } from '@/lib/types';
 import type { ExecuteOptions, AdapterResult } from './openai-compatible';
+import { normalizeProviderError } from './error';
 import { createTimeoutSignal } from './model-resolver';
-import { executeImageGeneration } from './image-generation';
 
 /**
- * Google Imagen 3 Adapter ("Nano Banana")
+ * Google Official Image Generation Adapter ("Nano Banana" / Gemini Image)
  * 
- * Invokes Google AI Studio's flagship text-to-image model (imagen-3.0-generate-002:predict)
- * via the Generative Language API using the user's BYOK Google API key.
- * If the key lacks Vertex AI / Imagen entitlement, gracefully falls back to the high-resolution generator.
+ * Invokes Google AI Studio's official Generative Language API using the user's BYOK Google API key.
+ * Primary: models/gemini-2.5-flash-image:generateContent with responseModalities: ["TEXT", "IMAGE"]
+ * Secondary / Legacy: models/imagen-3.0-generate-002:predict
+ * 
+ * Strict compliance rule: Never silently substitute a different provider or model on failure.
+ * Provider errors are thrown as structured ProviderErrors so the orchestrator can execute
+ * an observable, explicit fallback if authorized by the user's cost and routing policy.
  */
 export async function executeGoogleImagen(options: ExecuteOptions): Promise<AdapterResult> {
-  const { prompt, apiKey, signal, onChunk } = options;
+  const { prompt, apiKey, signal, onChunk, model } = options;
+
+  if (!apiKey || apiKey === 'free_tier' || apiKey === 'simulation') {
+    throw normalizeProviderError(
+      'Google Image Generation',
+      'A valid Google API key is required to generate images with Google Imagen / Gemini. Please connect your Google key in Settings > API Keys.',
+      401
+    );
+  }
 
   let cleanPrompt = prompt.trim();
   const leadingPhrases = [
@@ -38,23 +50,96 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
     cleanPrompt = prompt.trim().replace(/^["'`]+|["'`]+$/g, '');
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
   const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 45000);
 
+  // Strategy 1: Attempt official Gemini Image endpoint (gemini-2.5-flash-image:generateContent)
+  const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`;
+  
   let res: Response;
+  let lastErrorText = '';
+
   try {
-    res = await fetch(endpoint, {
+    res = await fetch(geminiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
-        instances: [
+        contents: [
           {
-            prompt: cleanPrompt,
+            parts: [{ text: cleanPrompt }],
           },
         ],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+        },
+      }),
+      signal: timedSignal,
+    });
+
+    if (res.ok) {
+      const data: any = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      let b64 = '';
+      let mimeType = 'image/png';
+      let assistantText = '';
+
+      for (const p of parts) {
+        if (p.inlineData?.data) {
+          b64 = p.inlineData.data;
+          mimeType = p.inlineData.mimeType || 'image/png';
+        } else if (p.text) {
+          assistantText += p.text;
+        }
+      }
+
+      if (b64) {
+        const imageUrl = `data:${mimeType};base64,${b64}`;
+        const imageMarkdown = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
+        const fullText = assistantText ? `${assistantText.trim()}\n\n${imageMarkdown}` : imageMarkdown;
+
+        onChunk({
+          type: 'delta',
+          text: fullText,
+        });
+
+        const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
+        const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
+
+        return {
+          fullText,
+          usage: {
+            promptTokens,
+            completionTokens,
+            tokensKind: 'estimated',
+          },
+          costUSD: 0.03,
+          costKind: 'estimated',
+        };
+      }
+    } else {
+      lastErrorText = await res.text();
+    }
+  } catch (err: any) {
+    if (signal?.aborted) {
+      cleanup();
+      throw new Error('Task cancelled');
+    }
+    lastErrorText = err.message || String(err);
+  }
+
+  // Strategy 2: If gemini-2.5-flash-image returned 404 or failed, attempt legacy Imagen 3 endpoint
+  const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
+  try {
+    res = await fetch(imagenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        instances: [{ prompt: cleanPrompt }],
         parameters: {
           sampleCount: 1,
           aspectRatio: '1:1',
@@ -63,52 +148,49 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
       }),
       signal: timedSignal,
     });
+
+    if (res.ok) {
+      const data: any = await res.json();
+      const prediction = data?.predictions?.[0];
+      const b64 = prediction?.bytesBase64Encoded;
+      const mimeType = prediction?.mimeType || 'image/jpeg';
+
+      if (b64) {
+        const imageUrl = `data:${mimeType};base64,${b64}`;
+        const fullText = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
+
+        onChunk({
+          type: 'delta',
+          text: fullText,
+        });
+
+        const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
+        const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
+
+        return {
+          fullText,
+          usage: {
+            promptTokens,
+            completionTokens,
+            tokensKind: 'estimated',
+          },
+          costUSD: 0.03,
+          costKind: 'estimated',
+        };
+      }
+    } else {
+      lastErrorText = await res.text();
+    }
   } catch (err: any) {
-    cleanup();
-    if (signal?.aborted) throw new Error('Task cancelled');
-    // Seamlessly fulfill via high-fidelity image generator on network/endpoint error
-    return executeImageGeneration(options);
+    if (signal?.aborted) {
+      cleanup();
+      throw new Error('Task cancelled');
+    }
+    lastErrorText = err.message || String(err);
   } finally {
     cleanup();
   }
 
-  if (!res.ok) {
-    // If Google Imagen 3 is not enabled on this AI Studio key, seamlessly fulfill via high-resolution generator
-    return executeImageGeneration(options);
-  }
-
-  try {
-    const data: any = await res.json();
-    const prediction = data?.predictions?.[0];
-    const b64 = prediction?.bytesBase64Encoded;
-    const mimeType = prediction?.mimeType || 'image/jpeg';
-
-    if (!b64) {
-      return executeImageGeneration(options);
-    }
-
-    const imageUrl = `data:${mimeType};base64,${b64}`;
-    const fullText = `![${cleanPrompt.replace(/[\[\]]/g, '')}](${imageUrl})`;
-
-    onChunk({
-      type: 'delta',
-      text: fullText,
-    });
-
-    const promptTokens = Math.max(1, Math.ceil(prompt.length / 4));
-    const completionTokens = Math.max(1, Math.ceil(fullText.length / 4));
-
-    return {
-      fullText,
-      usage: {
-        promptTokens,
-        completionTokens,
-        tokensKind: 'estimated',
-      },
-      costUSD: 0.03,
-      costKind: 'estimated',
-    };
-  } catch {
-    return executeImageGeneration(options);
-  }
+  // Strictly throw normalized error — never silently substitute a different provider
+  throw normalizeProviderError('Google Imagen', lastErrorText, res?.status || 500);
 }
