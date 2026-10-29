@@ -12,6 +12,9 @@ import {
   Lock,
   Plus,
   X,
+  Palette,
+  Zap,
+  Sparkles,
 } from 'lucide-react';
 
 interface ProviderItem {
@@ -20,6 +23,8 @@ interface ProviderItem {
   description: string;
   documentationUrl?: string;
   apiDocsUrl?: string;
+  requiresApiKey?: boolean;
+  isZeroKeyProvider?: boolean;
   isConnected: boolean;
   isSystemProvided?: boolean;
   keyMask?: string | null;
@@ -42,6 +47,18 @@ export default function ConnectionsPage() {
       const json = await res.json();
       const list: ProviderItem[] = json.providers || [];
       setProviders(list);
+
+      // Check URL query param for automatic provider selection
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const target = params.get('provider');
+        if (target) {
+          const match = list.find((p) => p.id === target);
+          if (match && match.requiresApiKey !== false && !match.isZeroKeyProvider) {
+            setSelectedProvider(match);
+          }
+        }
+      }
 
       // Cache connected status locally so refreshes never flash disconnected
       try {
@@ -247,7 +264,11 @@ export default function ConnectionsPage() {
                     <p className="text-[11px] font-mono text-zinc-400">{p.id}</p>
                   </div>
 
-                  {p.isConnected ? (
+                  {p.requiresApiKey === false || p.isZeroKeyProvider ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" /> ACTIVE · ZERO KEY
+                    </span>
+                  ) : p.isConnected ? (
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3" /> CONNECTED
                     </span>
@@ -259,6 +280,13 @@ export default function ConnectionsPage() {
                 </div>
 
                 <p className="text-xs text-zinc-400">{p.description}</p>
+
+                {(p.requiresApiKey === false || p.isZeroKeyProvider) && (
+                  <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300 flex items-center justify-between">
+                    <span>100% Free · Zero API key required</span>
+                    <span className="text-[10px] font-mono font-semibold text-emerald-400">Ready Out-of-the-Box</span>
+                  </div>
+                )}
 
                 {p.id === 'google' && !p.isConnected && (
                   <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300 flex items-center justify-between">
@@ -312,7 +340,24 @@ export default function ConnectionsPage() {
                   <span />
                 )}
 
-                {p.isConnected && !p.isSystemProvided ? (
+                {p.requiresApiKey === false || p.isZeroKeyProvider ? (
+                  <Link
+                    href={p.id === 'pollinations' ? '/?model=FLUX.1+Schnell+(Free)' : '/'}
+                    className="px-3 py-1.5 text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-lg transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    {p.id === 'pollinations' ? (
+                      <>
+                        <Palette className="w-3.5 h-3.5" />
+                        <span>Generate Images 🎨</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>Launch in Chat ⚡</span>
+                      </>
+                    )}
+                  </Link>
+                ) : p.isConnected && !p.isSystemProvided ? (
                   <button
                     onClick={() => handleRevokeKey(p.id, p.name)}
                     className="px-2.5 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded border border-red-900/40 transition flex items-center gap-1"
@@ -320,20 +365,33 @@ export default function ConnectionsPage() {
                     <Trash2 className="w-3 h-3" /> Revoke
                   </button>
                 ) : (
-                  <button
-                    onClick={() => {
-                      if (!user) {
-                        window.location.href = '/login';
-                        return;
-                      }
-                      setSelectedProvider(p);
-                      setApiKeyInput('');
-                      setFeedback(null);
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-lg transition flex items-center gap-1 shadow-sm"
-                  >
-                    <Plus className="w-3 h-3" /> Connect Key
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {p.id === 'google' && (
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-lg transition flex items-center gap-1"
+                      >
+                        <span>Get Key</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          window.location.href = '/login';
+                          return;
+                        }
+                        setSelectedProvider(p);
+                        setApiKeyInput('');
+                        setFeedback(null);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-lg transition flex items-center gap-1 shadow-sm"
+                    >
+                      <Plus className="w-3 h-3" /> Connect Key
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -357,6 +415,69 @@ export default function ConnectionsPage() {
             <p className="text-xs text-zinc-400">
               Provide your API key for {selectedProvider.name}. The key is sent over HTTPS and encrypted inside the vault using AES-256-GCM.
             </p>
+
+            {selectedProvider.id === 'google' && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-300 flex items-center justify-between shadow-sm">
+                <div>
+                  <div className="font-semibold text-emerald-200">100% Free Forever (No Card)</div>
+                  <div className="text-[11px] text-zinc-400">Takes 30 seconds with any Google account.</div>
+                </div>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold rounded-lg text-xs flex items-center gap-1 shrink-0 transition"
+                >
+                  <span>Get Free Key</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+
+            {selectedProvider.id === 'openai' && (
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-300 flex items-center justify-between">
+                <span>Copy or generate your OpenAI API key:</span>
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs flex items-center gap-1 transition"
+                >
+                  <span>OpenAI Keys</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+
+            {selectedProvider.id === 'anthropic' && (
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-300 flex items-center justify-between">
+                <span>Copy or generate your Anthropic API key:</span>
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs flex items-center gap-1 transition"
+                >
+                  <span>Anthropic Keys</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+
+            {selectedProvider.id === 'deepseek' && (
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-zinc-300 flex items-center justify-between">
+                <span>Copy or generate your DeepSeek API key:</span>
+                <a
+                  href="https://platform.deepseek.com/api_keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs flex items-center gap-1 transition"
+                >
+                  <span>DeepSeek Keys</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
 
             <form onSubmit={handleSaveKey} className="space-y-4">
               <div>

@@ -75,7 +75,7 @@ export default function ModelsPage() {
 
   const filteredModels = models.filter((m) => {
     const modelRoutes = routesByModel.get(m.id) || [];
-    const hasFreeRoute = modelRoutes.some((r) => r.costClass === 'verified_free');
+    const hasFreeRoute = modelRoutes.some((r) => r.costClass === 'verified_free' || r.costClass === 'local_compute');
     const hasPaidRoute = modelRoutes.some((r) => r.costClass === 'paid' || r.costClass === 'unknown');
 
     const matchesSearch =
@@ -285,12 +285,14 @@ export default function ModelsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-12">
             {filteredModels.map((model) => {
               const modelRoutes = routesByModel.get(model.id) || [];
-              const freeRoute = modelRoutes.find((r) => r.costClass === 'verified_free');
+              const freeRoute = modelRoutes.find((r) => r.costClass === 'verified_free' || r.costClass === 'local_compute');
               const paidRoute = modelRoutes.find((r) => r.costClass === 'paid' || r.costClass === 'unknown');
               const primaryRoute = freeRoute || paidRoute || modelRoutes[0];
               const provider = primaryRoute ? providerMap.get(primaryRoute.providerId) : undefined;
-              const isFree = !!freeRoute;
-              const isProviderConnected = Boolean(primaryRoute && connectedProviders[primaryRoute.providerId]);
+              const isLocal = primaryRoute?.costClass === 'local_compute' || primaryRoute?.providerId === 'ollama';
+              const isFree = !!freeRoute || isLocal || primaryRoute?.costClass === 'verified_free';
+              const isZeroKey = provider?.requiresApiKey === false || primaryRoute?.providerId === 'pollinations' || isLocal;
+              const isProviderConnected = isZeroKey || Boolean(primaryRoute && connectedProviders[primaryRoute.providerId]);
               const mayTrain = primaryRoute?.privacy.providerMayTrainOnData === true;
 
               return (
@@ -316,6 +318,16 @@ export default function ModelsPage() {
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-pink-500/15 text-pink-300 border border-pink-500/30 flex items-center gap-1 shadow-sm font-mono">
                               <Palette className="w-3 h-3 text-pink-400" />
                               FREE IMAGE GEN
+                            </span>
+                          </div>
+                        ) : isLocal ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 shadow-sm font-mono">
+                              <Zap className="w-3 h-3 text-cyan-400" />
+                              LOCAL COMPUTE
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                              $0.00
                             </span>
                           </div>
                         ) : isFree ? (
@@ -394,7 +406,35 @@ export default function ModelsPage() {
                     </div>
 
                     {/* Free tier note */}
-                    {isFree && (
+                    {model.outputModality === 'image' || primaryRoute?.providerId === 'pollinations' ? (
+                      <div className="p-2.5 rounded-xl border border-pink-500/25 bg-pink-500/10 text-[11px] text-pink-300 flex items-center justify-between gap-2 shadow-sm">
+                        <div className="flex items-center gap-1.5 leading-tight">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                          <span>100% Free · Zero API Key Required · Ready to Generate</span>
+                        </div>
+                        <Link
+                          href={`/?model=${encodeURIComponent(model.name)}`}
+                          className="shrink-0 text-pink-300 hover:text-white font-semibold underline underline-offset-2 flex items-center gap-0.5"
+                        >
+                          <span>Generate Now</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    ) : isLocal ? (
+                      <div className="p-2.5 rounded-xl border border-cyan-500/25 bg-cyan-500/10 text-[11px] text-cyan-300 flex items-center justify-between gap-2 shadow-sm">
+                        <div className="flex items-center gap-1.5 leading-tight">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <span>Local Device Compute · No Key Needed · Offline Privacy</span>
+                        </div>
+                        <Link
+                          href={`/?model=${encodeURIComponent(model.name)}`}
+                          className="shrink-0 text-cyan-300 hover:text-white font-semibold underline underline-offset-2 flex items-center gap-0.5"
+                        >
+                          <span>Chat Now</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    ) : isFree ? (
                       <div className={`p-2.5 rounded-xl border text-[11px] flex items-start justify-between gap-2 ${
                         isProviderConnected
                           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
@@ -407,7 +447,7 @@ export default function ModelsPage() {
                               <span>Key connected · Free quota active (15 req/min)</span>
                             </>
                           ) : (
-                            <span>Free tier quota active: 15 req/min with your Google AI Studio key.</span>
+                            <span>Free tier quota: 15 req/min with Google AI Studio key.</span>
                           )}
                         </div>
                         {isProviderConnected ? (
@@ -419,15 +459,25 @@ export default function ModelsPage() {
                             <ExternalLink className="w-3 h-3" />
                           </Link>
                         ) : (
-                          <Link
-                            href="/connections"
-                            className="shrink-0 text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2"
-                          >
-                            Connect
-                          </Link>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <a
+                              href="https://aistudio.google.com/app/apikey"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-emerald-400 hover:underline flex items-center gap-0.5"
+                            >
+                              Get Key <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                            <Link
+                              href="/connections?provider=google"
+                              className="text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2"
+                            >
+                              Connect
+                            </Link>
+                          </div>
                         )}
                       </div>
-                    )}
+                    ) : null}
 
                     {/* Privacy alert for free tier training */}
                     {mayTrain && (

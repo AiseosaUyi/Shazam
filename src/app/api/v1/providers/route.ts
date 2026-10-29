@@ -30,16 +30,20 @@ export async function GET(req: NextRequest) {
 
     const providers = catalog.providers.map((p) => {
       const cred = credMap.get(p.id);
+      const isZeroKeyProvider = p.requiresApiKey === false;
       const hasSystem = canUseSystem && systemKeys[p.id] === true;
-      const isConnected = Boolean(cred) || hasSystem;
+      const isConnected = isZeroKeyProvider || Boolean(cred) || hasSystem;
 
       return {
         ...p,
         isConnected,
-        isSystemProvided: !cred && hasSystem,
-        keyMask: cred?.keyHint || cred?.keyMask || (hasSystem ? 'System Configured' : null),
-        credentialStatus: cred ? cred.status : hasSystem ? 'valid' : 'unconnected',
-        lastValidatedAt: cred?.lastValidatedAt ?? null,
+        isZeroKeyProvider,
+        isSystemProvided: !cred && hasSystem && !isZeroKeyProvider,
+        keyMask: isZeroKeyProvider
+          ? (p.id === 'ollama' ? 'Local Compute · No Key' : '100% Free · Zero Key')
+          : (cred?.keyHint || cred?.keyMask || (hasSystem ? 'System Configured' : null)),
+        credentialStatus: isZeroKeyProvider ? 'valid' : (cred ? cred.status : hasSystem ? 'valid' : 'unconnected'),
+        lastValidatedAt: isZeroKeyProvider ? 'Always Active' : (cred?.lastValidatedAt ?? null),
       };
     });
 
