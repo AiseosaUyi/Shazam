@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Cpu, ExternalLink, ShieldAlert, Sparkles, Search, Check, AlertTriangle, KeyRound, CheckCircle2, Palette } from 'lucide-react';
+import { Cpu, ExternalLink, ShieldAlert, Sparkles, Search, Check, AlertTriangle, KeyRound, CheckCircle2, Palette, Zap } from 'lucide-react';
 import type { Model, Provider, CatalogRoute } from '@/lib/types';
 
 export default function ModelsPage() {
