@@ -3,6 +3,7 @@ import { executeOpenAICompatible, type AdapterResult } from './adapters/openai-c
 import { executeAnthropic } from './adapters/anthropic';
 import { executeGemini } from './adapters/gemini';
 import { executeSimulation } from './adapters/simulation';
+import { executeImageGeneration } from './adapters/image-generation';
 
 export interface DispatcherOptions {
   model: Model;
@@ -15,7 +16,11 @@ export interface DispatcherOptions {
 }
 
 export async function dispatchExecution(options: DispatcherOptions): Promise<AdapterResult> {
-  const { route } = options;
+  const { route, model } = options;
+
+  if (route.providerId === 'pollinations' || model.outputModality === 'image') {
+    return executeImageGeneration(options);
+  }
 
   switch (route.providerId) {
     case 'google':

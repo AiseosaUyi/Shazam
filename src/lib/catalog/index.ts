@@ -94,6 +94,18 @@ export const STATIC_PROVIDERS: Provider[] = [
     notes: 'Dynamic provider routing pricing unverified; disabled.',
   },
   {
+    id: 'pollinations',
+    name: 'Pollinations AI (FLUX.1 Schnell)',
+    category: 'aggregator',
+    docsUrl: 'https://pollinations.ai',
+    pricingUrl: 'https://pollinations.ai',
+    termsUrl: 'https://pollinations.ai/terms',
+    requiresApiKey: false,
+    verification: 'verified',
+    defaultStatus: 'enabled',
+    notes: 'Free high-speed image generation powered by FLUX.1 Schnell (Black Forest Labs 12B transformer).',
+  },
+  {
     id: 'simulation',
     name: 'Shazam Simulator (Demo)',
     category: 'demo',
@@ -282,6 +294,23 @@ export const STATIC_MODELS: Model[] = [
     supportsReasoning: true,
     qualityTier: 5,
     strengths: ['reasoning', 'coding', 'planning'],
+  },
+
+  // --- Free Image Generation Models ---
+  {
+    id: 'model_flux_1_schnell',
+    providerId: 'pollinations',
+    name: 'FLUX.1 Schnell (Free)',
+    providerModelId: 'flux',
+    description: 'State-of-the-art 12B parameter rectified flow transformer by Black Forest Labs. Industry-leading fidelity, typography, and photorealism.',
+    inputModalities: ['text'],
+    outputModality: 'image',
+    contextWindowTokens: 4096,
+    maxOutputTokens: 1024,
+    supportsTools: false,
+    supportsReasoning: false,
+    qualityTier: 5,
+    strengths: ['image_generation'],
   },
 
   // --- Simulation (Demo only) ---
@@ -481,6 +510,28 @@ export const STATIC_ROUTES: Route[] = [
     defaultStatus: 'enabled',
     verifiedAt: '2026-10-27',
     sourceUrl: 'https://api-docs.deepseek.com',
+  },
+
+  // Image Generation (Pollinations FLUX.1 Schnell)
+  {
+    id: 'route_pollinations_flux_1_schnell',
+    modelId: 'model_flux_1_schnell',
+    providerId: 'pollinations',
+    costClass: 'verified_free',
+    pricing: {
+      inputPer1M: 0,
+      outputPer1M: 0,
+      note: 'Verified 100% Free Tier · Zero Auth Required',
+    },
+    quotaConfidence: 'observed',
+    quotaNote: 'Free community tier powered by Pollinations AI',
+    privacy: {
+      providerMayTrainOnData: false,
+      note: 'Direct inference stream with zero prompt persistence.',
+    },
+    defaultStatus: 'enabled',
+    verifiedAt: '2026-10-29',
+    sourceUrl: 'https://pollinations.ai',
   },
 
   // Simulation (Demo only)

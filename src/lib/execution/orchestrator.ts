@@ -220,6 +220,8 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
       }
       if (selectedRoute.providerId === 'simulation') {
         apiKey = 'simulation';
+      } else if (selectedRoute.providerId === 'pollinations' || !selectedProvider.requiresApiKey) {
+        apiKey = 'free_tier';
       }
     }
 

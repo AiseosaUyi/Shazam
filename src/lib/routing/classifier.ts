@@ -42,9 +42,17 @@ export function classifyTask(
       p.includes('generate image') ||
       p.includes('generate an image') ||
       p.includes('create an image') ||
-      p.includes('draw a') ||
+      p.includes('generate a picture') ||
+      p.includes('generate picture') ||
+      p.includes('create a picture') ||
+      p.includes('draw a ') ||
+      p.includes('draw an ') ||
+      p.includes('draw me ') ||
+      p.includes('paint a ') ||
       p.includes('create an illustration') ||
-      p.includes('render an image')
+      p.includes('render an image') ||
+      p.includes('make an image') ||
+      p.includes('illustration of')
     ) {
       taskClass = 'image_generation';
       outputModality = 'image';

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Copy, Check, Terminal, AlertTriangle } from 'lucide-react';
+import { Copy, Check, Terminal, AlertTriangle, ExternalLink } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
@@ -108,6 +108,74 @@ function CodeBlock({ language, code = '' }: { language?: string; code?: string }
   );
 }
 
+function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string }) {
+  const [copied, setCopied] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(src);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="my-4 rounded-2xl bg-zinc-950/80 border border-white/[0.08] overflow-hidden shadow-2xl group max-w-2xl">
+      <div className="relative aspect-square max-h-[512px] bg-zinc-900 flex items-center justify-center overflow-hidden">
+        {!loaded && !error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-500 bg-zinc-900/50 backdrop-blur-sm">
+            <div className="w-8 h-8 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+            <span className="text-xs font-mono">Rendering high-res frame...</span>
+          </div>
+        )}
+        {error ? (
+          <div className="p-6 text-center text-zinc-400">
+            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+            <p className="text-xs">Failed to load preview image</p>
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            onLoad={() => setLoaded(true)}
+            onError={() => setError(true)}
+            className={`w-full h-full object-contain transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          />
+        )}
+
+        <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"
+            title="Open in new tab"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+          <button
+            onClick={handleCopy}
+            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"
+            title="Copy image link"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </div>
+
+      {alt && alt !== 'Generated Image' && (
+        <div className="px-4 py-2.5 bg-white/[0.02] border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
+          <span className="truncate pr-2 italic font-mono text-[11px] text-zinc-300">{alt}</span>
+          <span className="shrink-0 text-[10px] font-semibold tracking-wider uppercase text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+            FLUX.1 Schnell
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (path: string) => void }) {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
@@ -163,6 +231,16 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="leading-relaxed flex-1">{renderInline(trimmed.replace(/^⚠️\s*/, ''), onOpenFile)}</div>
         </div>
+      );
+      continue;
+    }
+
+    // Standalone image: ![alt](url)
+    const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
+    if (imgMatch) {
+      flushList();
+      elements.push(
+        <ImageCard key={`img-${i}`} alt={imgMatch[1]} src={imgMatch[2]} />
       );
       continue;
     }
@@ -264,8 +342,8 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
  */
 function renderInline(text: string, onOpenFile?: (path: string) => void): React.ReactNode {
   const tokens: React.ReactNode[] = [];
-  // Tokenize `code`, **bold**, *italic*, [link](url)
-  const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  // Tokenize ![image](url), `code`, **bold**, *italic*, [link](url)
+  const regex = /(!\[[^\]]*\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
   let match;
 
@@ -276,7 +354,16 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
 
     const token = match[0];
 
-    if (token.startsWith('`') && token.endsWith('`')) {
+    if (token.startsWith('![') && token.includes('](')) {
+      const imgMatch = token.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imgMatch) {
+        tokens.push(
+          <ImageCard key={`inline-img-${match.index}`} alt={imgMatch[1]} src={imgMatch[2]} />
+        );
+      } else {
+        tokens.push(token);
+      }
+    } else if (token.startsWith('`') && token.endsWith('`')) {
       const inner = token.slice(1, -1);
       // Check if the inline code is a file path (e.g. 06-football-model.md, src/App.tsx, kelly.ts)
       const isFilePath = /\.[a-zA-Z0-9_-]+$/.test(inner) || inner.includes('/');
