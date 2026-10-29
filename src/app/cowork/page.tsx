@@ -232,7 +232,7 @@ export default function CoWorkStudioPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `[Autonomous Co-Work Mode]\n${textToRun}`,
+          prompt: `[Autonomous Co-Work Session in Shazam AI]\nActive Connector: ${skillName}\nAction: ${skillAction}\nUser Request:\n${textToRun}`,
           conversationId: currentConversationId || undefined,
           taskClassOverride: 'planning',
         }),

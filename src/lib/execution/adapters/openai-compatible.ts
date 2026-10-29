@@ -1,6 +1,7 @@
 import type { ChatMessage, Model, Route, StreamChunk, Usage } from '@/lib/types';
 import { normalizeProviderError } from './error';
 import { resolveLiveProviderModel, createTimeoutSignal } from './model-resolver';
+import { SHAZAM_SYSTEM_IDENTITY } from '../system-prompt';
 
 export interface ExecuteOptions {
   model: Model;
@@ -23,7 +24,9 @@ export interface AdapterResult {
 export async function executeOpenAICompatible(options: ExecuteOptions, endpoint: string): Promise<AdapterResult> {
   const { model, route, prompt, history = [], apiKey, signal, onChunk } = options;
 
-  const messages: any[] = [];
+  const messages: any[] = [
+    { role: 'system', content: SHAZAM_SYSTEM_IDENTITY },
+  ];
   for (const h of history) {
     messages.push({ role: h.role, content: h.content });
   }

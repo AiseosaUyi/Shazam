@@ -10,7 +10,7 @@ const BulkFilesSchema = z.object({
       path: z.string().min(1),
       content: z.string().max(256 * 1024, 'Single file exceeds 256KB limit'),
     })
-  ).min(1).max(200, 'Maximum 200 files per batch'),
+  ).min(1).max(1000, 'Maximum 1000 files per batch'),
 });
 
 export async function POST(

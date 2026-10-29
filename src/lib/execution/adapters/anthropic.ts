@@ -2,6 +2,7 @@ import type { ChatMessage, Model, Route, StreamChunk, Usage } from '@/lib/types'
 import { normalizeProviderError } from './error';
 import { ExecuteOptions, AdapterResult } from './openai-compatible';
 import { resolveLiveProviderModel, createTimeoutSignal } from './model-resolver';
+import { SHAZAM_SYSTEM_IDENTITY } from '../system-prompt';
 
 export async function executeAnthropic(options: ExecuteOptions): Promise<AdapterResult> {
   const { model, route, prompt, history = [], apiKey, signal, onChunk } = options;
@@ -26,6 +27,7 @@ export async function executeAnthropic(options: ExecuteOptions): Promise<Adapter
       },
       body: JSON.stringify({
         model: liveModelId,
+        system: SHAZAM_SYSTEM_IDENTITY,
         messages,
         max_tokens: model.maxOutputTokens ?? 4096,
         stream: true,

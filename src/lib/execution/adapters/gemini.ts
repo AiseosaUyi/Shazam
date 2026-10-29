@@ -2,6 +2,7 @@ import type { ChatMessage, Model, Route, StreamChunk } from '@/lib/types';
 import { normalizeProviderError } from './error';
 import type { ExecuteOptions, AdapterResult } from './openai-compatible';
 import { resolveLiveProviderModel, createTimeoutSignal } from './model-resolver';
+import { SHAZAM_SYSTEM_IDENTITY } from '../system-prompt';
 
 export async function executeGemini(options: ExecuteOptions): Promise<AdapterResult> {
   const { model, route, prompt, history = [], apiKey, signal, onChunk } = options;
@@ -32,6 +33,9 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: SHAZAM_SYSTEM_IDENTITY }],
+        },
         contents,
         generationConfig: {
           maxOutputTokens: model.maxOutputTokens ?? 4096,
@@ -59,6 +63,9 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
           'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: SHAZAM_SYSTEM_IDENTITY }],
+          },
           contents,
           generationConfig: {
             maxOutputTokens: model.maxOutputTokens ?? 4096,

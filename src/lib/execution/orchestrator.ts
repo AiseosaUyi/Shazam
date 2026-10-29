@@ -321,7 +321,21 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
         taskId,
       });
 
-      await repo.touchConversation(user.id, conversationId!);
+      let cleanTitle = prompt.trim();
+      if (cleanTitle.includes('[User Request]:\n')) {
+        cleanTitle = cleanTitle.split('[User Request]:\n')[1]?.trim() || cleanTitle;
+      }
+      if (cleanTitle.includes('User Request:\n')) {
+        cleanTitle = cleanTitle.split('User Request:\n')[1]?.trim() || cleanTitle;
+      }
+      if (cleanTitle.startsWith('[Autonomous Co-Work Mode]\n')) {
+        cleanTitle = cleanTitle.replace('[Autonomous Co-Work Mode]\n', '').trim();
+      }
+      cleanTitle = cleanTitle.slice(0, 45) || 'New Conversation';
+
+      const conv = await repo.getConversation(user.id, conversationId!);
+      const shouldUpdateTitle = !conv || !conv.title || conv.title === 'New Conversation' || conv.title === 'New Co-Work Session';
+      await repo.touchConversation(user.id, conversationId!, shouldUpdateTitle ? cleanTitle : undefined);
 
       // Emit SSE done event
       onEvent('done', {

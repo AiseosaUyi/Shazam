@@ -266,6 +266,8 @@ export default function ClaudeCoWorkStudio() {
   // Project Creation Modal & Quick File Search
   const [newProjectModal, setNewProjectModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [dismissedProjectCard, setDismissedProjectCard] = useState(false);
+  const [creatingLocalFolder, setCreatingLocalFolder] = useState(false);
   const [quickSearchOpen, setQuickSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [projectFiles, setProjectFiles] = useState<Array<{ path: string; content: string }>>([]);
@@ -548,18 +550,25 @@ export default function ClaudeCoWorkStudio() {
       const pList: Project[] = projData.projects || [];
       const cList: ConversationItem[] = convData.conversations || [];
 
-      setProjects(pList);
+      // Filter out auto-generated dummy "My Project"
+      const realProjects = pList.filter((p) => p.name !== 'My Project');
+      const dummy = pList.find((p) => p.name === 'My Project');
+      if (dummy) {
+        fetch(`/api/v1/projects/${dummy.id}`, { method: 'DELETE' }).catch(() => {});
+      }
+
+      setProjects(realProjects);
       setConversations(cList);
 
       // Auto-expand all projects
       const expandMap: Record<string, boolean> = {};
-      pList.forEach((p) => {
+      realProjects.forEach((p) => {
         expandMap[p.id] = true;
       });
       setExpandedProjects(expandMap);
 
-      if (pList.length > 0) {
-        const firstProj = pList[0];
+      if (realProjects.length > 0) {
+        const firstProj = realProjects[0];
         setCurrentProject(firstProj);
         loadProjectFiles(firstProj.id);
 
@@ -572,18 +581,10 @@ export default function ClaudeCoWorkStudio() {
           handleNewConversationInProject(firstProj.id);
         }
       } else {
-        // Create initial default project if user has none
-        const createRes = await fetch('/api/v1/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'My Project', description: 'Default Workspace' }),
-        });
-        const createData = await createRes.json();
-        if (createData.project) {
-          setProjects([createData.project]);
-          setCurrentProject(createData.project);
-          setExpandedProjects({ [createData.project.id]: true });
-          handleNewConversationInProject(createData.project.id);
+        // Clean workspace: do not auto-create fake "My Project"
+        setCurrentProject(null);
+        if (cList.length > 0) {
+          selectConversation(cList[0].id, cList[0].title);
         }
       }
     } catch {
@@ -677,6 +678,7 @@ export default function ClaudeCoWorkStudio() {
 
   // Global "+ New Chat"
   async function handleGlobalNewChat() {
+    setDismissedProjectCard(false);
     const activeProjId = currentProject?.id || null;
     if (activeProjId) {
       handleNewConversationInProject(activeProjId);
@@ -737,11 +739,117 @@ export default function ClaudeCoWorkStudio() {
         setExpandedProjects((prev) => ({ ...prev, [data.project.id]: true }));
         setNewProjectModal(false);
         setNewProjectName('');
+        setDismissedProjectCard(true);
         // Start conversation in this project
         handleNewConversationInProject(data.project.id);
       }
     } catch {
       // ignore
+    }
+  }
+
+  // Create New Project Folder on Disk & Bind
+  async function handleCreateAndBindLocalFolder(customName?: string) {
+    const rawName = customName || newProjectName;
+    const safeName = rawName.trim().replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'new-project';
+
+    setCreatingLocalFolder(true);
+    // 0. Native Electron Desktop App
+    if (typeof window !== 'undefined' && (window as any).shazamDesktop) {
+      try {
+        const selectedParent = await (window as any).shazamDesktop.selectFolder();
+        if (selectedParent) {
+          const fullPath = `${selectedParent}/${safeName}`;
+          const res = await fetch('/api/v1/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: safeName, rootDir: fullPath }),
+          });
+          const data = await res.json();
+          if (data.project) {
+            setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
+            setCurrentProject(data.project);
+            setExpandedProjects((prev) => ({ ...prev, [data.project.id]: true }));
+            setNewProjectModal(false);
+            setNewProjectName('');
+            setDismissedProjectCard(true);
+            setSyncBannerMessage(`✓ Created project "${safeName}" at ${fullPath}`);
+            setTimeout(() => setSyncBannerMessage(null), 5000);
+            handleNewConversationInProject(data.project.id);
+            setCreatingLocalFolder(false);
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    // 1. Native File System Access API (Chrome, Edge, Opera)
+    if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
+      try {
+        const parentHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+        if (!parentHandle) {
+          setCreatingLocalFolder(false);
+          return;
+        }
+
+        const newFolderHandle = await parentHandle.getDirectoryHandle(safeName, { create: true });
+        const initialReadme = `# ${safeName}\n\nProject workspace created with Shazam AI.\n`;
+        const readmeHandle = await newFolderHandle.getFileHandle('README.md', { create: true });
+        const writable = await readmeHandle.createWritable();
+        await writable.write(initialReadme);
+        await writable.close();
+
+        const res = await fetch('/api/v1/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: safeName, rootDir: `~/${safeName}` }),
+        });
+        const data = await res.json();
+        const proj: Project | undefined = data.project;
+
+        if (proj) {
+          setProjects((prev) => [proj, ...prev.filter((p) => p.id !== proj.id)]);
+          setCurrentProject(proj);
+          setExpandedProjects((prev) => ({ ...prev, [proj.id]: true }));
+          setProjectFiles([{ path: 'README.md', content: initialReadme }]);
+          setSyncBannerMessage(`✓ Created folder "${safeName}" and connected project!`);
+          setTimeout(() => setSyncBannerMessage(null), 5000);
+          setNewProjectModal(false);
+          setNewProjectName('');
+          setDismissedProjectCard(true);
+          handleNewConversationInProject(proj.id);
+        }
+        setCreatingLocalFolder(false);
+        return;
+      } catch (err: any) {
+        setCreatingLocalFolder(false);
+        if (err.name === 'AbortError') return; // User cancelled
+      }
+    }
+
+    // Fallback: create cloud project
+    try {
+      const res = await fetch('/api/v1/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: safeName }),
+      });
+      const data = await res.json();
+      if (res.ok && data.project) {
+        setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
+        setCurrentProject(data.project);
+        setExpandedProjects((prev) => ({ ...prev, [data.project.id]: true }));
+        setNewProjectModal(false);
+        setNewProjectName('');
+        setDismissedProjectCard(true);
+        setSyncBannerMessage(`✓ Project "${safeName}" initialized!`);
+        setTimeout(() => setSyncBannerMessage(null), 4000);
+        handleNewConversationInProject(data.project.id);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCreatingLocalFolder(false);
     }
   }
 
@@ -820,28 +928,34 @@ export default function ClaudeCoWorkStudio() {
   // Bulk ingest files directly into the target project in Cloudflare D1
   async function ingestFilesIntoProject(targetProj: Project, files: Array<{ path: string; content: string }>) {
     if (files.length === 0) {
-      alert('No supported source or text files found in the selected folder.');
+      setSyncBannerMessage('Notice: No supported source or text files found in the selected folder.');
+      setTimeout(() => setSyncBannerMessage(null), 5000);
       return;
     }
 
     setSyncingFiles(true);
     try {
-      const res = await fetch(`/api/v1/projects/${targetProj.id}/files/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files }),
-      });
+      const chunkSize = 200;
+      for (let i = 0; i < files.length; i += chunkSize) {
+        const chunk = files.slice(i, i + chunkSize);
+        const res = await fetch(`/api/v1/projects/${targetProj.id}/files/bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: chunk }),
+        });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to save files.');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to save files.');
+        }
       }
 
       setProjectFiles(files);
-      setSyncBannerMessage(`✓ Successfully synced ${files.length} files from "${targetProj.name}" into cloud workspace!`);
+      setSyncBannerMessage(`✓ Successfully synced ${files.length} files from "${targetProj.name}" into workspace!`);
       setTimeout(() => setSyncBannerMessage(null), 5000);
     } catch (err: any) {
-      alert(`Sync failed: ${err.message || 'Unknown error'}`);
+      setSyncBannerMessage(`Sync warning: ${err.message || 'Unable to sync some files.'}`);
+      setTimeout(() => setSyncBannerMessage(null), 6000);
     } finally {
       setSyncingFiles(false);
     }
@@ -1064,12 +1178,19 @@ User Request:
 ${textToSend}`;
       } else {
         contextualPrompt = `You are an expert AI software engineer and product architect working with the user on their project "${currentProject.name}".
-The user has bound this project in Shazam.
-Provide a clear, high-level analysis of what "${currentProject.name}" represents, recommend architectural patterns and implementation steps, and invite the user to sync local files or upload specs whenever they want granular file-level edits.
+Provide a clear, high-level analysis, recommend architectural patterns and implementation steps, and invite the user to sync local files or upload specs whenever they want granular file-level edits.
 
 User Request:
 ${textToSend}`;
       }
+    } else {
+      contextualPrompt = `You are Shazam AI — an expert AI software engineer and product architect.
+The user is working in an open workspace without a local project folder bound yet.
+Answer their questions directly, clearly, and with strong technical competence.
+If they ask whether you can work on their codebase or compare your capabilities to other tools like Claude Opus, explain that you can handle both high-level system design and granular multi-file code implementation, and that they can connect their local workspace folder anytime by clicking "Connect Local Folder" below to enable live file analysis and surgical editing.
+
+User Request:
+${textToSend}`;
     }
 
     try {
@@ -1847,6 +1968,73 @@ ${textToSend}`;
                 </div>
               )}
 
+              {/* Project Workspace Setup Card (When user hasn't bound a folder yet) */}
+              {!currentProject && !dismissedProjectCard && messages.length > 0 && !isStreaming && (
+                <div className="p-4 rounded-2xl bg-[#11141d] border border-amber-500/30 shadow-xl space-y-3 animate-in fade-in slide-in-from-bottom duration-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Folder className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold text-zinc-100">Project Workspace Setup</h4>
+                        <p className="text-[11px] text-zinc-400">
+                          Is this a new project, or do you have an existing codebase on your computer?
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDismissedProjectCard(true)}
+                      className="p-1 text-zinc-500 hover:text-zinc-300 transition"
+                      title="Continue without connecting a folder"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleConnectOrSyncFolder()}
+                      className="p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 hover:border-amber-500/40 text-left transition group"
+                    >
+                      <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200 group-hover:text-amber-400">
+                        <Folder className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Connect Existing Folder</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        Select an existing folder on your Mac/PC to index files and apply code edits.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setNewProjectModal(true)}
+                      className="p-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 hover:border-amber-500/50 text-left transition group"
+                    >
+                      <div className="flex items-center gap-2 text-xs font-semibold text-amber-300 group-hover:text-amber-200">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Create New Project Folder</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        Pick where to save on your computer. Shazam creates the folder and connects to it.
+                      </p>
+                    </button>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setDismissedProjectCard(true)}
+                      className="text-[11px] text-zinc-500 hover:text-zinc-300 transition"
+                    >
+                      Continue in Scratchpad (No Folder) →
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -1999,45 +2187,7 @@ ${textToSend}`;
               </div>
             )}
 
-            {/* Zero-Files Helper Banner for Connected Project */}
-            {currentProject && projectFiles.length === 0 && !syncBannerMessage && (
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in duration-150">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                    <FolderOpen className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-zinc-100">
-                      Project <span className="text-amber-300 font-mono">&ldquo;{currentProject.name}&rdquo;</span> is connected
-                    </p>
-                    <p className="text-[11px] text-zinc-400">
-                      Sync your local folder or upload code files so Shazam can read and digest the codebase.
-                    </p>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleConnectOrSyncFolder(currentProject.id)}
-                    disabled={syncingFiles}
-                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 font-semibold text-xs flex items-center gap-1.5 transition shadow-sm"
-                  >
-                    <Folder className="w-3.5 h-3.5" />
-                    <span>{syncingFiles ? 'Syncing...' : 'Sync Local Folder'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => filesInputRef.current?.click()}
-                    disabled={syncingFiles}
-                    className="px-2.5 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-zinc-200 text-xs flex items-center gap-1.5 transition border border-white/10"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Upload Files</span>
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="relative rounded-2xl bg-[#0f1118] border border-white/10 shadow-2xl focus-within:border-amber-500/50 transition">
               <textarea
@@ -2060,20 +2210,44 @@ ${textToSend}`;
               />
 
               <div className="absolute left-3 bottom-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleConnectOrSyncFolder(currentProject?.id)}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[11px] font-medium text-amber-300 hover:text-amber-200 flex items-center gap-1.5 transition shadow-sm"
-                  title="Connected Project Folder (click to re-sync or change)"
-                >
-                  <Folder className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="font-semibold">{currentProject ? currentProject.name : 'Connect Local Folder'}</span>
-                  {projectFiles.length > 0 ? (
-                    <span className="text-[10px] text-emerald-400 font-mono">({projectFiles.length} files synced)</span>
-                  ) : (
-                    <span className="text-[10px] text-amber-400 font-mono">(Sync files)</span>
-                  )}
-                </button>
+                {currentProject ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] font-medium text-amber-300 shadow-sm">
+                    <Folder className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="font-semibold">{currentProject.name}</span>
+                    {projectFiles.length > 0 ? (
+                      <span className="text-[10px] text-emerald-400 font-mono">({projectFiles.length} files)</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => handleConnectOrSyncFolder(currentProject.id)}
+                      className="ml-1 text-[10px] text-amber-400/80 hover:text-amber-200 underline"
+                      title="Sync folder files"
+                    >
+                      Sync
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentProject(null);
+                        setProjectFiles([]);
+                      }}
+                      className="ml-1 p-0.5 text-zinc-400 hover:text-white rounded"
+                      title="Disconnect project from session"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleConnectOrSyncFolder()}
+                    className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 transition text-xs"
+                    title="Attach folder or codebase from your computer"
+                  >
+                    <Folder className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="text-[11px]">Attach Folder</span>
+                  </button>
+                )}
 
                 {/* Model Selector Dropdown Pill */}
                 <div className="relative inline-flex items-center">
@@ -2227,16 +2401,22 @@ ${textToSend}`;
       {/* 5. Create Project Modal                                                   */}
       {/* ========================================================================= */}
       {newProjectModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <form
-            onSubmit={handleCreateProject}
-            className="w-full max-w-sm bg-[#0f1118] border border-white/10 rounded-2xl p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150"
-          >
-            <div>
-              <h3 className="text-sm font-semibold text-white">Create New Project</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Organize tasks, chats, and files under an isolated project.
-              </p>
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0f1118] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Create New Project Workspace</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Name your project and choose where it should live.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewProjectModal(false)}
+                className="p-1 text-zinc-500 hover:text-zinc-300 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div>
@@ -2244,15 +2424,69 @@ ${textToSend}`;
               <input
                 type="text"
                 autoFocus
-                placeholder="e.g. My Next.js App, SaaS, Mobile App"
+                placeholder="e.g. real-estate-dashboard, saas-starter, portfolio"
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
-                className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreateAndBindLocalFolder();
+                  }
+                }}
+                className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono"
                 required
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleCreateAndBindLocalFolder()}
+                disabled={!newProjectName.trim() || creatingLocalFolder}
+                className="w-full p-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-left transition group disabled:opacity-40 shadow-sm"
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-amber-300">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Choose Location & Create Local Folder</span>
+                  </span>
+                  <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-300 font-mono">
+                    {creatingLocalFolder ? 'Creating...' : 'Recommended'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  Pick where to save on your Mac/PC (e.g. Desktop). Shazam creates the folder and binds it immediately.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCreateProject}
+                disabled={!newProjectName.trim()}
+                className="w-full p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 text-left transition group disabled:opacity-40"
+              >
+                <div className="text-xs font-semibold text-zinc-300 group-hover:text-white">
+                  Create in Cloud Workspace Only
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Start coding immediately without binding a folder on disk right now.
+                </p>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewProjectModal(false);
+                  handleConnectOrSyncFolder();
+                }}
+                className="text-xs text-amber-400/80 hover:text-amber-300 transition flex items-center gap-1"
+              >
+                <Folder className="w-3.5 h-3.5" />
+                <span>Or connect existing folder</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setNewProjectModal(false)}
@@ -2260,14 +2494,8 @@ ${textToSend}`;
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-lg transition shadow-md"
-              >
-                Create Project
-              </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
