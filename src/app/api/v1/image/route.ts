@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
   const cleanPrompt = prompt.replace(/^["'`]+|["'`]+$/g, '').trim();
   const encoded = encodeURIComponent(cleanPrompt);
 
-  // Redirect directly to high-fidelity FLUX.1 Schnell so client browser fetches from residential IP
-  const targetUrl = `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=1024&height=1024&nologo=true&seed=${seed}`;
+  // Redirect directly to high-fidelity generator with prompt enhancement for photorealistic quality
+  const targetUrl = `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
 
   return NextResponse.redirect(targetUrl, 307);
 }
