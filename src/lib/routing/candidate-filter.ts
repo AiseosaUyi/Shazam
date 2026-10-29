@@ -220,6 +220,16 @@ export function filterCandidates(
       }
     }
 
+    // 12. Local Compute (Ollama) check
+    // Local loopback daemon requires explicit manual pin to prevent Auto routing from hitting offline localhost
+    if (route.costClass === 'local_compute' || route.providerId === 'ollama') {
+      if (!effectivePinnedRouteId) {
+        cand.rejection = 'Local compute routes (Ollama) require explicit manual model selection.';
+        rejected.push(cand);
+        continue;
+      }
+    }
+
     // Candidate passed all hard filters!
     cand.eligible = true;
     eligible.push(cand);

@@ -1316,6 +1316,10 @@ ${textToSend}`;
               if (currentProject) {
                 loadProjectFiles(currentProject.id);
               }
+            } else if (eventType === 'react_error' || eventType === 'error') {
+              const errMsg = data.message || 'Execution error occurred.';
+              fullOutput = `⚠️ **Unable to complete task:** ${errMsg}\n\nPlease verify your API key under Connections or check model routing policies.`;
+              setStreamingOutput(fullOutput);
             }
           } catch {
             // ignore
