@@ -289,6 +289,7 @@ export default function ClaudeCoWorkStudio() {
   const [showBridgeModal, setShowBridgeModal] = useState(false);
   const [daemonToken, setDaemonToken] = useState<string>('');
   const [isDesktopApp, setIsDesktopApp] = useState<boolean>(false);
+  const [autonomousMode, setAutonomousMode] = useState<boolean>(true);
   const terminalLogsEndRef = useRef<HTMLDivElement>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -1214,16 +1215,27 @@ ${textToSend}`;
     }
 
     try {
-      const res = await fetch('/api/v1/tasks', {
+      const targetEndpoint = autonomousMode && currentProject ? '/api/v1/agent/loop' : '/api/v1/tasks';
+      const requestPayload = autonomousMode && currentProject
+        ? {
+            prompt: textToSend,
+            projectId: currentProject?.id || undefined,
+            daemonToken: daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : ''),
+            daemonPort: typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_port') || '4040' : '4040',
+            maxTurns: 8,
+          }
+        : {
+            prompt: contextualPrompt,
+            conversationId: currentConversationId || undefined,
+            projectId: currentProject?.id || undefined,
+            taskClassOverride: 'coding',
+            pinnedModelName: selectedModel === 'auto' ? undefined : selectedModel,
+          };
+
+      const res = await fetch(targetEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: contextualPrompt,
-          conversationId: currentConversationId || undefined,
-          projectId: currentProject?.id || undefined,
-          taskClassOverride: 'coding',
-          pinnedModelName: selectedModel === 'auto' ? undefined : selectedModel,
-        }),
+        body: JSON.stringify(requestPayload),
         signal: controller.signal,
       });
 
@@ -1298,9 +1310,12 @@ ${textToSend}`;
                 });
               }
               setStreamingSteps([...currentTurnSteps]);
-            } else if (eventType === 'done') {
-              fullOutput = data.fullText || fullOutput;
+            } else if (eventType === 'done' || eventType === 'react_done') {
+              fullOutput = data.finalSummary || data.fullText || fullOutput;
               setStreamingOutput(fullOutput);
+              if (currentProject) {
+                loadProjectFiles(currentProject.id);
+              }
             }
           } catch {
             // ignore
@@ -2285,6 +2300,21 @@ ${textToSend}`;
                   </select>
                   <ChevronDown className="w-3 h-3 text-zinc-400 pointer-events-none absolute right-2" />
                 </div>
+
+                {/* Autonomous ReAct Mode Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setAutonomousMode(!autonomousMode)}
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium flex items-center gap-1.5 transition select-none ${
+                    autonomousMode
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-sm'
+                      : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                  title="Enable multi-step Autonomous ReAct execution (runs tests, inspects errors, auto-patches code)"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${autonomousMode ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+                  <span>Autonomous ReAct {autonomousMode ? 'ON' : 'OFF'}</span>
+                </button>
               </div>
 
               <div className="absolute right-3 bottom-3 flex items-center gap-2">
