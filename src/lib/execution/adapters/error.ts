@@ -135,6 +135,16 @@ export function normalizeProviderError(
     };
   }
 
+  if (msg.includes('is not found for API version v1beta') || msg.includes('not supported for predict')) {
+    return {
+      type: 'model_unavailable',
+      message: 'Google Imagen 3 is not supported on standard Google AI Studio developer keys (requires Google Cloud Vertex AI with billing enabled). Please switch model to FLUX.1 Schnell or Auto Routing for free image generation.',
+      statusCode: 404,
+      retryable: true,
+      retryAfterSeconds: 5,
+    };
+  }
+
   if (
     statusCode === 404 ||
     statusCode === 503 ||

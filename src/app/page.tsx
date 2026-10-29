@@ -741,11 +741,11 @@ export default function WorkspacePage() {
             <Sparkles className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
             <div className="truncate">
               <div className="font-medium text-zinc-200 truncate">Google Imagen 3 (Nano Banana)</div>
-              <div className="text-[10px] text-zinc-500 truncate">High-fidelity Google model</div>
+              <div className="text-[10px] text-zinc-500 truncate">Requires Google Vertex AI key</div>
             </div>
           </div>
           <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
-            {connectedProviders['google'] ? 'Connected' : 'Google AI'}
+            Vertex AI
           </span>
         </button>
 
@@ -767,9 +767,12 @@ export default function WorkspacePage() {
             <Palette className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
             <div className="truncate">
               <div className="font-medium text-zinc-200 truncate">FLUX.1 Schnell</div>
-              <div className="text-[10px] text-zinc-500 truncate">Fast image generation</div>
+              <div className="text-[10px] text-zinc-500 truncate">Free · Fast · No Key Needed</div>
             </div>
           </div>
+          <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+            Free
+          </span>
         </button>
 
         <div className="border-t border-white/5 my-1" />
