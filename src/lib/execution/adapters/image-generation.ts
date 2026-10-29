@@ -26,21 +26,23 @@ export async function executeImageGeneration(options: ExecuteOptions): Promise<A
     /^sketch\s+(?:of\s+)?/i,
   ];
 
+  cleanPrompt = cleanPrompt.replace(/^["'`]+|["'`]+$/g, '').trim();
   for (const rx of leadingPhrases) {
     if (rx.test(cleanPrompt)) {
       cleanPrompt = cleanPrompt.replace(rx, '').trim();
       break;
     }
   }
+  cleanPrompt = cleanPrompt.replace(/^["'`]+|["'`]+$/g, '').trim();
 
   if (!cleanPrompt) {
-    cleanPrompt = prompt.trim();
+    cleanPrompt = prompt.trim().replace(/^["'`]+|["'`]+$/g, '');
   }
 
   // Generate unique seed for freshness
   const seed = Math.floor(Math.random() * 1000000);
   const encodedPrompt = encodeURIComponent(cleanPrompt);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=1024&height=1024&nologo=true&seed=${seed}`;
+  const imageUrl = `/api/v1/image?prompt=${encodedPrompt}&seed=${seed}`;
 
   // Emit progress step
   if (signal?.aborted) throw new Error('Task cancelled');

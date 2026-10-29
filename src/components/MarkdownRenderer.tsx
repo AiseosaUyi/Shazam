@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Copy, Check, Terminal, AlertTriangle, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Copy, Check, Terminal, AlertTriangle, ExternalLink, RotateCw } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
@@ -112,11 +112,25 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
   const [copied, setCopied] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [imgSrc, setImgSrc] = useState(src);
+
+  useEffect(() => {
+    setImgSrc(src);
+    setError(false);
+    setLoaded(false);
+  }, [src]);
 
   function handleCopy() {
-    navigator.clipboard.writeText(src);
+    navigator.clipboard.writeText(imgSrc);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleRetry() {
+    setError(false);
+    setLoaded(false);
+    const clean = imgSrc.split('&_t=')[0];
+    setImgSrc(`${clean}&_t=${Date.now()}`);
   }
 
   return (
@@ -129,13 +143,35 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
           </div>
         )}
         {error ? (
-          <div className="p-6 text-center text-zinc-400">
-            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
-            <p className="text-xs">Failed to load preview image</p>
+          <div className="p-6 text-center text-zinc-400 space-y-3">
+            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+            <div>
+              <p className="text-xs font-medium text-zinc-200">Unable to display preview</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">GPU rendering queue busy or network delay</p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span>Retry Rendering</span>
+              </button>
+              <a
+                href={imgSrc}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-medium border border-white/10 flex items-center gap-1 transition"
+              >
+                <span>Direct Link</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         ) : (
           <img
-            src={src}
+            src={imgSrc}
             alt={alt}
             loading="lazy"
             onLoad={() => setLoaded(true)}
@@ -145,8 +181,15 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
         )}
 
         <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+          <button
+            onClick={handleRetry}
+            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"
+            title="Refresh image"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
           <a
-            href={src}
+            href={imgSrc}
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"

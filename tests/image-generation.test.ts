@@ -69,7 +69,7 @@ describe('Free Image Generation & FLUX.1 Schnell Routing Tests', () => {
     });
 
     assert.ok(result.fullText.includes('![majestic lion with golden armor in a savanna]'));
-    assert.ok(result.fullText.includes('https://image.pollinations.ai/prompt/'));
+    assert.ok(result.fullText.includes('/api/v1/image?prompt='));
     assert.ok(result.fullText.includes('FLUX.1 Schnell'));
     assert.strictEqual(result.costUSD, 0);
     assert.strictEqual(result.costKind, 'zero');
