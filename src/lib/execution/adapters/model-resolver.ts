@@ -13,12 +13,12 @@ export function resolveLiveProviderModel(providerId: string, catalogModelId: str
         return 'gemini-3.5-flash-lite';
       }
       if (id.includes('flash') || id === 'gemini-3.8-flash') {
-        return 'gemini-3.8-flash';
+        return 'gemini-3.5-flash-lite';
       }
       if (id.includes('argon') || id.includes('pro') || id === 'gemini-4-argon') {
         return 'gemini-3.1-pro-preview';
       }
-      return 'gemini-3.8-flash';
+      return 'gemini-3.5-flash-lite';
 
     case 'openai':
       if (id.includes('luna')) return 'gpt-4o-mini';

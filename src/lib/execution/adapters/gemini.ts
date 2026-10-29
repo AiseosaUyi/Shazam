@@ -47,9 +47,9 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
     cleanup();
   }
 
-  // If 404 (model not found on target region), fallback to gemini-3.8-flash
-  if (res.status === 404 && liveModelId !== 'gemini-3.8-flash') {
-    const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
+  // If 404 (model not found on target region), fallback to gemini-3.5-flash-lite
+  if (res.status === 404 && liveModelId !== 'gemini-3.5-flash-lite') {
+    const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
     const { signal: fbSignal, cleanup: fbCleanup } = createTimeoutSignal(signal, 45000);
     try {
       res = await fetch(fallbackEndpoint, {
