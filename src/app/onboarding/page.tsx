@@ -1,271 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import {
-  Sparkles,
-  ShieldCheck,
-  KeyRound,
-  CheckCircle2,
-  AlertCircle,
-  ArrowRight,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  Zap,
-} from 'lucide-react';
+import { Mail, Monitor, Bot, ArrowRight } from 'lucide-react';
+import { LogoMark } from '@/components/brand/Logo';
+import { SystemStrip } from '@/components/SystemStrip';
 
-const PROVIDER_OPTIONS = [
-  {
-    id: 'google',
-    name: 'Google Gemini (100% Free)',
-    placeholder: 'AIzaSy...',
-    hint: 'Instant free key with any Google Account. Zero billing or credit card.',
-    keyUrl: 'https://aistudio.google.com/app/apikey',
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    placeholder: 'sk-proj-...',
-    hint: 'gpt-6.1-terra, gpt-6-luna (Pay-as-you-go)',
-    keyUrl: 'https://platform.openai.com/api-keys',
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    placeholder: 'sk-ant-...',
-    hint: 'claude-sonnet-5.5, claude-opus-5.5 (Pay-as-you-go)',
-    keyUrl: 'https://console.anthropic.com/settings/keys',
-  },
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    placeholder: 'sk-...',
-    hint: 'deepseek-flash, deepseek-v4-pro',
-    keyUrl: 'https://platform.deepseek.com/api_keys',
-  },
-  {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    placeholder: 'sk-or-...',
-    hint: 'Multi-provider unified API + community free models',
-    keyUrl: 'https://openrouter.ai/keys',
-  },
+/** First run: you're ready now; connections are optional extras, not a gate. */
+const EXTRAS = [
+  { href: '/connections#apps', icon: Mail, title: 'Connect Gmail & Calendar', body: 'So Co-Work can read, send and schedule email.' },
+  { href: '/connections#devices', icon: Monitor, title: 'Connect your computer', body: 'Work in your own folders, run code locally, use local models.' },
+  { href: '/connections#assistants', icon: Bot, title: 'Connect Claude, Codex or Antigravity', body: 'Let the plan you already pay for hand heavy work to Shazam.' },
 ];
 
 export default function OnboardingPage() {
-  const [selectedProvider, setSelectedProvider] = useState('google');
-  const [apiKey, setApiKey] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [showAdvancedByok, setShowAdvancedByok] = useState(false);
-  const router = useRouter();
-
-  async function handleConnect(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/v1/credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providerId: selectedProvider, apiKey }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to save credential.');
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        router.push('/');
-        router.refresh();
-      }, 1000);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const currentOption = PROVIDER_OPTIONS.find((p) => p.id === selectedProvider)!;
-
   return (
-    <div className="flex-1 h-full min-h-0 overflow-y-auto flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-xl space-y-6">
-        {/* Welcome Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/10 border border-brand/20 text-brand text-xs font-mono">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Welcome to Shazam AI</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-ink tracking-tight">
-            Intelligent AI, Made Simple & Free
-          </h1>
-          <p className="text-xs sm:text-sm text-ink-2 max-w-md mx-auto">
-            You describe what you want to achieve, and Shazam selects the best AI model for the job.
-          </p>
+    <div className="shz-atmosphere flex h-full min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-12">
+      <div className="w-full max-w-lg text-center">
+        <div className="flex justify-center">
+          <LogoMark size={44} />
+        </div>
+        <h1 className="mt-5 text-[28px] font-semibold tracking-[-0.025em] text-ink">You&apos;re ready.</h1>
+        <p className="mx-auto mt-2 max-w-md text-[14px] text-ink-2">
+          Shazam already has free models for coding, email and images. Nothing to set up. Free tiers have daily limits, and Shazam switches models when one runs out.
+        </p>
+        <div className="mt-5">
+          <SystemStrip show={['models', 'sandbox']} />
         </div>
 
-        {/* Primary Card: Start Free Forever */}
-        <div className="bg-surface border border-line/10 rounded-2xl p-6 sm:p-7 shadow-2xl relative overflow-hidden space-y-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  Recommended
-                </span>
-                <span className="text-xs text-ink-3 font-mono">100% Free Guarantee</span>
+        <Link href="/" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[14px] font-semibold text-brand-ink hover:bg-brand-soft">
+          Start <ArrowRight className="h-4 w-4" />
+        </Link>
+
+        <div className="mt-10 space-y-2 text-left">
+          <p className="px-1 text-[12px] text-ink-3">Optional, whenever you like</p>
+          {EXTRAS.map(({ href, icon: Icon, title, body }) => (
+            <Link key={href} href={href} className="flex items-center gap-3 rounded-2xl border border-line/[0.08] bg-surface/80 p-3.5 transition hover:border-brand/30 hover:bg-surface">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-2">
+                <Icon className="h-4 w-4 text-ink-2" />
               </div>
-              <h2 className="text-lg font-bold text-ink">Start Free Forever</h2>
-              <p className="text-xs text-ink-2 leading-relaxed">
-                No credit card required. No API keys needed. You will never be billed for usage on our free tier.
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand shrink-0">
-              <Zap className="w-6 h-6" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-            <div className="p-3 rounded-xl bg-canvas border border-[#1e2333] space-y-1">
-              <div className="font-semibold text-ink flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> $0.00 Cost
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-ink">{title}</p>
+                <p className="text-[12px] text-ink-3">{body}</p>
               </div>
-              <p className="text-[11px] text-ink-3 leading-normal">
-                Strict guardrails guarantee you never incur unexpected charges.
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-canvas border border-[#1e2333] space-y-1">
-              <div className="font-semibold text-ink flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-brand" /> Auto-Routing
-              </div>
-              <p className="text-[11px] text-ink-3 leading-normal">
-                Automatically routes each prompt to the fastest, smartest free model.
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-canvas border border-[#1e2333] space-y-1">
-              <div className="font-semibold text-ink flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" /> Instant Access
-              </div>
-              <p className="text-[11px] text-ink-3 leading-normal">
-                Jump right in and start asking questions or generating code right now.
-              </p>
-            </div>
-          </div>
-
-          <Link
-            href="/"
-            className="w-full py-3 px-4 bg-brand hover:bg-brand-soft text-brand-ink font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-brand/10"
-          >
-            <span>Enter Workspace — It&apos;s Free</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Secondary Expandable Section: Power User / BYOK */}
-        <div className="bg-canvas border border-[#1e2333] rounded-2xl p-5">
-          <button
-            type="button"
-            onClick={() => setShowAdvancedByok(!showAdvancedByok)}
-            className="w-full flex items-center justify-between text-left text-xs text-ink-2 hover:text-ink transition"
-          >
-            <div className="flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-brand" />
-              <div>
-                <span className="font-semibold text-ink">Power User or Developer?</span>
-                <span className="text-ink-3 ml-1.5 hidden sm:inline">Connect your own custom API key (Optional)</span>
-              </div>
-            </div>
-            {showAdvancedByok ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-
-          {showAdvancedByok && (
-            <div className="mt-5 pt-5 border-t border-[#1e2333] space-y-4 animate-in fade-in duration-200">
-              <p className="text-xs text-ink-2 leading-relaxed">
-                Connecting your own free key gives you your own daily quota on top of Shazam's free platform models.
-                You can get a free key from Google AI Studio in 30 seconds using your normal Google account (no credit card needed).
-              </p>
-
-              {error && (
-                <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {success ? (
-                <div className="p-4 text-center space-y-2 bg-emerald-950/30 border border-emerald-800 rounded-lg">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto" />
-                  <p className="text-xs font-semibold text-emerald-300">Key Connected Successfully</p>
-                </div>
-              ) : (
-                <form onSubmit={handleConnect} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-ink-2 mb-2">Select Provider</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {PROVIDER_OPTIONS.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setSelectedProvider(p.id)}
-                          className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between ${
-                            selectedProvider === p.id
-                              ? 'border-brand bg-brand/10 text-ink'
-                              : 'border-line/10 bg-canvas text-ink-2 hover:text-ink'
-                          }`}
-                        >
-                          <span className="text-xs font-semibold">{p.name}</span>
-                          <span className="text-[10px] text-ink-3 truncate mt-1">{p.hint}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-medium text-ink-2">
-                        {currentOption.name} API Key
-                      </label>
-                      {currentOption.keyUrl && (
-                        <a
-                          href={currentOption.keyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] text-brand hover:underline flex items-center gap-1 font-mono"
-                        >
-                          Get Free Key ↗
-                        </a>
-                      )}
-                    </div>
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      required
-                      placeholder={currentOption.placeholder}
-                      className="w-full px-3 py-2 bg-canvas border border-line/10 rounded-lg text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand font-mono"
-                    />
-                    <p className="text-[11px] text-ink-3 mt-1">
-                      Keys are encrypted at rest with AES-256-GCM and never exposed to the browser.
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading || !apiKey}
-                    className="w-full py-2.5 px-4 bg-surface-2 hover:bg-zinc-700 text-ink font-semibold text-xs rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                  >
-                    {loading ? 'Encrypting & Saving...' : 'Save & Connect Custom Key'}
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
+              <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-ink-3" />
+            </Link>
+          ))}
         </div>
       </div>
     </div>

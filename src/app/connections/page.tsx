@@ -32,6 +32,15 @@ export default function ConnectionsPage() {
     fetch('/api/v1/auth/me').then((r) => (r.ok ? r.json() : { user: null })).then((d) => setUser(d.user)).catch(() => setUser(null));
   }, []);
 
+  // Deep links (e.g. /connections#devices) arrive before the cards render; scroll once they exist.
+  useEffect(() => {
+    if (!user) return;
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    const t = setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+    return () => clearTimeout(t);
+  }, [user]);
+
   useEffect(() => {
     const els = SECTIONS.map((s) => document.getElementById(s.id)).filter(Boolean) as HTMLElement[];
     const obs = new IntersectionObserver((entries) => {
