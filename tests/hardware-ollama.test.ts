@@ -34,11 +34,11 @@ describe('Hardware Detection & Local Ollama Engine Tests', () => {
   it('supports pinning local Ollama models in task routing at zero cost', async () => {
     const repo = new DbRepo();
     const spec = classifyTask('write a quicksort in C++', {
-      pinnedRouteId: 'route_ollama_qwen2_5_coder_7b',
+      pinnedRouteId: 'route_local_qwen3_8_27b',
     });
     const resolution = await resolveTaskRoute(spec, dummyUser, repo);
 
-    assert.strictEqual(resolution.selectedModel.id, 'model_ollama_qwen2_5_coder_7b');
+    assert.strictEqual(resolution.selectedModel.id, 'model_local_qwen3_8_27b');
     assert.strictEqual(resolution.selectedProvider.id, 'ollama');
     assert.strictEqual(resolution.selectedRoute.costClass, 'local_compute');
     assert.strictEqual(resolution.selectedRoute.pricing?.inputPer1M, 0);

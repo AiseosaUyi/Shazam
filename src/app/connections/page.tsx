@@ -1,6 +1,8 @@
 'use client';
 
 import { GoogleConnectCard } from '@/components/GoogleConnectCard';
+import { DevicesCard } from '@/components/DevicesCard';
+import { AgentClientsCard } from '@/components/AgentClientsCard';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -179,6 +181,8 @@ export default function ConnectionsPage() {
         </div>
 
       {user && <GoogleConnectCard />}
+      {user && <AgentClientsCard />}
+      {user && <DevicesCard />}
 
       {/* Guest Mode Banner */}
       {!user && !loading && (
@@ -208,7 +212,7 @@ export default function ConnectionsPage() {
             <span className="font-semibold text-white">How Free AI Keys Work</span>
           </div>
           <p className="text-zinc-400 leading-relaxed max-w-2xl">
-            You are never billed by Shazam AI. To get unlimited personal free usage (1,500 requests/day), you can get a 100% free API key from Google AI Studio in 30 seconds using any standard Google account. Google will never ask for a credit card or billing details.
+            Shazam works with no key using free platform models. For more headroom, add free keys: Google AI Studio (Gemini Flash), Groq or Cerebras each take about a minute, with no card. Free tiers have daily limits, and Google may use free-tier requests to improve its models, so prefer Groq, Cerebras or a local model for private email and calendar work.
           </p>
         </div>
         <a

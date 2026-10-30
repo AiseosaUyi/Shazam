@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { executeGoogleImagen } from '@/lib/execution/adapters/imagen';
-import { executeImageGeneration } from '@/lib/execution/adapters/image-generation';
 import { executeCloudflareImage } from '@/lib/execution/adapters/cloudflare-image';
 import { getImageCapability } from '@/lib/image-gen/registry';
 import type { Model, Route } from '@/lib/types';

@@ -5,7 +5,7 @@
 > acceptance tests passes **by hand in the deployed app**, not just in unit tests.
 > It supplements `01_Shazam_AI_PRD.docx`; when they conflict, this file wins.
 
-Last QA: 2026-10-30, against https://shazam-opal.vercel.app. Score: **3/10** (see §9).
+Last QA: 2026-10-30. Score history in §9. Setup steps that need an account owner: `docs/SETUP.md`.
 
 ---
 
@@ -110,8 +110,38 @@ Last QA: 2026-10-30, against https://shazam-opal.vercel.app. Score: **3/10** (se
 7. **Video:** trim + captions + 9:16 on a sample clip.
 8. Record a score for each section in §9 and fail the release on any R0 violation.
 
+## 10. Delegation from paid assistants (offset Claude / ChatGPT / Gemini subscriptions)
+
+| ID | Requirement | Acceptance test |
+|---|---|---|
+| D1 | Shazam is a remote **MCP server** at `/api/mcp` (Streamable HTTP, stateless, `mcp-handler` 2.x). | `tools/list` returns suggest_agent, start_task, get_task_status, send_feedback, list_tasks, list/read_project_file(s), generate_image, list_pending_approvals, decide_approval. |
+| D2 | Long work is **async**: start_task returns a task_id in under 1s; get_task_status shows progress, result and files; it works within Codex's 60s and Desktop's ~4 min tool limits. | A 5-minute code task completes while the client polls. |
+| D3 | **Review loop**: send_feedback continues in the same project with the previous result as context. | Claude asks for a change; tests are re-run and pass. *(Verified 2026-10-30: slugify + maxLength, 18/18 tests.)* |
+| D4 | Auth: personal access tokens (Claude Code, Codex, Antigravity, Cursor) **and** OAuth 2.1 (DCR + PKCE S256 + rotating refresh) for claude.ai / Claude Desktop connectors. RFC 9728 401 challenge with `resource` = MCP URL. | Connect claude.ai with the custom connector URL and run a task. |
+| D5 | Live view `/runs/<id>` for every delegated run. | The link from start_task shows live steps. |
+| D6 | Outward actions stay human-approved: decide_approval only after the human approves in the conversation. | Email is not sent until approved. |
+
+## 11. Smart routing and the vetted model lineup
+
+| ID | Requirement |
+|---|---|
+| M-R1 | Before running, every composer shows the **suggested agent + model + missing connections** (deterministic and instant). Suggestions for the wrong page link to the right one with the prompt prefilled. |
+| M-R2 | **Fail-over chain** for every agent run: the user's routed key, then their other free keys (Gemini, Groq, Cerebras, OpenRouter), then the local model, then the free platform models. Rate limits and outages switch models per step without failing the run. *(Verified live: 5 RPM limit on Qwen3 Coder → Kimi K2.)* |
+| M-R3 | A curated catalog only, with no dead or unverifiable free routes. 2026-10-30 lineup: Gemini 3.8 Flash and 3.5 Flash Lite (free AI Studio key; free-tier data may be used for training, which must be disclosed), Groq Qwen3.8-27B, Cerebras gpt-oss-120b, OpenRouter Nemotron 3 Ultra and Gemma 4 `:free`, platform Qwen3 Coder Next, Kimi K2, GLM 4.6 and gpt-oss-120b, FLUX.2 klein for images, local Qwen3.8 27B and gpt-oss 20B, plus BYOK Claude, GPT and DeepSeek. Removed: Pollinations FLUX.1 schnell, Hugging Face (no free credits), Alibaba (unverified), DALL-E 3, GPT-6 Astra, outdated local models. Re-vet quarterly. |
+| M-R4 | **Local LLMs** (Ollama / LM Studio) through the desktop bridge tunnel. Only `/v1/*` on the local LLM ports is reachable. *(Verified with an LM Studio-compatible server, 17 tools passed.)* |
+
+## 12. Devices (desktop app, CLI bridge, Chrome extension)
+
+| ID | Requirement |
+|---|---|
+| B1 | Devices connect **out** (long-poll) with a one-time 8-character pairing code. Device tokens are stored hashed and can be revoked in Connections. |
+| B2 | Desktop/CLI acts only inside folders the user allowed: symlink-safe path guard, secret files blocked, and risky commands (push, rm -rf, sudo, publish, deploy) need a native Allow/Deny. *(Verified: git init, commit and log ran on the Mac; push was blocked.)* |
+| B3 | GitHub push and PRs from the cloud sandbox with the user's fine-grained token, passed as an env var and redacted from output. |
+| B4 | Chrome extension (MV3): one dedicated agent tab, numbered elements, approval notifications before clicks and typing, never types into password or payment fields, screenshots go to Blob. **Not yet live-tested in Chrome**: load `extensions/chrome` unpacked and pair. |
+
 ## 9. Scorecard history
 
 | Date | Code | Co-Work | MCP | Skills | Image | Video | Overall | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 2026-10-30 | 2 | 2 | 1 | 2 | 3 | 0 | **3/10** | Before the fixes in this commit: agent prompt was dropped, test output was faked, the App.tsx fallback overwrote files, MCP tools were fake, the image error was wrong, the email schedule was fake, and video only produced scripts. |
+| 2026-10-30 (pm) | 9 | 8 | 9 | 8 | 8 | 8 | **8.5/10** (local QA) | Native tool-calling agent with real sandbox (tests fail → fix → pass, free models); Co-Work with Gmail, Calendar, schedules, approvals and a cron runner; real MCP; SKILL.md skills; FLUX.2 images; ffmpeg video; Turso adapter; device bridge; MCP server with OAuth; fail-over. **Production pending owner setup (SETUP.md).** |

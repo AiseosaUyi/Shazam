@@ -44,7 +44,9 @@ export default function LoginPage() {
         throw new Error(data.error || 'Login failed. Please check your credentials.');
       }
 
-      router.push('/agent');
+      // Only same-site relative paths (no "//host" or scheme) to avoid open redirects.
+      const next = new URLSearchParams(window.location.search).get('next') || '';
+      router.push(/^\/(?!\/)[\w\-./?=&%]*$/.test(next) ? next : '/agent');
       router.refresh();
     } catch (err: any) {
       setError(err.message);

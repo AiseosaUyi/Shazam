@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Exactly-once: only the request that flips pending → approved executes.
   if (!(await platform.decidePendingAction(user.id, id, 'approved'))) {
-    return NextResponse.json({ error: `Action already ${action.status}.` }, { status: 409 });
+    return NextResponse.json({ error: 'This action was already approved or rejected.' }, { status: 409 });
   }
   const edited = parsed.data.payload ? { ...action, payload: { ...action.payload, ...parsed.data.payload } } : action;
   const outcome = await executeApprovedAction(edited, platform);

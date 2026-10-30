@@ -27,3 +27,11 @@ describe('Monthly recurrence', () => {
     assert.equal(nov, '2026-11-30T08:00:00.000Z');
   });
 });
+
+describe('First-run alignment', () => {
+  it('moves a Saturday weekdays start to Monday at the same wall-clock time', async () => {
+    const { alignFirstRun } = await import('../src/lib/jobs/recurrence');
+    assert.equal(alignFirstRun('2026-10-31T07:00:00.000Z', 'weekdays', 'Africa/Lagos'), '2026-11-02T07:00:00.000Z');
+    assert.equal(alignFirstRun('2026-10-31T07:00:00.000Z', 'daily', 'Africa/Lagos'), '2026-10-31T07:00:00.000Z');
+  });
+});

@@ -4,6 +4,7 @@ import { decryptSecret } from '@/lib/crypto/vault';
 import { sendGmail, validateRecipients } from '@/lib/google/gmail';
 import { createCalendarEvent } from '@/lib/google/calendar';
 import { callMcpTool } from '@/lib/mcp/client';
+import { alignFirstRun } from '@/lib/jobs/recurrence';
 
 /**
  * Executes an action the user explicitly approved. Agents can only *propose* outward
@@ -23,7 +24,7 @@ export async function executeApprovedAction(action: PendingAction, platform = ne
           kind: 'email',
           title: `Email: ${p.subject}`,
           payload: { to: p.to, cc: p.cc, subject: p.subject, body: p.body, html: p.html },
-          runAt: p.sendAt,
+          runAt: alignFirstRun(p.sendAt, p.recurrence, p.timezone),
           recurrence: p.recurrence || null,
           timezone: p.timezone || 'UTC',
           idempotencyKey: `action:${action.id}`,
@@ -35,7 +36,7 @@ export async function executeApprovedAction(action: PendingAction, platform = ne
           kind: 'agent_task',
           title: p.title,
           payload: { prompt: p.prompt, emailResultTo: p.emailResultTo || null },
-          runAt: p.runAt,
+          runAt: alignFirstRun(p.runAt, p.recurrence, p.timezone),
           recurrence: p.recurrence || null,
           timezone: p.timezone || 'UTC',
           idempotencyKey: `action:${action.id}`,

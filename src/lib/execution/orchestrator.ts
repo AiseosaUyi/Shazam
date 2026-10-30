@@ -483,8 +483,7 @@ async function runImageTask(opts: { user: User; repo: DbRepo; prompt: string; co
   const { generateAndStoreImage } = await import('@/lib/media/image');
   const { PlatformRepo } = await import('@/lib/db/platform-repo');
   const { decryptSecret } = await import('@/lib/crypto/vault');
-  const { resolveAgentRoute } = await import('@/lib/agent/resolve');
-  const { createLanguageModel } = await import('@/lib/agent/models');
+  const { getAgentModel } = await import('@/lib/agent/resolve');
 
   const key = async (provider: string) => {
     const cred = await repo.getCredential(user.id, provider);
@@ -496,8 +495,7 @@ async function runImageTask(opts: { user: User; repo: DbRepo; prompt: string; co
 
   let enhancer = null;
   try {
-    const route = await resolveAgentRoute(user, repo, prompt, 'writing');
-    enhancer = (await createLanguageModel(route.selectedRoute.providerId, route.selectedModel.providerModelId, route.apiKey)).model;
+    enhancer = (await getAgentModel(user, repo, prompt, 'writing')).model;
   } catch {
     // No text model available: generate from the raw prompt.
   }

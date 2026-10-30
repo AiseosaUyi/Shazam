@@ -5,7 +5,8 @@
   "main": "desktop/main.js",
   "bin": {
     "shazam": "./cli/shazam-cli.js",
-    "shazam-agent": "./cli/index.js"
+    "shazam-agent": "./cli/index.js",
+    "shazam-bridge": "./cli/bridge.js"
   },
   "scripts": {
     "dev": "next dev",
@@ -25,7 +26,8 @@
     "deploy": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "prebuild": "node scripts/gen-migrations.mjs",
-    "pretest": "node scripts/gen-migrations.mjs"
+    "pretest": "node scripts/gen-migrations.mjs",
+    "bridge": "node cli/bridge.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.92",
@@ -33,6 +35,7 @@
     "@ai-sdk/openai": "^4.0.105",
     "@ai-sdk/openai-compatible": "^3.0.81",
     "@libsql/client": "^0.18.0",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@monaco-editor/react": "^4.7.0",
     "@opennextjs/cloudflare": "1.20.10",
     "@vercel/blob": "^2.8.2",
@@ -41,6 +44,7 @@
     "clsx": "^2.1.1",
     "fflate": "^0.8.3",
     "lucide-react": "^0.475.0",
+    "mcp-handler": "^2.3.0",
     "next": "15.5.27",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

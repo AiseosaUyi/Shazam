@@ -14,8 +14,8 @@ contextBridge.exposeInMainWorld('shazamDesktop', {
   // Native folder selection dialog
   selectFolder: () => ipcRenderer.invoke('select-folder'),
 
-  // Execute terminal command via native Electron IPC
-  execCommand: (command) => ipcRenderer.invoke('exec-command', command),
+  // Open the Shazam Bridge window (pairing + allowed folders)
+  openBridge: () => ipcRenderer.invoke('bridge-get-state'),
 
   // Native window controls
   minimize: () => ipcRenderer.send('window-minimize'),

@@ -48,9 +48,16 @@ export class ProjectSandbox {
     for (const f of changed) this.synced.set(f.path, f.content);
   }
 
-  async run(command: string, timeoutMs = 120_000, signal?: AbortSignal): Promise<CommandResult> {
+  async run(command: string, timeoutMs = 120_000, signal?: AbortSignal, env?: Record<string, string>): Promise<CommandResult> {
     const sbx = await this.get();
-    const result = await sbx.runCommand('bash', ['-lc', command], { timeoutMs, signal });
+    const result = env
+      ? await sbx.runCommand({
+          cmd: 'bash',
+          args: ['-lc', command],
+          env,
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
+        } as any)
+      : await sbx.runCommand('bash', ['-lc', command], { timeoutMs, signal });
     const output = await result.output('both');
     return { exitCode: result.exitCode, output };
   }

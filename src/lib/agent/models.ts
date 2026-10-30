@@ -61,6 +61,7 @@ const OPENAI_COMPATIBLE_BASES: Record<string, string> = {
   deepseek: 'https://api.deepseek.com',
   openrouter: 'https://openrouter.ai/api/v1',
   groq: 'https://api.groq.com/openai/v1',
+  cerebras: 'https://api.cerebras.ai/v1',
 };
 
 /** Preference order when the exact catalog ID is not offered to this key. */
@@ -69,7 +70,9 @@ const PREFERENCES: Record<string, RegExp[]> = {
   anthropic: [/sonnet/, /opus/, /haiku/],
   openai: [/^gpt-[\d.]+(?!.*(mini|nano|audio|realtime|image|search|transcribe|tts))/, /^gpt-[\d.]+-mini/, /^o\d/],
   deepseek: [/deepseek-chat/, /deepseek/],
-  openrouter: [/:free$/],
+  openrouter: [/nemotron-3-ultra.*:free$/, /gemma-4-31b.*:free$/, /:free$/],
+  groq: [/qwen3\.8/, /gpt-oss-120b/, /gpt-oss/],
+  cerebras: [/gpt-oss-120b/, /qwen-?3\.8/, /qwen/],
 };
 
 export async function resolveLiveModelId(providerId: string, catalogModelId: string, apiKey: string): Promise<string> {
@@ -105,6 +108,7 @@ export async function createLanguageModel(providerId: string, catalogModelId: st
     case 'deepseek':
     case 'openrouter':
     case 'groq':
+    case 'cerebras':
       return {
         model: createOpenAICompatible({
           name: providerId,

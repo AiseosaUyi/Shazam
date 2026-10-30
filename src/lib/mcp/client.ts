@@ -49,7 +49,11 @@ class McpSession {
       throw new Error(`MCP server rejected credentials (HTTP ${res.status}). This server likely needs an OAuth sign-in or a valid bearer token.`);
     }
     if (!res.ok) {
-      throw new Error(`MCP server returned HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      const body = await res.text();
+      const looksHtml = /^\s*<(!doctype|html)/i.test(body);
+      throw new Error(looksHtml
+        ? `HTTP ${res.status}: this URL serves a web page, not an MCP endpoint. Use the server's MCP URL (often ending in /mcp).`
+        : `MCP server returned HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
 
     const sid = res.headers.get('mcp-session-id');

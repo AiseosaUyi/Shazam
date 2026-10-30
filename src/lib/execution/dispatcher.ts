@@ -3,11 +3,11 @@ import { executeOpenAICompatible, type AdapterResult } from './adapters/openai-c
 import { executeAnthropic } from './adapters/anthropic';
 import { executeGemini } from './adapters/gemini';
 import { executeSimulation } from './adapters/simulation';
-import { executeImageGeneration } from './adapters/image-generation';
 import { executeGoogleImagen } from './adapters/imagen';
 import { executeOpenAIDalle } from './adapters/dalle';
 import { executeCloudflareImage } from './adapters/cloudflare-image';
 import { executeOllama } from './adapters/ollama';
+import { executeGateway } from './adapters/gateway';
 
 export interface DispatcherOptions {
   model: Model;
@@ -33,7 +33,7 @@ export async function dispatchExecution(options: DispatcherOptions): Promise<Ada
     if (route.providerId === 'cloudflare') {
       return executeCloudflareImage(options);
     }
-    return executeImageGeneration(options);
+    throw new Error('Image generation runs through the media pipeline (src/lib/media/image.ts), not the text dispatcher.');
   }
 
   switch (route.providerId) {
@@ -47,6 +47,12 @@ export async function dispatchExecution(options: DispatcherOptions): Promise<Ada
       return executeOpenAICompatible(options, 'https://api.deepseek.com/chat/completions');
     case 'openrouter':
       return executeOpenAICompatible(options, 'https://openrouter.ai/api/v1/chat/completions');
+    case 'groq':
+      return executeOpenAICompatible(options, 'https://api.groq.com/openai/v1/chat/completions');
+    case 'cerebras':
+      return executeOpenAICompatible(options, 'https://api.cerebras.ai/v1/chat/completions');
+    case 'gateway':
+      return executeGateway(options);
     case 'ollama':
       return executeOllama(options);
     case 'simulation':

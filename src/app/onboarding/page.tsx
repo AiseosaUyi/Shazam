@@ -187,7 +187,7 @@ export default function OnboardingPage() {
           {showAdvancedByok && (
             <div className="mt-5 pt-5 border-t border-[#1e2333] space-y-4 animate-in fade-in duration-200">
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Connecting your own key gives you a private, dedicated daily quota of up to 1,500 requests/day.
+                Connecting your own free key gives you your own daily quota on top of Shazam's free platform models.
                 You can get a free key from Google AI Studio in 30 seconds using your normal Google account (no credit card needed).
               </p>
 

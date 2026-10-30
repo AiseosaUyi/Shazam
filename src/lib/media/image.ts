@@ -37,6 +37,15 @@ export interface ImageResult {
 export const GATEWAY_IMAGE_MODEL = process.env.SHAZAM_DEFAULT_IMAGE_MODEL || 'bfl/flux-2-klein-4b';
 const DAILY_LIMIT = Number(process.env.SHAZAM_IMAGE_DAILY_LIMIT || 25);
 
+/** Gateway FLUX ignores aspectRatio but honors explicit sizes (verified 2026-10-30). */
+const GATEWAY_SIZES: Record<AspectRatio, `${number}x${number}`> = {
+  '1:1': '1024x1024',
+  '16:9': '1344x768',
+  '9:16': '768x1344',
+  '4:3': '1152x896',
+  '3:4': '896x1152',
+};
+
 export function gatewayAvailable(): boolean {
   return Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN);
 }
@@ -45,6 +54,7 @@ const ENHANCER_INSTRUCTIONS = `You turn short image ideas into one precise promp
 Keep every concrete detail the user gave (subjects, text to render, colors, brand names) exactly.
 Add: subject description, setting, composition and camera framing, lens / medium, lighting, mood, color palette, and style.
 If the user wants text in the image, put the exact text in double quotes and say where it appears.
+Keep rendered text short (a headline of at most 4 words plus one short line); image models misspell long text. Spell every word exactly.
 For people: natural anatomy, realistic hands, true-to-life skin texture.
 Output ONLY the final prompt, 60-120 words, no preamble.`;
 
@@ -161,7 +171,7 @@ export async function generateAndStoreImage(req: ImageRequest, platform: Platfor
         const { image } = await generateImage({
           model: GATEWAY_IMAGE_MODEL,
           prompt: reference ? { images: [reference.data], text: finalPrompt } : finalPrompt,
-          aspectRatio,
+          size: GATEWAY_SIZES[aspectRatio],
         });
         bytes = image.uint8Array;
         mimeType = image.mediaType || 'image/png';

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" />
+<title>Shazam Bridge</title>
+<style>
+  :root { color-scheme: dark; --bg:#0a0c10; --card:#11131a; --line:rgba(255,255,255,.08); --text:#e4e4e7; --muted:#a1a1aa; --accent:#f59e0b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:13px/1.5 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--text); padding:20px; }
+  h1 { font-size:16px; margin:0 0 4px; } p { margin:0; color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-top:14px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  input { flex:1; background:#000; border:1px solid var(--line); color:var(--text); border-radius:10px; padding:8px 10px; font:inherit; }
+  button { background:var(--accent); color:#111; border:0; border-radius:10px; padding:8px 12px; font-weight:600; cursor:pointer; }
+  button.ghost { background:rgba(255,255,255,.06); color:var(--text); font-weight:500; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; background:rgba(255,255,255,.06); }
+  .ok { background:rgba(16,185,129,.15); color:#6ee7b7; } .warn { background:rgba(245,158,11,.15); color:#fcd34d; }
+  ul { list-style:none; padding:0; margin:8px 0 0; } li { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-top:1px solid var(--line); word-break:break-all; }
+  pre { background:#000; border-radius:10px; padding:10px; max-height:200px; overflow:auto; font-size:11px; color:var(--muted); white-space:pre-wrap; margin:8px 0 0; }
+  .err { color:#fca5a5; margin-top:6px; }
+</style>
+</head>
+<body>
+  <div class="row" style="justify-content:space-between">
+    <div><h1>Shazam Bridge</h1><p>Lets Shazam agents work on this computer: run commands, edit files and use git with your own credentials, only in folders you allow.</p></div>
+    <span id="status" class="pill">…</span>
+  </div>
+
+  <div id="pairCard" class="card">
+    <strong>1. Pair this computer</strong>
+    <p style="margin:4px 0 10px">In Shazam open <a href="#" id="openPairing" style="color:var(--accent)">Connections → Devices</a>, click “Pair desktop app” and enter the code here.</p>
+    <div class="row"><input id="code" placeholder="Pairing code (e.g. 7KQ2M9XA)" maxlength="16" autocomplete="off" /><button id="pairBtn">Pair</button></div>
+    <div class="row" style="margin-top:8px"><input id="server" placeholder="Server" /></div>
+    <div id="pairErr" class="err"></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><strong>2. Allowed folders</strong><button id="addFolder" class="ghost">Add folder…</button></div>
+    <ul id="folders"></ul>
+    <p id="noFolders" style="margin-top:6px">No folders yet. The agent can't touch anything until you add one.</p>
+  </div>
+
+  <div class="card">
+    <strong>Activity</strong>
+    <p>Risky commands (git push, deletes, sudo, publish…) always ask you first.</p>
+    <pre id="log">—</pre>
+    <div class="row" style="margin-top:10px; justify-content:flex-end"><button id="unpair" class="ghost">Unpair this computer</button></div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  function render(s) {
+    const st = $('status');
+    st.textContent = s.paired ? s.status : 'not paired';
+    st.className = 'pill ' + (s.status === 'connected' ? 'ok' : 'warn');
+    $('pairCard').style.display = s.paired ? 'none' : 'block';
+    $('server').value = $('server').value || s.server || '';
+    const ul = $('folders'); ul.innerHTML = '';
+    (s.workspaces || []).forEach((f) => {
+      const li = document.createElement('li');
+      const span = document.createElement('span'); span.textContent = f;
+      const btn = document.createElement('button'); btn.className = 'ghost'; btn.textContent = 'Remove';
+      btn.onclick = async () => render(await window.bridge.removeFolder(f));
+      li.append(span, btn); ul.append(li);
+    });
+    $('noFolders').style.display = (s.workspaces || []).length ? 'none' : 'block';
+    $('log').textContent = (s.log || []).join('\n') || '—';
+    $('unpair').style.display = s.paired ? 'inline-block' : 'none';
+  }
+  $('pairBtn').onclick = async () => {
+    $('pairErr').textContent = '';
+    try { render(await window.bridge.pair($('code').value.trim(), $('server').value.trim(), undefined)); }
+    catch (e) { $('pairErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+  };
+  $('addFolder').onclick = async () => render(await window.bridge.addFolder());
+  $('unpair').onclick = async () => render(await window.bridge.unpair());
+  $('openPairing').onclick = (e) => { e.preventDefault(); window.bridge.openPairingPage(); };
+  window.bridge.onState(render);
+  window.bridge.getState().then(render);
+</script>
+</body>
+</html>

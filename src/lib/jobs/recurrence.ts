@@ -53,3 +53,15 @@ export function describeNow(timeZone: string): string {
   const local = new Intl.DateTimeFormat('en-US', { timeZone, dateStyle: 'full', timeStyle: 'long' }).format(now);
   return `${local} (timezone ${timeZone}; UTC ${now.toISOString()})`;
 }
+
+/** Moves a first run that falls on a weekend forward to Monday for `weekdays` schedules. */
+export function alignFirstRun(runAt: string, recurrence: string | null | undefined, timeZone = 'UTC'): string {
+  if (recurrence !== 'weekdays') return runAt;
+  let candidate = new Date(runAt);
+  for (let i = 0; i < 3; i++) {
+    const dow = zonedParts(candidate, timeZone).weekday;
+    if (dow !== 'Sat' && dow !== 'Sun') break;
+    candidate = new Date(candidate.getTime() + 86400_000);
+  }
+  return candidate.toISOString();
+}

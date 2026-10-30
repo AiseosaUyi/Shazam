@@ -6,10 +6,14 @@ directories:
   output: dist-desktop
   buildResources: desktop
 
+# The desktop app only needs Electron + Node built-ins (bridge-core.js has no dependencies),
+# so never bundle the web app's node_modules.
 files:
   - desktop/**/*
   - cli/**/*
   - package.json
+  - "!node_modules/**/*"
+npmRebuild: false
 
 mac:
   category: public.app-category.developer-tools

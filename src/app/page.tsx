@@ -1,5 +1,6 @@
 'use client';
 
+import { AgentSuggestion } from '@/components/AgentSuggestion';
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
@@ -68,6 +69,10 @@ export default function WorkspacePage() {
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
+  useEffect(() => {
+    const pre = new URLSearchParams(window.location.search).get('prompt');
+    if (pre) setPrompt(pre);
+  }, []);
   const [costPolicy, setCostPolicy] = useState<CostPolicy>('balanced');
   const [taskClassOverride, setTaskClassOverride] = useState<string>('auto');
   const [pinnedModelName, setPinnedModelName] = useState<string>('');
@@ -1119,6 +1124,7 @@ export default function WorkspacePage() {
                     </div>
                   )}
 
+                  <AgentSuggestion prompt={prompt} current="chat" />
                   <textarea
                     ref={textareaRef}
                     value={prompt}
@@ -1420,6 +1426,7 @@ export default function WorkspacePage() {
         {messages.length > 0 && (
           <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 bg-gradient-to-t from-[#090a0f] via-[#090a0f]/90 to-transparent pointer-events-none">
             <div className="max-w-3xl mx-auto pointer-events-auto relative">
+              <AgentSuggestion prompt={prompt} current="chat" />
               <div className="rounded-2xl bg-[#12141c]/90 backdrop-blur-2xl border border-white/10 shadow-2xl p-3 sm:p-3.5 transition-all">
                 <textarea
                   ref={textareaRef}

@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
-import { PlatformRepo } from '@/lib/db/platform-repo';
 import { requireUser } from '@/lib/auth/session';
 import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
-import { resolveAgentRoute } from '@/lib/agent/resolve';
-import { createLanguageModel } from '@/lib/agent/models';
-import { runCoworkAgent } from '@/lib/cowork/agent';
-import { buildMcpToolset } from '@/lib/mcp/tools';
-import { buildSkillTools } from '@/lib/skills';
-import { buildMediaTools } from '@/lib/media/tools';
 import { deriveConversationTitle } from '@/lib/execution/orchestrator';
+import { runCoworkTask } from '@/lib/runs/execute';
 
 export const maxDuration = 300;
 
@@ -45,7 +39,6 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid request' }, { status: 400 });
   const { prompt, pinnedModel } = parsed.data;
   const timezone = validTimezone(parsed.data.timezone);
-  const platform = new PlatformRepo();
 
   // Conversation persistence (Co-Work threads live alongside chat history).
   let conversationId = parsed.data.conversationId;
@@ -73,31 +66,8 @@ export async function POST(req: NextRequest) {
       send('cowork_start', { conversationId });
 
       try {
-        const route = await resolveAgentRoute(user, repo, prompt, 'planning', pinnedModel);
-        const { model, modelId } = await createLanguageModel(route.selectedRoute.providerId, route.selectedModel.providerModelId, route.apiKey);
-        send('react_model', { model: route.selectedModel.name, provider: route.selectedRoute.providerId, providerModelId: modelId });
-
-        const google = await platform.getOAuth(user.id, 'google');
-        const mcp = await buildMcpToolset(repo, user.id, { platform, onPendingAction: (a) => send('pending_action', a) });
-        const skills = await buildSkillTools(platform, user.id, 'cowork');
-        const media = await buildMediaTools(user.id, repo, platform, { enhancer: model, onAsset: (a) => send('media_asset', a) });
-
         await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId: conversationId!, role: 'user', content: prompt });
-
-        const result = await runCoworkAgent({
-          model,
-          userId: user.id,
-          prompt,
-          history,
-          timezone,
-          platform,
-          googleConnected: Boolean(google),
-          googleEmail: google?.accountEmail,
-          extraTools: { ...mcp.tools, ...skills.tools, ...media.tools },
-          extraInstructions: [mcp.inventory, skills.inventory, media.inventory].filter(Boolean).join('\n\n'),
-          signal: req.signal,
-          onEvent: send,
-        });
+        const result = await runCoworkTask({ user, prompt, history, timezone, pinnedModel, signal: req.signal, onEvent: send });
 
         await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId: conversationId!, role: 'assistant', content: result.text || '(no reply)' });
         await repo.touchConversation(user.id, conversationId!);

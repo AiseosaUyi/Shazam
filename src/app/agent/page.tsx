@@ -1,5 +1,6 @@
 'use client';
 
+import { AgentSuggestion } from '@/components/AgentSuggestion';
 import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -245,6 +246,11 @@ export default function ClaudeCoWorkStudio() {
   // Chat stream
   const [messages, setMessages] = useState<CoWorkMessage[]>([]);
   const [prompt, setPrompt] = useState('');
+  useEffect(() => {
+    // Prefill when another page suggested the Code agent for this request.
+    const pre = new URLSearchParams(window.location.search).get('prompt');
+    if (pre) setPrompt(pre);
+  }, []);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingThought, setStreamingThought] = useState('');
   const [streamingOutput, setStreamingOutput] = useState('');
@@ -2269,7 +2275,7 @@ ${textToSend}`;
               </div>
             )}
 
-
+            {!isStreaming && <AgentSuggestion prompt={prompt} current="code" />}
 
             <div className="relative rounded-2xl bg-[#0f1118] border border-white/10 shadow-2xl focus-within:border-amber-500/50 transition">
               <textarea

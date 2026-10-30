@@ -29,6 +29,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { AgentSuggestion } from '@/components/AgentSuggestion';
 
 /**
  * Co-Work: a real tool-using assistant. Every step shown here is an actual tool call;
@@ -268,6 +269,8 @@ export default function CoWorkPage() {
     loadConversations();
     loadStatus();
     loadJobs();
+    const pre = new URLSearchParams(window.location.search).get('prompt');
+    if (pre) setPrompt(pre);
   }, [loadConversations, loadStatus, loadJobs]);
 
   useEffect(() => {
@@ -558,6 +561,7 @@ export default function CoWorkPage() {
 
         {/* Composer */}
         <div className="px-4 md:px-6 pb-4 shrink-0">
+          <div className="max-w-3xl mx-auto">{!busy && <AgentSuggestion prompt={prompt} current="cowork" />}</div>
           <div className="max-w-3xl mx-auto rounded-2xl border border-white/10 bg-[#0f1118] focus-within:border-amber-500/40 transition">
             {(attachments.length > 0 || uploading) && (
               <div className="flex flex-wrap gap-2 px-3 pt-3">
