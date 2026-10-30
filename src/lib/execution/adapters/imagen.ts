@@ -9,7 +9,8 @@ import { createTimeoutSignal } from './model-resolver';
  * Invokes Google AI Studio's official Generative Language API using the user's BYOK Google API key.
  * Primary: models/gemini-3.1-flash-image:generateContent
  * Secondary: models/gemini-nano-banana-2.1:generateContent / gemini-3-pro-image:generateContent
- * Fallback: models/gemini-2.5-flash-image:generateContent / imagen-3.0-generate-002:predict
+ * Fallback: models/gemini-2.5-flash-image:generateContent (legacy, retires 2027-03-15)
+ * Note: no Gemini image model has a free tier; a free AI Studio key returns 429/billing errors.
  * 
  * Strict compliance rule: Never silently substitute a different provider or model on failure.
  * Provider errors are thrown as structured ProviderErrors so the orchestrator can execute
@@ -68,29 +69,24 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
   // Candidate models in preference order
   const candidateEndpoints = [
     {
-      name: 'gemini-3.1-flash-image',
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`,
+      name: 'gemini-nano-banana-2.1',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent`,
       mode: 'generateContent' as const,
     },
     {
-      name: 'gemini-nano-banana-2.1',
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-nano-banana-2.1:generateContent?key=${encodeURIComponent(apiKey)}`,
+      name: 'gemini-3.1-flash-image',
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent`,
       mode: 'generateContent' as const,
     },
     {
       name: 'gemini-3-pro-image',
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=${encodeURIComponent(apiKey)}`,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent`,
       mode: 'generateContent' as const,
     },
     {
       name: 'gemini-2.5-flash-image',
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`,
       mode: 'generateContent' as const,
-    },
-    {
-      name: 'imagen-3.0-generate-002',
-      url: `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`,
-      mode: 'predict' as const,
     },
   ];
 
@@ -210,8 +206,13 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
             };
           }
         } else {
-          lastStatusCode = res.status;
-          lastErrorText = await res.text();
+          const errText = await res.text();
+          // A 404 from a model this key can't see is less useful than a quota/billing/auth
+          // error from one it can, so don't let a later 404 mask an earlier real reason.
+          if (res.status !== 404 || lastStatusCode === 500 || lastStatusCode === 404) {
+            lastStatusCode = res.status;
+            lastErrorText = errText;
+          }
           // If 401 unauthorized, key is invalid; no need to try other models
           if (res.status === 401) {
             break;

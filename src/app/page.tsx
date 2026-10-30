@@ -669,7 +669,7 @@ export default function WorkspacePage() {
     } else {
       const nanoBanana = models.find((m) => m.id === 'model_google_imagen_3' || m.name.toLowerCase().includes('banana') || m.name.toLowerCase().includes('imagen'));
       const flux = models.find((m) => m.id === 'model_flux_1_schnell' || m.name.toLowerCase().includes('flux'));
-      const target = (connectedProviders['google'] && nanoBanana) ? nanoBanana.name : (flux?.name || 'Google Imagen 3 (Nano Banana)');
+      const target = (connectedProviders['google'] && nanoBanana) ? nanoBanana.name : (flux?.name || 'Google Nano Banana 2.1');
       setPinnedModelName(target);
       try { localStorage.setItem('shazam_pinned_model', target); } catch {}
     }
@@ -726,7 +726,7 @@ export default function WorkspacePage() {
         <button
           type="button"
           onClick={() => {
-            const target = 'Google Imagen 3 (Nano Banana)';
+            const target = 'Google Nano Banana 2.1';
             setPinnedModelName(target);
             try { localStorage.setItem('shazam_pinned_model', target); } catch {}
             setModelDropdownOpen(false);
@@ -740,12 +740,12 @@ export default function WorkspacePage() {
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
             <div className="truncate">
-              <div className="font-medium text-zinc-200 truncate">Google Imagen 3 (Nano Banana)</div>
-              <div className="text-[10px] text-zinc-500 truncate">Requires Google Vertex AI key</div>
+              <div className="font-medium text-zinc-200 truncate">Google Nano Banana 2.1</div>
+              <div className="text-[10px] text-zinc-500 truncate">AI Studio key with billing (no free tier)</div>
             </div>
           </div>
           <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
-            Vertex AI
+            BYOK · paid
           </span>
         </button>
 

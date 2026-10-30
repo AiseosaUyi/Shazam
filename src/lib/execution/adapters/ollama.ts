@@ -25,7 +25,7 @@ export async function executeOllama(options: ExecuteOptions): Promise<AdapterRes
   const ollamaModelName = model.providerModelId || 'qwen2.5-coder:7b';
 
   const messages: Array<{ role: string; content: string }> = [
-    { role: 'system', content: SHAZAM_SYSTEM_IDENTITY },
+    { role: 'system', content: (options.systemPrompt ?? SHAZAM_SYSTEM_IDENTITY) },
   ];
   for (const h of history) {
     messages.push({ role: h.role, content: h.content });

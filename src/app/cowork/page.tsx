@@ -1,841 +1,666 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { upload } from '@vercel/blob/client';
 import {
   Zap,
   Mail,
-  Globe,
-  FileText,
-  Video,
-  BarChart3,
   Plus,
-  Send,
-  Sparkles,
-  Check,
-  Copy,
-  ExternalLink,
-  ChevronRight,
-  ChevronDown,
-  X,
-  Play,
-  RotateCcw,
-  CheckCircle2,
-  AlertCircle,
-  Network,
-  Sliders,
-  Radio,
-  Layers,
-  ArrowUp,
-  Square,
   Search,
   MessageSquare,
   Trash2,
+  ArrowUp,
+  Square,
+  Check,
+  X,
+  CalendarClock,
+  Paperclip,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Network,
+  Sparkles,
+  Pause,
+  Play,
+  Ban,
+  Wrench,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 
-interface CoWorkArtifact {
-  type: 'email' | 'notion' | 'browser' | 'video' | 'data';
-  title: string;
-  data: any;
-}
-
-interface CoWorkActionMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  skillInvoked?: {
-    name: string;
-    action: string;
-    status: 'running' | 'success' | 'failed';
-    details?: string;
-  };
-  artifact?: CoWorkArtifact;
-  timestamp: string;
-}
+/**
+ * Co-Work: a real tool-using assistant. Every step shown here is an actual tool call;
+ * outward actions (send, schedule, create event, change MCP data) appear as approval cards
+ * and only execute when the user approves them.
+ */
 
 interface ConversationItem {
   id: string;
   title: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
-export default function CoWorkStudioPage() {
-  const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+interface ToolStep {
+  step: number;
+  tool: string;
+  args?: any;
+  observation?: string;
+  isError?: boolean;
+}
 
-  // Conversations State (Strictly Conversations in Sidebar)
+interface PendingAction {
+  id: string;
+  kind: string;
+  summary: string;
+  payload?: any;
+  status?: 'pending' | 'executing' | 'executed' | 'failed' | 'rejected';
+  result?: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  steps?: ToolStep[];
+  actions?: PendingAction[];
+  error?: string;
+}
+
+interface ScheduledJob {
+  id: string;
+  kind: string;
+  title: string;
+  runAt: string;
+  recurrence: string | null;
+  status: string;
+  lastError: string | null;
+}
+
+interface Status {
+  google: { configured: boolean; connected: boolean; email: string | null };
+  mcpCount: number;
+  mcpTools: number;
+  skills: number;
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  current_time: 'Checked the time',
+  gmail_search: 'Searched Gmail',
+  gmail_read: 'Read an email',
+  gmail_create_draft: 'Saved a Gmail draft',
+  gmail_send: 'Prepared an email to send',
+  schedule_email: 'Prepared a scheduled email',
+  schedule_task: 'Prepared a scheduled task',
+  list_schedules: 'Checked schedules',
+  cancel_schedule: 'Cancelled a schedule',
+  calendar_list_events: 'Checked the calendar',
+  calendar_create_event: 'Prepared a calendar event',
+  generate_image: 'Generated an image',
+  edit_video: 'Edited a video',
+  transcribe_video: 'Transcribed media',
+  list_media: 'Listed media',
+  load_skill: 'Loaded a skill',
+};
+
+function toolLabel(name: string): string {
+  if (TOOL_LABELS[name]) return TOOL_LABELS[name];
+  if (name.includes('__')) {
+    const [server, tool] = name.split('__');
+    return `${server} · ${tool.replace(/_/g, ' ')}`;
+  }
+  return name.replace(/_/g, ' ');
+}
+
+function formatWhen(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function StepList({ steps, live }: { steps: ToolStep[]; live?: boolean }) {
+  const [open, setOpen] = useState<number | null>(null);
+  if (!steps.length) return null;
+  return (
+    <div className="space-y-1">
+      {steps.map((s, i) => {
+        const done = s.observation !== undefined;
+        return (
+          <div key={`${s.step}-${i}`} className="rounded-lg border border-white/[0.06] bg-white/[0.02]">
+            <button onClick={() => setOpen(open === i ? null : i)} className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-left">
+              {!done && live ? (
+                <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
+              ) : s.isError ? (
+                <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              )}
+              <span className="text-zinc-300 truncate flex-1">{toolLabel(s.tool)}</span>
+              {open === i ? <ChevronDown className="w-3 h-3 text-zinc-500" /> : <ChevronRight className="w-3 h-3 text-zinc-500" />}
+            </button>
+            {open === i && (
+              <div className="px-2.5 pb-2 space-y-1.5">
+                {s.args && Object.keys(s.args).length > 0 && (
+                  <pre className="text-[10px] text-zinc-400 bg-black/40 rounded-md p-2 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(s.args, null, 2)}</pre>
+                )}
+                {s.observation && (
+                  <pre className={`text-[10px] rounded-md p-2 overflow-x-auto whitespace-pre-wrap max-h-60 ${s.isError ? 'text-red-300 bg-red-500/5' : 'text-zinc-300 bg-black/40'}`}>{s.observation}</pre>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ApprovalCard({ action, onDecide }: { action: PendingAction; onDecide: (a: PendingAction, decision: 'approve' | 'reject', edits?: any) => void }) {
+  const p = action.payload || {};
+  const isEmail = action.kind === 'gmail_send' || action.kind === 'schedule_email';
+  const [to, setTo] = useState<string>((p.to || []).join(', '));
+  const [subject, setSubject] = useState<string>(p.subject || '');
+  const [body, setBody] = useState<string>(p.body || '');
+  const pending = !action.status || action.status === 'pending';
+
+  const icon = action.kind === 'schedule_email' || action.kind === 'schedule_task' ? <CalendarClock className="w-4 h-4" /> : action.kind.startsWith('gmail') ? <Mail className="w-4 h-4" /> : <Wrench className="w-4 h-4" />;
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-3 space-y-2.5">
+      <div className="flex items-start gap-2">
+        <div className="text-amber-400 mt-0.5">{icon}</div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] uppercase tracking-wider font-bold text-amber-400/80">
+            {pending ? 'Needs your approval' : action.status === 'executed' ? 'Done' : action.status === 'executing' ? 'Running…' : action.status === 'rejected' ? 'Rejected' : 'Failed'}
+          </p>
+          <p className="text-xs text-zinc-200">{action.summary}</p>
+          {p.sendAt && <p className="text-[11px] text-zinc-400 mt-0.5">Sends {formatWhen(p.sendAt)}{p.recurrence ? ` · repeats ${p.recurrence}` : ''}</p>}
+          {p.runAt && <p className="text-[11px] text-zinc-400 mt-0.5">Runs {formatWhen(p.runAt)}{p.recurrence ? ` · repeats ${p.recurrence}` : ''}</p>}
+        </div>
+      </div>
+
+      {isEmail && (
+        <div className="space-y-1.5">
+          <input disabled={!pending} value={to} onChange={(e) => setTo(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 disabled:opacity-70" aria-label="To" />
+          <input disabled={!pending} value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-medium disabled:opacity-70" aria-label="Subject" />
+          <textarea disabled={!pending} value={body} onChange={(e) => setBody(e.target.value)} rows={Math.min(14, Math.max(4, body.split('\n').length + 1))} className="w-full bg-black/40 border border-white/10 rounded-lg px-2.5 py-2 text-xs text-zinc-200 leading-relaxed disabled:opacity-70" aria-label="Body" />
+        </div>
+      )}
+      {!isEmail && action.payload && (
+        <pre className="text-[10px] text-zinc-400 bg-black/40 rounded-md p-2 overflow-x-auto whitespace-pre-wrap max-h-48">{JSON.stringify(action.payload, null, 2)}</pre>
+      )}
+
+      {action.result && <p className={`text-[11px] ${action.status === 'executed' ? 'text-emerald-300' : 'text-red-300'}`}>{action.result}</p>}
+
+      {pending && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onDecide(action, 'approve', isEmail ? { to: to.split(',').map((s) => s.trim()).filter(Boolean), subject, body } : undefined)}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold flex items-center gap-1.5 transition"
+          >
+            <Check className="w-3.5 h-3.5" />
+            {action.kind === 'gmail_send' ? 'Send' : action.kind.startsWith('schedule') ? 'Schedule' : 'Approve'}
+          </button>
+          <button onClick={() => onDecide(action, 'reject')} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs flex items-center gap-1.5 transition">
+            <X className="w-3.5 h-3.5" />
+            Reject
+          </button>
+        </div>
+      )}
+      {action.status === 'executing' && <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />}
+    </div>
+  );
+}
+
+export default function CoWorkPage() {
+  const [user, setUser] = useState<{ id: string; email: string; name: string } | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [currentTitle, setCurrentTitle] = useState('New Co-Work Session');
-  const [loadingConv, setLoadingConv] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Chat Execution State
-  const [messages, setMessages] = useState<CoWorkActionMessage[]>([]);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [currentThought, setCurrentThought] = useState('');
-  const [activeArtifact, setActiveArtifact] = useState<CoWorkArtifact | null>(null);
-
-  const [emailSent, setEmailSent] = useState(false);
-  const [copiedArtifact, setCopiedArtifact] = useState(false);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [liveText, setLiveText] = useState('');
+  const [liveSteps, setLiveSteps] = useState<ToolStep[]>([]);
+  const [liveActions, setLiveActions] = useState<PendingAction[]>([]);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [jobs, setJobs] = useState<ScheduledJob[]>([]);
+  const [attachments, setAttachments] = useState<Array<{ name: string; url: string; type: string }>>([]);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const abortRef = useRef<AbortController | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    fetch('/api/v1/auth/me')
-      .then((res) => (res.ok ? res.json() : { user: null }))
-      .then((data) => {
-        if (data.user) setUser(data.user);
-      })
-      .catch(() => {});
+  const timezone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
 
-    loadConversations();
+  const loadStatus = useCallback(async () => {
+    const [g, m, s] = await Promise.all([
+      fetch('/api/v1/oauth/google').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/v1/mcp').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/v1/skills').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    const servers = (m?.servers || []).filter((x: any) => x.status === 'active');
+    setStatus({
+      google: { configured: Boolean(g?.configured), connected: Boolean(g?.connected), email: g?.email || null },
+      mcpCount: servers.length,
+      mcpTools: servers.reduce((n: number, x: any) => n + (x.tools?.length || 0), 0),
+      skills: (s?.skills || []).filter((x: any) => x.enabled).length,
+    });
+  }, []);
+
+  const loadJobs = useCallback(async () => {
+    const r = await fetch('/api/v1/schedules').then((res) => (res.ok ? res.json() : null)).catch(() => null);
+    setJobs(r?.jobs || []);
+  }, []);
+
+  const loadConversations = useCallback(async () => {
+    const r = await fetch('/api/v1/conversations').then((res) => (res.ok ? res.json() : null)).catch(() => null);
+    setConversations(r?.conversations || []);
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, currentThought]);
+    fetch('/api/v1/auth/me').then((r) => (r.ok ? r.json() : null)).then((d) => d?.user && setUser(d.user)).catch(() => {});
+    loadConversations();
+    loadStatus();
+    loadJobs();
+  }, [loadConversations, loadStatus, loadJobs]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, liveText, liveSteps, liveActions]);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
     }
   }, [prompt]);
 
-  async function loadConversations() {
-    try {
-      const res = await fetch('/api/v1/conversations');
-      const data = await res.json();
-      const list: ConversationItem[] = data.conversations || [];
-      setConversations(list);
-      if (list.length > 0) {
-        selectConversation(list[0].id, list[0].title);
-      } else {
-        handleNewConversation();
-      }
-    } catch {
-      // ignore
-    }
+  async function openConversation(id: string) {
+    setCurrentId(id);
+    setMessages([]);
+    const r = await fetch(`/api/v1/conversations/${id}`).then((res) => (res.ok ? res.json() : null)).catch(() => null);
+    setMessages((r?.messages || []).map((m: any) => ({ id: m.id, role: m.role, content: m.content })));
   }
 
-  async function selectConversation(convId: string, title: string) {
-    setCurrentConversationId(convId);
-    setCurrentTitle(title);
-    setLoadingConv(true);
-    setActiveArtifact(null);
-
-    try {
-      const res = await fetch(`/api/v1/conversations/${convId}`);
-      const data = await res.json();
-      if (res.ok) {
-        const rawMsgs = data.messages || [];
-        const formatted: CoWorkActionMessage[] = rawMsgs.map((m: any) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }));
-        setMessages(formatted);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingConv(false);
-    }
+  function newTask() {
+    setCurrentId(null);
+    setMessages([]);
+    setAttachments([]);
+    textareaRef.current?.focus();
   }
 
-  async function handleNewConversation() {
-    try {
-      const res = await fetch('/api/v1/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'New Co-Work Session' }),
-      });
-      const data = await res.json();
-      if (res.ok && data.conversation) {
-        setConversations((prev) => [data.conversation, ...prev]);
-        setCurrentConversationId(data.conversation.id);
-        setCurrentTitle(data.conversation.title);
-        setMessages([]);
-        setActiveArtifact(null);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  async function handleDeleteConversation(convId: string, e: React.MouseEvent) {
+  async function deleteConversation(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    try {
-      await fetch(`/api/v1/conversations/${convId}`, { method: 'DELETE' });
-      setConversations((prev) => prev.filter((c) => c.id !== convId));
-      if (currentConversationId === convId) {
-        const remaining = conversations.filter((c) => c.id !== convId);
-        if (remaining.length > 0) {
-          selectConversation(remaining[0].id, remaining[0].title);
-        } else {
-          handleNewConversation();
-        }
+    await fetch(`/api/v1/conversations/${id}`, { method: 'DELETE' });
+    if (id === currentId) newTask();
+    loadConversations();
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || !user) return;
+    for (const file of Array.from(files)) {
+      setUploading(file.name);
+      try {
+        const blob = await upload(`uploads/${user.id}/${file.name}`, file, { access: 'public', handleUploadUrl: '/api/v1/media/upload' });
+        setAttachments((prev) => [...prev, { name: file.name, url: blob.url, type: file.type }]);
+      } catch (err: any) {
+        alert(`Upload failed: ${err.message || err}`);
+      } finally {
+        setUploading(null);
       }
-    } catch {
-      // ignore
     }
   }
 
-  async function handleExecuteTask(customText?: string) {
-    const textToRun = (customText || prompt).trim();
-    if (!textToRun || isExecuting) return;
+  async function decide(action: PendingAction, decision: 'approve' | 'reject', edits?: any) {
+    const update = (patch: Partial<PendingAction>) => {
+      const apply = (list?: PendingAction[]) => list?.map((a) => (a.id === action.id ? { ...a, ...patch } : a));
+      setMessages((prev) => prev.map((m) => (m.actions ? { ...m, actions: apply(m.actions) } : m)));
+      setLiveActions((prev) => apply(prev) || []);
+    };
+    update({ status: decision === 'approve' ? 'executing' : 'rejected' });
+    const res = await fetch(`/api/v1/cowork/actions/${action.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, payload: edits }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (decision === 'approve') update({ status: data.status === 'executed' ? 'executed' : 'failed', result: data.result || data.error });
+    loadJobs();
+  }
+
+  async function send() {
+    const text = prompt.trim();
+    if ((!text && attachments.length === 0) || busy) return;
+    const attachmentText = attachments.map((a) => `\n[Attached ${a.type.startsWith('video') ? 'video' : a.type.startsWith('image') ? 'image' : 'file'}: ${a.name}](${a.url})`).join('');
+    const fullPrompt = `${text}${attachmentText}`;
 
     setPrompt('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    setAttachments([]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: fullPrompt }]);
+    setBusy(true);
+    setLiveText('');
+    setLiveSteps([]);
+    setLiveActions([]);
 
-    const userMsg: CoWorkActionMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: textToRun,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-
-    setIsExecuting(true);
-    setCurrentThought('Analyzing task and selecting connected autonomous skills...');
-
-    // Detect skill intent
-    const lower = textToRun.toLowerCase();
-    let skillType: 'email' | 'browser' | 'notion' | 'video' | 'data' = 'email';
-    let skillName = 'Google Workspace & Gmail';
-    let skillAction = 'Drafting email via Google Connector';
-
-    if (lower.includes('chrome') || lower.includes('instagram') || lower.includes('ig') || lower.includes('web') || lower.includes('browser')) {
-      skillType = 'browser';
-      skillName = 'Chrome Browser Agent';
-      skillAction = 'Launching automated browser & querying target site';
-    } else if (lower.includes('notion') || lower.includes('doc') || lower.includes('wiki') || lower.includes('specs')) {
-      skillType = 'notion';
-      skillName = 'Notion MCP Knowledge Base';
-      skillAction = 'Querying Notion MCP search_database';
-    } else if (lower.includes('video') || lower.includes('edit') || lower.includes('script') || lower.includes('reel') || lower.includes('tiktok')) {
-      skillType = 'video';
-      skillName = 'Video & Media Script Editor';
-      skillAction = 'Building scene timeline and pacing hooks';
-    } else if (lower.includes('sheet') || lower.includes('csv') || lower.includes('finance') || lower.includes('data')) {
-      skillType = 'data';
-      skillName = 'Sheets & Business Analyst';
-      skillAction = 'Synthesizing tabular data';
-    }
+    const steps: ToolStep[] = [];
+    const actions: PendingAction[] = [];
+    let output = '';
+    let error: string | undefined;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
-      const res = await fetch('/api/v1/tasks', {
+      const res = await fetch('/api/v1/cowork/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `[Autonomous Co-Work Session in Shazam AI]\nActive Connector: ${skillName}\nAction: ${skillAction}\nUser Request:\n${textToRun}`,
-          conversationId: currentConversationId || undefined,
-          taskClassOverride: 'planning',
-        }),
+        body: JSON.stringify({ prompt: fullPrompt, conversationId: currentId || undefined, timezone }),
+        signal: controller.signal,
       });
-
-      if (!res.ok) {
-        throw new Error('Task execution failed.');
+      if (!res.ok || !res.body) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `Request failed (${res.status})`);
       }
-
-      const reader = res.body?.getReader();
-      let fullOutput = '';
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
-
-      if (reader) {
-        let buffer = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-
-          for (const block of lines) {
-            for (const line of block.split('\n')) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  if (data.text) fullOutput += data.text;
-                } catch {}
-              }
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() || '';
+        for (const block of blocks) {
+          let event = 'message';
+          let data = '';
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event: ')) event = line.slice(7).trim();
+            else if (line.startsWith('data: ')) data += line.slice(6);
+          }
+          if (!data) continue;
+          let d: any;
+          try {
+            d = JSON.parse(data);
+          } catch {
+            continue;
+          }
+          if (event === 'cowork_start' && d.conversationId) {
+            if (!currentId) setCurrentId(d.conversationId);
+          } else if (event === 'agent_text') {
+            output += d.delta || '';
+            setLiveText(output);
+          } else if (event === 'react_step') {
+            steps.push({ step: d.step, tool: d.tool, args: d.args });
+            setLiveSteps([...steps]);
+          } else if (event === 'react_observation') {
+            const target = [...steps].reverse().find((s) => s.observation === undefined && (!d.tool || s.tool === d.tool));
+            if (target) {
+              target.observation = d.observation;
+              target.isError = d.isError;
             }
+            setLiveSteps([...steps]);
+          } else if (event === 'pending_action') {
+            actions.push({ id: d.id, kind: d.kind || 'mcp_call', summary: d.summary, payload: d.payload, status: 'pending' });
+            setLiveActions([...actions]);
+          } else if (event === 'cowork_done') {
+            output = d.text || output;
+          } else if (event === 'cowork_error') {
+            error = d.message;
           }
         }
       }
-
-      // Generate Live Artifact based on skill type
-      let generatedArtifact: CoWorkArtifact | undefined = undefined;
-
-      if (skillType === 'email') {
-        const emailMatch = textToRun.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
-        let defaultRecipient = 'aise@gruve.events';
-        try {
-          const stored = localStorage.getItem('shazam_skills_config');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            const emailSkill = parsed.find((p: any) => p.id === 'google_workspace');
-            if (emailSkill?.settings?.recipient) {
-              defaultRecipient = emailSkill.settings.recipient;
-            }
-          }
-        } catch {
-          // ignore
-        }
-        const recipient = emailMatch ? emailMatch[0] : defaultRecipient;
-
-        let subject = 'Project Update & Launch Timeline';
-        const subjectMatch =
-          textToRun.match(/subject[:\s]+(["']?)([^"'\n]+)\1/i) ||
-          textToRun.match(/about[:\s]+(["']?)([^"'\n]+)\1/i);
-        if (subjectMatch) {
-          subject = subjectMatch[2].trim();
-        } else if (textToRun.toLowerCase().includes('q4')) {
-          subject = 'Q4 Launch Deliverables & Partnership Update';
-        } else if (textToRun.toLowerCase().includes('partner')) {
-          subject = 'Partnership Opportunity & Next Steps';
-        }
-
-        generatedArtifact = {
-          type: 'email',
-          title: `Draft Email to ${recipient}`,
-          data: {
-            to: recipient,
-            subject,
-            body:
-              fullOutput ||
-              `Hi,\n\nI am writing to share an update regarding our recent progress and deliverables.\n\nPlease let me know if you have any questions or feedback.\n\nBest regards,\nAise`,
-          },
-        };
-      } else if (skillType === 'notion') {
-        generatedArtifact = {
-          type: 'notion',
-          title: 'Notion Workspace Brief',
-          data: {
-            workspace: 'Zoqo Core Wiki',
-            page: 'Q4 Product Roadmap & Deliverables',
-            summary: fullOutput || 'Found 3 Notion documents related to project status. All key deliverables have been indexed.',
-          },
-        };
-      } else if (skillType === 'browser') {
-        generatedArtifact = {
-          type: 'browser',
-          title: 'Chrome Browser Navigation Audit',
-          data: {
-            url: 'https://instagram.com/zoqo_app',
-            status: '200 OK',
-            metrics: 'Audited latest posts, engagement rate: 4.8%, top content: Product Demo Reel.',
-            details: fullOutput,
-          },
-        };
-      } else if (skillType === 'video') {
-        generatedArtifact = {
-          type: 'video',
-          title: '60-Second Viral Video Storyboard',
-          data: {
-            scenes: [
-              { time: '0:00 - 0:03', visual: 'Fast zoom on phone screen showing interface', audio: 'Stop doing manual work. Here is how AI changes the game.' },
-              { time: '0:03 - 0:15', visual: 'Screen capture showing automated workflow in action', audio: 'Connect your accounts in one click.' },
-              { time: '0:15 - 0:40', visual: 'Split screen comparison: old manual way vs Shazam Co-Work', audio: 'Watch it handle the heavy lifting while you focus on growth.' },
-              { time: '0:40 - 1:00', visual: 'Call to action card with download link', audio: 'Link in bio to try it free today.' },
-            ],
-            notes: fullOutput,
-          },
-        };
-      }
-
-      if (generatedArtifact) {
-        setActiveArtifact(generatedArtifact);
-      }
-
-      const assistantMsg: CoWorkActionMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: fullOutput || `I have executed the requested action using **${skillName}**. You can inspect and interact with the live result in the side canvas.`,
-        skillInvoked: {
-          name: skillName,
-          action: skillAction,
-          status: 'success',
-        },
-        artifact: generatedArtifact,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
-      const errMsg = err.message || 'Error running task.';
-      const failMsg: CoWorkActionMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `⚠️ **Unable to complete Co-Work action:** ${errMsg}\n\nPlease check your connector settings or API keys in Settings.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, failMsg]);
+      if (err.name !== 'AbortError') error = err.message || 'Something went wrong.';
     } finally {
-      setIsExecuting(false);
-      setCurrentThought('');
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: output, steps: [...steps], actions: [...actions], error }]);
+      setLiveText('');
+      setLiveSteps([]);
+      setLiveActions([]);
+      setBusy(false);
+      abortRef.current = null;
+      loadConversations();
+      loadJobs();
     }
   }
 
-  function handleSendEmail(mode: 'gmail' | 'client' = 'gmail') {
-    setEmailSent(true);
-    if (activeArtifact?.type === 'email' && activeArtifact.data?.to) {
-      const to = activeArtifact.data.to;
-      const subject = activeArtifact.data.subject || '';
-      const body = activeArtifact.data.body || '';
-
-      if (mode === 'gmail') {
-        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
-          to
-        )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        try {
-          window.open(gmailUrl, '_blank');
-        } catch {
-          // ignore
-        }
-      } else {
-        const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(
-          subject
-        )}&body=${encodeURIComponent(body)}`;
-        try {
-          window.open(mailtoUrl, '_blank');
-        } catch {
-          // ignore
-        }
-      }
-    }
-    setTimeout(() => setEmailSent(false), 3500);
+  async function jobAction(id: string, action: 'pause' | 'resume' | 'cancel') {
+    await fetch(`/api/v1/schedules/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
+    loadJobs();
   }
 
-  function handleCopyArtifact() {
-    if (!activeArtifact) return;
-    navigator.clipboard.writeText(JSON.stringify(activeArtifact.data, null, 2));
-    setCopiedArtifact(true);
-    setTimeout(() => setCopiedArtifact(false), 2000);
-  }
-
-  const filteredConversations = conversations.filter((c) =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = conversations.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()));
+  const suggestions = [
+    { icon: <Mail className="w-4 h-4" />, title: 'Triage my inbox', prompt: 'Summarize my unread emails from the last 2 days and draft replies to anything urgent.' },
+    { icon: <CalendarClock className="w-4 h-4" />, title: 'Schedule an email', prompt: 'Schedule an email to my team for Monday 9am with subject "Weekly kickoff" listing this week\'s priorities.' },
+    { icon: <Sparkles className="w-4 h-4" />, title: 'Make a launch visual', prompt: 'Create a 9:16 launch poster for Gruve with the headline "Your city, live" in bold type.' },
+    { icon: <Network className="w-4 h-4" />, title: 'Use my MCP tools', prompt: 'What tools do my connected MCP servers give you? Pick one and show me what it can do.' },
+  ];
 
   return (
     <div className="flex-1 h-full min-h-0 min-w-0 flex bg-[#0a0c10] text-zinc-100 overflow-hidden font-sans">
-      {/* ========================================================================= */}
-      {/* 1. Left Conversations Sidebar (Clean, Strictly Conversations, No Skills) */}
-      {/* ========================================================================= */}
-      <aside className="w-64 h-full shrink-0 border-r border-white/[0.06] bg-[#07080c] flex flex-col select-none overflow-hidden z-20">
-        {/* Top: Search & + New Task */}
-        <div className="p-3 space-y-2 border-b border-white/[0.05] shrink-0">
+      {/* Conversations */}
+      <aside className="w-64 h-full shrink-0 border-r border-white/[0.06] bg-[#07080c] hidden md:flex flex-col overflow-hidden">
+        <div className="p-3 space-y-2 border-b border-white/[0.05]">
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" />
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-white/20 transition"
-            />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks..." className="w-full pl-8 pr-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-white/20" />
           </div>
-
-          <button
-            onClick={handleNewConversation}
-            className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 transition shadow-sm"
-          >
+          <button onClick={newTask} className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 transition">
             <Plus className="w-4 h-4 text-amber-400" />
-            <span>New Co-Work Task</span>
+            New Co-Work Task
           </button>
         </div>
-
-        {/* Conversations List */}
         <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
-          <div className="px-2 py-1 text-[10px] font-bold tracking-wider text-zinc-400 uppercase">
-            Recent Tasks
-          </div>
-
-          {filteredConversations.length === 0 ? (
-            <div className="px-3 py-6 text-center text-xs text-zinc-500 italic">
-              No conversations yet
+          <div className="px-2 py-1 text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Recent</div>
+          {filtered.length === 0 && <div className="px-3 py-6 text-center text-xs text-zinc-500">No tasks yet</div>}
+          {filtered.map((c) => (
+            <div key={c.id} onClick={() => openConversation(c.id)} className={`group flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer text-xs transition ${c.id === currentId ? 'bg-amber-500/10 text-amber-300 font-medium' : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'}`}>
+              <div className="flex items-center gap-2 truncate">
+                <MessageSquare className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
+                <span className="truncate">{c.title}</span>
+              </div>
+              <button onClick={(e) => deleteConversation(c.id, e)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400" title="Delete">
+                <Trash2 className="w-3 h-3" />
+              </button>
             </div>
-          ) : (
-            filteredConversations.map((conv) => {
-              const isActive = currentConversationId === conv.id;
-              return (
-                <div
-                  key={conv.id}
-                  onClick={() => selectConversation(conv.id, conv.title)}
-                  className={`group flex items-center justify-between px-2.5 py-2 rounded-xl cursor-pointer transition text-xs ${
-                    isActive
-                      ? 'bg-amber-500/10 text-amber-300 font-medium'
-                      : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <MessageSquare className="w-3.5 h-3.5 shrink-0 text-zinc-500" />
-                    <span className="truncate">{conv.title}</span>
-                  </div>
-                  <button
-                    onClick={(e) => handleDeleteConversation(conv.id, e)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition"
-                    title="Delete conversation"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Bottom Profile & Settings Link */}
-        <div className="p-3 border-t border-white/[0.06] bg-black/30 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 truncate">
-            <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xs font-semibold">
-              {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
-            </div>
-            <div className="truncate">
-              <p className="text-xs font-medium text-white truncate">{user?.name || user?.email || 'User'}</p>
-              <p className="text-[10px] text-zinc-500">Autonomous Co-Work</p>
-            </div>
-          </div>
-
-          <Link
-            href="/settings?tab=skills"
-            className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-amber-400 transition"
-            title="Configure Skills in Settings"
-          >
-            <Sliders className="w-4 h-4" />
-          </Link>
+          ))}
         </div>
       </aside>
 
-      {/* ========================================================================= */}
-      {/* 2. Center Co-Work Execution Stream                                        */}
-      {/* ========================================================================= */}
-      <main className="flex-1 h-full min-h-0 min-w-0 flex flex-col bg-[#0b0d13] overflow-hidden relative">
-        {/* Header */}
-        <header className="h-12 border-b border-white/[0.06] bg-[#08090e]/80 backdrop-blur-md px-6 flex items-center justify-between shrink-0 z-20">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-white">Shazam Co-Work</span>
-            <span className="text-zinc-600">/</span>
-            <span className="text-xs font-medium text-zinc-300 truncate max-w-sm">{currentTitle}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href="/settings"
-              className="text-[11px] text-zinc-400 hover:text-amber-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/5 transition"
-            >
-              <Sliders className="w-3.5 h-3.5 text-amber-400" />
-              <span>Skills & Connectors</span>
-            </Link>
-          </div>
+      {/* Main */}
+      <main className="flex-1 h-full min-h-0 min-w-0 flex flex-col bg-[#0b0d13] overflow-hidden">
+        <header className="h-12 border-b border-white/[0.06] px-4 md:px-6 flex items-center justify-between shrink-0">
+          <span className="text-xs font-semibold text-white">Shazam Co-Work</span>
+          <button onClick={() => setPanelOpen((v) => !v)} className="text-[11px] text-zinc-400 hover:text-amber-300 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/5">
+            <CalendarClock className="w-3.5 h-3.5 text-amber-400" />
+            Schedules & connections
+          </button>
         </header>
 
-        {/* Execution Log & Conversation */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
-          {loadingConv ? (
-            <div className="h-full flex items-center justify-center text-xs text-zinc-500">
-              Loading task...
-            </div>
-          ) : messages.length === 0 && !isExecuting ? (
-            /* Co-Work Welcome Screen */
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-xl mx-auto space-y-6 pt-8 pb-16">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl">
-                <Zap className="w-6 h-6" />
-              </div>
-
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold tracking-tight text-white">
-                  What shall we accomplish together?
-                </h2>
-                <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                  Tell Shazam what to do. It handles multi-step work: drafting emails, auditing websites in Chrome, querying Notion, and crafting video scripts.
-                </p>
-              </div>
-
-              {/* 4 Action Prompts */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2">
-                {[
-                  {
-                    icon: <Mail className="w-4 h-4 text-red-400" />,
-                    title: 'Send Launch Email',
-                    desc: 'Draft and prepare an email to partners via Google connector',
-                    prompt: 'Send an email to aise@gruve.events with subject Launch Deliverables updating him that Shazam AI is ready for deployment',
-                  },
-                  {
-                    icon: <Globe className="w-4 h-4 text-blue-400" />,
-                    title: 'Audit Social Media',
-                    desc: 'Open Chrome and analyze Instagram engagement',
-                    prompt: 'Open Chrome, check my social media profiles, and analyze recent post performance',
-                  },
-                  {
-                    icon: <FileText className="w-4 h-4 text-emerald-400" />,
-                    title: 'Read Notion Specs',
-                    desc: 'Query Notion MCP for product roadmap deliverables',
-                    prompt: 'Search our Notion workspace for "Q4 Roadmap" and summarize outstanding action items',
-                  },
-                  {
-                    icon: <Video className="w-4 h-4 text-purple-400" />,
-                    title: 'Edit 60s Video Script',
-                    desc: 'Build storyboard cuts and viral hooks for short-form reel',
-                    prompt: 'Create a 60-second video script with timeline cuts and viral hooks for our product demo reel',
-                  },
-                ].map((item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleExecuteTask(item.prompt)}
-                    className="p-3.5 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-amber-500/30 text-left transition group shadow-sm flex flex-col justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-white/5 border border-white/5">
-                        {item.icon}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-6">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {messages.length === 0 && !busy && (
+              <div className="pt-10 pb-6 text-center space-y-6">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Zap className="w-6 h-6" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold tracking-tight text-white">What should we get done?</h2>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
+                    Co-Work uses your connected Gmail, Calendar, MCP servers and skills to do the work. Anything that sends or changes data waits for your approval.
+                  </p>
+                </div>
+                {status && !status.google.connected && (
+                  <div className="max-w-md mx-auto text-left text-xs rounded-xl border border-white/10 bg-white/[0.03] p-3 flex items-center gap-3">
+                    <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-zinc-300 flex-1">Connect Google to read, send and schedule email and manage your calendar.</span>
+                    {status.google.configured ? (
+                      <a href="/api/v1/oauth/google/start" className="px-2.5 py-1 rounded-lg bg-amber-500 text-black font-semibold whitespace-nowrap">Connect</a>
+                    ) : (
+                      <span className="text-[10px] text-zinc-500">Admin setup needed</span>
+                    )}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                  {suggestions.map((s) => (
+                    <button key={s.title} onClick={() => setPrompt(s.prompt)} className="p-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-amber-500/30 transition space-y-1.5">
+                      <div className="flex items-center gap-2 text-amber-400">
+                        {s.icon}
+                        <span className="text-xs font-semibold text-zinc-200">{s.title}</span>
                       </div>
-                      <span className="text-xs font-semibold text-zinc-200 group-hover:text-amber-400 transition">
-                        {item.title}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-zinc-400 mt-2 leading-relaxed">
-                      {item.desc}
-                    </p>
-                  </button>
-                ))}
+                      <p className="text-[11px] text-zinc-500 leading-relaxed">{s.prompt}</p>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto space-y-6 pb-28">
-              {messages.map((msg) => (
-                <div key={msg.id} className="space-y-3">
-                  {msg.role === 'user' ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-xl rounded-2xl bg-amber-500/15 border border-amber-500/25 px-4 py-3 text-sm text-zinc-100 shadow-sm leading-relaxed">
-                        {msg.content}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {/* Invoked Skill Capsule */}
-                      {msg.skillInvoked && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono flex items-center gap-1.5">
-                            <Zap className="w-3.5 h-3.5" />
-                            <span>{msg.skillInvoked.name}</span>
-                          </span>
-                          <span className="text-zinc-500">·</span>
-                          <span className="text-zinc-400">{msg.skillInvoked.action}</span>
-                        </div>
-                      )}
+            )}
 
-                      <MarkdownRenderer content={msg.content} />
-
-                      {/* Attached Artifact Capsule */}
-                      {msg.artifact && (
-                        <div className="pt-2">
-                          <button
-                            onClick={() => setActiveArtifact(msg.artifact!)}
-                            className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-medium text-amber-300 flex items-center gap-2 transition shadow-sm"
-                          >
-                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Preview {msg.artifact.title}</span>
-                            <span className="text-[10px] text-zinc-500 ml-1">Open Canvas &rarr;</span>
-                          </button>
-                        </div>
-                      )}
+            {messages.map((m) =>
+              m.role === 'user' ? (
+                <div key={m.id} className="flex justify-end">
+                  <div className="max-w-[85%] rounded-2xl rounded-tr-md bg-white/[0.06] border border-white/[0.08] px-4 py-2.5 text-sm text-zinc-100 whitespace-pre-wrap break-words">{m.content}</div>
+                </div>
+              ) : (
+                <div key={m.id} className="space-y-3">
+                  {m.steps && m.steps.length > 0 && <StepList steps={m.steps} />}
+                  {m.content && <MarkdownRenderer content={m.content} className="text-sm text-zinc-200" />}
+                  {m.actions?.map((a) => <ApprovalCard key={a.id} action={a} onDecide={decide} />)}
+                  {m.error && (
+                    <div className="text-xs text-red-300 bg-red-500/5 border border-red-500/20 rounded-xl px-3 py-2 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{m.error}</span>
                     </div>
                   )}
                 </div>
-              ))}
+              )
+            )}
 
-              {isExecuting && (
-                <div className="space-y-3 pt-2 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-2.5 text-xs text-amber-400 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-                    <span className="animate-pulse">{currentThought || 'Autonomous agent running task...'}</span>
+            {busy && (
+              <div className="space-y-3">
+                <StepList steps={liveSteps} live />
+                {liveText ? <MarkdownRenderer content={liveText} className="text-sm text-zinc-200" /> : (
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    Working…
                   </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+                )}
+                {liveActions.map((a) => <ApprovalCard key={a.id} action={a} onDecide={decide} />)}
+              </div>
+            )}
+            <div ref={endRef} />
+          </div>
         </div>
 
-        {/* Prompt Input (shrink-0 ensures it stays permanently fixed at the bottom!) */}
-        <div className="shrink-0 p-4 sm:p-6 bg-gradient-to-t from-[#0a0c10] via-[#0a0c10]/95 to-transparent z-20">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative rounded-2xl bg-[#0f1118] border border-white/10 shadow-2xl focus-within:border-amber-500/50 transition">
-              <textarea
-                ref={textareaRef}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleExecuteTask();
-                  }
-                }}
-                rows={1}
-                placeholder="Instruct Co-Work (e.g. Send an email to aise@gruve.events, audit Instagram in Chrome, query Notion)..."
-                className="w-full px-4 pt-3.5 pb-12 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none font-sans"
-              />
-
-              <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                <button
-                  onClick={() => handleExecuteTask()}
-                  disabled={!prompt.trim() || isExecuting}
-                  className="w-8 h-8 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-30 text-zinc-950 flex items-center justify-center transition shadow-md"
-                >
-                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                </button>
+        {/* Composer */}
+        <div className="px-4 md:px-6 pb-4 shrink-0">
+          <div className="max-w-3xl mx-auto rounded-2xl border border-white/10 bg-[#0f1118] focus-within:border-amber-500/40 transition">
+            {(attachments.length > 0 || uploading) && (
+              <div className="flex flex-wrap gap-2 px-3 pt-3">
+                {attachments.map((a, i) => (
+                  <span key={a.url} className="text-[11px] text-zinc-300 bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex items-center gap-1.5">
+                    <Paperclip className="w-3 h-3" />
+                    {a.name}
+                    <button onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}>
+                      <X className="w-3 h-3 hover:text-red-400" />
+                    </button>
+                  </span>
+                ))}
+                {uploading && (
+                  <span className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Uploading {uploading}…
+                  </span>
+                )}
               </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              rows={1}
+              placeholder="Ask Co-Work to email, schedule, research, design or edit a video…"
+              className="w-full bg-transparent resize-none px-4 pt-3 pb-1 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
+            />
+            <div className="flex items-center justify-between px-3 pb-2.5">
+              <div className="flex items-center gap-1">
+                <input ref={fileRef} type="file" multiple accept="video/*,audio/*,image/*" className="hidden" onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
+                <button onClick={() => fileRef.current?.click()} disabled={!user || Boolean(uploading)} className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-300 hover:bg-white/5 disabled:opacity-40" title="Attach video, audio or image">
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <span className="text-[10px] text-zinc-500 hidden sm:inline">{timezone}</span>
+              </div>
+              {busy ? (
+                <button onClick={() => abortRef.current?.abort()} className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/15 flex items-center justify-center" title="Stop">
+                  <Square className="w-3.5 h-3.5 text-zinc-200" />
+                </button>
+              ) : (
+                <button onClick={send} disabled={!prompt.trim() && attachments.length === 0} className="w-8 h-8 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-30 flex items-center justify-center" title="Send">
+                  <ArrowUp className="w-4 h-4 text-black" />
+                </button>
+              )}
             </div>
           </div>
         </div>
       </main>
 
-      {/* ========================================================================= */}
-      {/* 3. Right Artifacts & Execution Canvas                                     */}
-      {/* ========================================================================= */}
-      {activeArtifact && (
-        <aside className="w-[480px] h-full shrink-0 border-l border-white/[0.08] bg-[#0c0e14] flex flex-col z-30 animate-in slide-in-from-right duration-200 shadow-2xl overflow-hidden">
-          <div className="h-12 px-4 border-b border-white/[0.06] bg-black/40 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2 truncate">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-semibold text-white truncate">{activeArtifact.title}</span>
+      {/* Schedules & connections */}
+      {panelOpen && (
+        <aside className="w-80 h-full shrink-0 border-l border-white/[0.06] bg-[#07080c] hidden lg:flex flex-col overflow-y-auto">
+          <section className="p-4 border-b border-white/[0.05] space-y-2.5">
+            <h3 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Connected</h3>
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-2 text-zinc-300"><Mail className="w-3.5 h-3.5 text-zinc-500" /> Gmail & Calendar</span>
+              {status?.google.connected ? (
+                <span className="text-emerald-400 text-[11px] truncate max-w-[140px]" title={status.google.email || ''}>{status.google.email || 'Connected'}</span>
+              ) : status?.google.configured ? (
+                <a href="/api/v1/oauth/google/start" className="text-amber-300 text-[11px] hover:underline">Connect</a>
+              ) : (
+                <span className="text-zinc-500 text-[11px]">Not set up</span>
+              )}
             </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopyArtifact}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition text-xs"
-                title="Copy"
-              >
-                {copiedArtifact ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-
-              <button
-                onClick={() => setActiveArtifact(null)}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-2 text-zinc-300"><Network className="w-3.5 h-3.5 text-zinc-500" /> MCP servers</span>
+              <Link href="/settings?tab=mcp" className="text-[11px] text-zinc-400 hover:text-amber-300">{status ? `${status.mcpCount} · ${status.mcpTools} tools` : '…'}</Link>
             </div>
-          </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-2 text-zinc-300"><Sparkles className="w-3.5 h-3.5 text-zinc-500" /> Skills</span>
+              <Link href="/settings?tab=skills" className="text-[11px] text-zinc-400 hover:text-amber-300">{status ? `${status.skills} active` : '…'}</Link>
+            </div>
+          </section>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 text-xs leading-relaxed">
-            {/* Mode A: Email Artifact */}
-            {activeArtifact.type === 'email' && (
-              <div className="space-y-4">
-                <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-2">
-                  <div className="flex items-center gap-2 text-zinc-400">
-                    <span className="font-semibold text-zinc-500 uppercase text-[10px]">To:</span>
-                    <span className="text-zinc-200 font-mono font-medium">{activeArtifact.data.to}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-zinc-400">
-                    <span className="font-semibold text-zinc-500 uppercase text-[10px]">Subject:</span>
-                    <span className="text-white font-medium">{activeArtifact.data.subject}</span>
-                  </div>
+          <section className="p-4 space-y-2.5">
+            <h3 className="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Scheduled</h3>
+            {jobs.length === 0 && <p className="text-[11px] text-zinc-500">Nothing scheduled. Ask Co-Work to schedule an email or a recurring task.</p>}
+            {jobs.map((j) => (
+              <div key={j.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 space-y-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs text-zinc-200 leading-snug">{j.title}</p>
+                  <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${j.status === 'scheduled' ? 'bg-emerald-500/10 text-emerald-300' : j.status === 'paused' ? 'bg-zinc-500/20 text-zinc-300' : j.status === 'failed' ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}>{j.status}</span>
                 </div>
-
-                <div className="p-4 rounded-xl bg-black/30 border border-white/5 whitespace-pre-wrap text-zinc-200 font-sans leading-relaxed">
-                  {activeArtifact.data.body}
-                </div>
-
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] leading-relaxed flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span>Ready to dispatch to <strong>{activeArtifact.data.to}</strong>. Use 1-click <strong>Gmail Web</strong> to compose immediately in your browser, or launch your system email app. To configure direct background delivery via API, configure your email credentials in </span>
-                    <Link href="/settings?tab=skills" className="underline font-semibold hover:text-white">Settings &gt; Autonomous Skills</Link>.
-                  </div>
-                </div>
-
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-[11px] text-zinc-500">Google Connector: Verified</span>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleSendEmail('client')}
-                      className="px-3 py-2 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-medium text-xs rounded-xl border border-white/5 transition flex items-center gap-1.5"
-                      title="Open in Apple Mail, Outlook, or Thunderbird"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>System Mail</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleSendEmail('gmail')}
-                      disabled={emailSent}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md disabled:opacity-50"
-                    >
-                      {emailSent ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Dispatched to Gmail!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-3.5 h-3.5" />
-                          <span>Open in Gmail Web</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                <p className="text-[11px] text-zinc-500">{formatWhen(j.runAt)}{j.recurrence ? ` · ${j.recurrence}` : ''}</p>
+                {j.lastError && <p className="text-[10px] text-red-300">{j.lastError}</p>}
+                <div className="flex gap-1.5 pt-0.5">
+                  {j.status === 'scheduled' && (
+                    <button onClick={() => jobAction(j.id, 'pause')} className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-zinc-300 flex items-center gap-1"><Pause className="w-3 h-3" />Pause</button>
+                  )}
+                  {(j.status === 'paused' || j.status === 'failed') && (
+                    <button onClick={() => jobAction(j.id, 'resume')} className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-zinc-300 flex items-center gap-1"><Play className="w-3 h-3" />Resume</button>
+                  )}
+                  <button onClick={() => jobAction(j.id, 'cancel')} className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 hover:bg-red-500/10 text-zinc-300 hover:text-red-300 flex items-center gap-1"><Ban className="w-3 h-3" />Cancel</button>
                 </div>
               </div>
-            )}
-
-            {/* Mode B: Notion Document Artifact */}
-            {activeArtifact.type === 'notion' && (
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                  <span className="text-[10px] text-zinc-500 uppercase font-semibold">Notion Workspace</span>
-                  <h4 className="text-sm font-bold text-white mt-0.5">{activeArtifact.data.page}</h4>
-                </div>
-                <div className="p-4 rounded-xl bg-black/30 border border-white/5 text-zinc-300 leading-relaxed whitespace-pre-wrap">
-                  {activeArtifact.data.summary}
-                </div>
-              </div>
-            )}
-
-            {/* Mode C: Chrome Browser Audit */}
-            {activeArtifact.type === 'browser' && (
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                  <span className="text-[10px] text-blue-400 font-mono uppercase">URL Audit</span>
-                  <p className="text-xs text-white font-mono mt-0.5">{activeArtifact.data.url}</p>
-                </div>
-                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
-                  {activeArtifact.data.metrics}
-                </div>
-                <div className="p-4 rounded-xl bg-black/30 border border-white/5 text-zinc-300 leading-relaxed whitespace-pre-wrap">
-                  {activeArtifact.data.details}
-                </div>
-              </div>
-            )}
-
-            {/* Mode D: Video Script Storyboard */}
-            {activeArtifact.type === 'video' && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">Shot List & Cut Timeline</h4>
-                  {activeArtifact.data.scenes?.map((scene: any, sIdx: number) => (
-                    <div key={sIdx} className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
-                      <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
-                        <span className="text-amber-400 font-semibold">{scene.time}</span>
-                        <span>Scene {sIdx + 1}</span>
-                      </div>
-                      <p className="text-xs text-zinc-200 font-medium">Visual: {scene.visual}</p>
-                      <p className="text-xs text-zinc-400 italic">Audio: &ldquo;{scene.audio}&rdquo;</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+            ))}
+          </section>
         </aside>
       )}
     </div>

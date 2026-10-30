@@ -1,5 +1,6 @@
 'use client';
 
+import { SkillsManager } from '@/components/SkillsManager';
 import React, { useState, useEffect } from 'react';
 import {
   Sliders,
@@ -164,7 +165,7 @@ export default function SettingsPage() {
   const [mcpModalOpen, setMcpModalOpen] = useState(false);
   const [newMcpName, setNewMcpName] = useState('');
   const [newMcpUrl, setNewMcpUrl] = useState('');
-  const [newMcpTransport, setNewMcpTransport] = useState<'sse' | 'http' | 'websocket'>('sse');
+  const [newMcpTransport, setNewMcpTransport] = useState<'sse' | 'http' | 'websocket'>('http');
   const [newMcpToken, setNewMcpToken] = useState('');
   const [addingMcp, setAddingMcp] = useState(false);
   const [mcpError, setMcpError] = useState<string | null>(null);
@@ -389,7 +390,7 @@ export default function SettingsPage() {
           <Zap className="w-4 h-4" />
           <span>Autonomous Skills & Connectors</span>
           <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono">
-            {skills.filter((s) => s.enabled).length} Active
+            Skills
           </span>
           {activeTab === 'skills' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />
@@ -556,238 +557,7 @@ export default function SettingsPage() {
       )}
 
       {/* Tab 2: Autonomous Skills & Connectors */}
-      {activeTab === 'skills' && (
-        <div className="space-y-6">
-          <div className="bg-[#0f1118] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-semibold text-white">Autonomous Skills & Background Connectors</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Configure execution engines, default recipients, and API credentials for Shazam Co-Work tasks.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSaveSkills}
-                className="self-start sm:self-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save Skills Configuration</span>
-              </button>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <strong>Co-Work Workspace Cleanliness:</strong> As requested, skills are managed strictly in Settings rather than cluttering your active Co-Work studio sidebar. When you ask Co-Work to run tasks (e.g. <em>&quot;send an email to aise@gruve.events&quot;</em> or <em>&quot;audit an Instagram account&quot;</em>), it automatically invokes the active skills configured below.
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-2">
-              {skills.map((skill) => {
-                const isEmail = skill.id === 'google_workspace';
-                return (
-                  <div
-                    key={skill.id}
-                    className={`rounded-2xl border transition p-5 space-y-4 ${
-                      skill.enabled
-                        ? 'border-white/[0.08] bg-white/[0.02]'
-                        : 'border-white/[0.04] bg-white/[0.005] opacity-60'
-                    }`}
-                  >
-                    {/* Top Row: Icon, Title, Category, Toggle */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-center shrink-0">
-                          {skill.icon === 'mail' && <Mail className="w-4 h-4 text-amber-400" />}
-                          {skill.icon === 'globe' && <Globe className="w-4 h-4 text-cyan-400" />}
-                          {skill.icon === 'file' && <FileText className="w-4 h-4 text-emerald-400" />}
-                          {skill.icon === 'video' && <Video className="w-4 h-4 text-purple-400" />}
-                          {skill.icon === 'chart' && <BarChart3 className="w-4 h-4 text-blue-400" />}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-semibold text-zinc-100">{skill.name}</h4>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.05] text-zinc-400 border border-white/5">
-                              {skill.category}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-400 mt-0.5">{skill.description}</p>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => toggleSkill(skill.id)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                          skill.enabled
-                            ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                            : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
-                        }`}
-                      >
-                        {skill.enabled ? (
-                          <>
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Active</span>
-                          </>
-                        ) : (
-                          <span>Disabled</span>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Capabilities Tags */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {skill.capabilities.map((cap, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2 py-0.5 rounded-md bg-white/[0.03] text-[11px] font-mono text-zinc-300 border border-white/5"
-                        >
-                          ✓ {cap}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Skill-Specific Settings */}
-                    {isEmail && skill.enabled && (
-                      <div className="pt-3 border-t border-white/[0.06] space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                              Default Primary Recipient
-                            </label>
-                            <input
-                              type="email"
-                              value={skill.settings.recipient || ''}
-                              onChange={(e) =>
-                                updateSkillSettings(skill.id, { recipient: e.target.value })
-                              }
-                              placeholder="e.g. aise@gruve.events"
-                              className="w-full px-3.5 py-2 bg-black/40 border border-white/[0.08] rounded-xl text-xs text-zinc-100 font-mono focus:outline-none focus:border-amber-500"
-                            />
-                            <p className="text-[11px] text-zinc-500 mt-1">
-                              Used as the default target whenever a recipient is not specified in prompt.
-                            </p>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                              Sender Display Name
-                            </label>
-                            <input
-                              type="text"
-                              value={skill.settings.senderName || ''}
-                              onChange={(e) =>
-                                updateSkillSettings(skill.id, { senderName: e.target.value })
-                              }
-                              placeholder="e.g. Shazam AI Assistant"
-                              className="w-full px-3.5 py-2 bg-black/40 border border-white/[0.08] rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
-                            />
-                            <p className="text-[11px] text-zinc-500 mt-1">
-                              Display signature in generated email drafts.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                            Email Dispatch Delivery Mode
-                          </label>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            {[
-                              {
-                                id: 'gmail_web',
-                                title: 'Gmail Web Compose (1-Click)',
-                                desc: 'Opens mail.google.com with draft prefilled to recipient. Zero setup needed.',
-                              },
-                              {
-                                id: 'client',
-                                title: 'Default System Mail (Mailto:)',
-                                desc: 'Launches your macOS / system default email client (Apple Mail, Outlook).',
-                              },
-                              {
-                                id: 'api',
-                                title: 'Background API Delivery',
-                                desc: 'Sends emails autonomously via Resend / SendGrid / SMTP API keys.',
-                              },
-                            ].map((mode) => (
-                              <button
-                                key={mode.id}
-                                type="button"
-                                onClick={() =>
-                                  updateSkillSettings(skill.id, { deliveryMode: mode.id })
-                                }
-                                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                                  skill.settings.deliveryMode === mode.id
-                                    ? 'border-amber-500 bg-amber-500/10 text-white'
-                                    : 'border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:text-zinc-200'
-                                }`}
-                              >
-                                <span className="text-xs font-semibold text-zinc-200">{mode.title}</span>
-                                <span className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
-                                  {mode.desc}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {skill.settings.deliveryMode === 'api' && (
-                          <div className="p-3.5 rounded-xl bg-black/40 border border-white/[0.08] space-y-2 animate-in fade-in duration-150">
-                            <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-                              Email Delivery API Key (Resend / SendGrid)
-                            </label>
-                            <input
-                              type="password"
-                              value={skill.settings.apiKey || ''}
-                              onChange={(e) =>
-                                updateSkillSettings(skill.id, { apiKey: e.target.value })
-                              }
-                              placeholder="re_123456789... or SG...."
-                              className="w-full px-3.5 py-2 bg-black/60 border border-white/[0.08] rounded-xl text-xs text-zinc-100 font-mono focus:outline-none focus:border-amber-500"
-                            />
-                            <p className="text-[11px] text-zinc-400">
-                              Enables server-side automated delivery without opening browser compose tabs.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {skill.id === 'chrome_browser' && skill.enabled && (
-                      <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
-                        <span>Engine: <code className="text-amber-300 font-mono">Headless Chromium (DevTools Protocol)</code></span>
-                        <span className="text-emerald-400 flex items-center gap-1 font-mono text-[11px]">
-                          ● Sandbox Daemon Ready
-                        </span>
-                      </div>
-                    )}
-
-                    {skill.id === 'notion_kb' && skill.enabled && (
-                      <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-zinc-400">
-                        <span>Connected Workspace: <strong className="text-zinc-200">Gruve Events &amp; Engineering Wiki</strong></span>
-                        <span className="text-amber-400 font-mono text-[11px]">Model Context Protocol Active</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="pt-4 border-t border-white/[0.06] flex justify-end">
-              <button
-                type="button"
-                onClick={handleSaveSkills}
-                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-md"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save Skills Configuration</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'skills' && <SkillsManager />}
 
       {/* Tab 3: MCP Connectors & Tools */}
       {activeTab === 'mcp' && (

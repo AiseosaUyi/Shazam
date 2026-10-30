@@ -49,8 +49,9 @@ function getFallbackDb(): SqlDatabase {
     }
     const db = createTestDatabase(dbPath);
 
-    // Pre-seed default administrator & QA tester accounts in fallback DB
-    try {
+    // Pre-seed default administrator & QA tester accounts in the local fallback DB only.
+    // These hashes live in a public repo, so they must never exist in a deployed database.
+    if (!process.env.VERCEL) try {
       (db as any).exec(`
         INSERT OR IGNORE INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
         VALUES 
@@ -71,6 +72,19 @@ function getFallbackDb(): SqlDatabase {
 export function getDb(): SqlDatabase {
   const env = getAppEnv();
   if (env?.DB) return env.DB;
+
+  // Vercel / Node: persistent Turso (libSQL) database.
+  const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || process.env.DATABASE_URL;
+  if (tursoUrl && /^(libsql|https?|wss?):\/\//.test(tursoUrl)) {
+    const { getLibsqlDatabase } = require('@/lib/db/libsql');
+    return getLibsqlDatabase(tursoUrl, process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN);
+  }
+
+  // A /tmp SQLite file is per-instance and wiped on cold starts: every user, key and
+  // schedule silently disappears. Refuse to run production like that.
+  if (process.env.VERCEL_ENV === 'production') {
+    throw new Error('Database is not configured. Connect the Turso integration (TURSO_DATABASE_URL / TURSO_AUTH_TOKEN) to this Vercel project.');
+  }
   return getFallbackDb();
 }
 

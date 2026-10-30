@@ -17,3 +17,5 @@ data/
 .sync-in.tgz
 dist-desktop
 .shazam-token
+.vercel
+.env*

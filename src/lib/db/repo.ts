@@ -1105,6 +1105,15 @@ export class DbRepo {
     }));
   }
 
+  /** Server-side only: the encrypted auth blob for an MCP server, never sent to clients. */
+  async getMcpServerAuth(userId: string, id: string): Promise<string | null> {
+    const row = await this.db
+      .prepare('SELECT encrypted_auth FROM mcp_servers WHERE user_id = ? AND id = ?')
+      .bind(userId, id)
+      .first<{ encrypted_auth: string | null }>();
+    return row?.encrypted_auth ?? null;
+  }
+
   async deleteMcpServer(userId: string, id: string): Promise<boolean> {
     const res = await this.db.prepare('DELETE FROM mcp_servers WHERE user_id = ? AND id = ?').bind(userId, id).run();
     return (res?.meta?.changes ?? 0) > 0;

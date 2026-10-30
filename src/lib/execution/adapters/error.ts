@@ -103,6 +103,15 @@ export function normalizeProviderError(
     };
   }
 
+  if (providerName.startsWith('Google Nano Banana') && (statusCode === 429 || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('billing'))) {
+    return {
+      type: 'quota_exhausted',
+      message: 'Google Nano Banana image generation needs billing enabled on your Google AI Studio key (Gemini image models have no free tier). Enable billing at https://aistudio.google.com, or switch to the free Cloudflare FLUX.2 model.',
+      statusCode: 402,
+      retryable: false,
+    };
+  }
+
   if (statusCode === 429 || msg.includes('429') || msg.includes('rate_limit') || msg.includes('RESOURCE_EXHAUSTED')) {
     let retryAfterSeconds = 30;
     const match = msg.match(/retry after (\d+)/i);
@@ -138,7 +147,7 @@ export function normalizeProviderError(
   if (msg.includes('is not found for API version v1beta') || msg.includes('not supported for predict')) {
     return {
       type: 'model_unavailable',
-      message: 'Google Imagen 3 (Nano Banana) is not supported on standard Google AI Studio developer keys (it requires Google Cloud Vertex AI with billing enabled). For photorealistic human portraits and pristine anatomy without watermarks, please connect an OpenAI API key for DALL-E 3 or use Cloudflare Workers AI.',
+      message: `${providerName}: this model is not available to your API key. Gemini image models (Nano Banana) need a Google AI Studio key with billing enabled; there is no free tier for image output.`,
       statusCode: 404,
       retryable: false,
     };

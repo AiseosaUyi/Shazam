@@ -13,6 +13,7 @@ export interface DispatcherOptions {
   model: Model;
   route: Route;
   prompt: string;
+  systemPrompt?: string;
   history?: ChatMessage[];
   apiKey: string;
   signal?: AbortSignal;

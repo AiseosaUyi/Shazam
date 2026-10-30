@@ -15,6 +15,21 @@ import type {
   StreamChunk,
 } from '@/lib/types';
 
+
+/**
+ * Chat, Co-Work and Code wrap the user's words in instruction preambles before sending.
+ * Title conversations from the user's own request, never from the preamble.
+ */
+export function deriveConversationTitle(prompt: string): string {
+  let text = prompt.trim();
+  const marker = text.match(/\[?User Request\]?:\s*\n/i);
+  if (marker && marker.index !== undefined) {
+    text = text.slice(marker.index + marker[0].length).trim();
+  }
+  text = text.replace(/^\[Autonomous Co-Work Mode\]\n/, '').replace(/\s+/g, ' ').trim();
+  return text.slice(0, 45) || 'New Conversation';
+}
+
 export interface RunTaskOptions {
   user: User;
   prompt: string;
@@ -50,7 +65,7 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
   if (conversationId) {
     let conv = await repo.getConversation(user.id, conversationId);
     if (!conv) {
-      const title = prompt.trim().slice(0, 45) || 'New Conversation';
+      const title = deriveConversationTitle(prompt);
       await repo.createConversation(user.id, conversationId, title, projectId);
       conv = await repo.getConversation(user.id, conversationId);
     } else if (projectId && !conv.projectId) {
@@ -84,7 +99,7 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
     }
   } else {
     conversationId = crypto.randomUUID();
-    const title = prompt.trim().slice(0, 45) || 'New Conversation';
+    const title = deriveConversationTitle(prompt);
     await repo.createConversation(user.id, conversationId, title, projectId);
     if (projectId) {
       try {
@@ -133,6 +148,13 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
     pinnedRouteId: pinnedModelName || null,
     allowedProviders: preferences.allowedProviders,
   };
+
+  // Image requests use the media pipeline: prompt enhancement, best available provider,
+  // stored in Blob and the media library (never a base64 blob inside the chat history).
+  if (taskSpec.outputModality === 'image') {
+    await runImageTask({ user, repo, prompt, conversationId: conversationId!, pinnedModelName, onEvent });
+    return;
+  }
 
   // 4. Initial Route Resolution
   let currentResolution: RouteResolution;
@@ -331,17 +353,7 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
         taskId,
       });
 
-      let cleanTitle = prompt.trim();
-      if (cleanTitle.includes('[User Request]:\n')) {
-        cleanTitle = cleanTitle.split('[User Request]:\n')[1]?.trim() || cleanTitle;
-      }
-      if (cleanTitle.includes('User Request:\n')) {
-        cleanTitle = cleanTitle.split('User Request:\n')[1]?.trim() || cleanTitle;
-      }
-      if (cleanTitle.startsWith('[Autonomous Co-Work Mode]\n')) {
-        cleanTitle = cleanTitle.replace('[Autonomous Co-Work Mode]\n', '').trim();
-      }
-      cleanTitle = cleanTitle.slice(0, 45) || 'New Conversation';
+      const cleanTitle = deriveConversationTitle(prompt);
 
       const conv = await repo.getConversation(user.id, conversationId!);
       const shouldUpdateTitle = !conv || !conv.title || conv.title === 'New Conversation' || conv.title === 'New Co-Work Session';
@@ -463,5 +475,52 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
         return;
       }
     }
+  }
+}
+
+async function runImageTask(opts: { user: User; repo: DbRepo; prompt: string; conversationId: string; pinnedModelName?: string; onEvent: (event: string, data: any) => void }): Promise<void> {
+  const { user, repo, prompt, conversationId, onEvent } = opts;
+  const { generateAndStoreImage } = await import('@/lib/media/image');
+  const { PlatformRepo } = await import('@/lib/db/platform-repo');
+  const { decryptSecret } = await import('@/lib/crypto/vault');
+  const { resolveAgentRoute } = await import('@/lib/agent/resolve');
+  const { createLanguageModel } = await import('@/lib/agent/models');
+
+  const key = async (provider: string) => {
+    const cred = await repo.getCredential(user.id, provider);
+    return cred && cred.status === 'valid' ? decryptSecret(cred.encryptedKey).catch(() => null) : null;
+  };
+  const pin = (opts.pinnedModelName || '').toLowerCase();
+  const wantsFlux = pin.includes('flux');
+  const [googleKey, openaiKey] = wantsFlux ? [null, null] : await Promise.all([key('google'), key('openai')]);
+
+  let enhancer = null;
+  try {
+    const route = await resolveAgentRoute(user, repo, prompt, 'writing');
+    enhancer = (await createLanguageModel(route.selectedRoute.providerId, route.selectedModel.providerModelId, route.apiKey)).model;
+  } catch {
+    // No text model available: generate from the raw prompt.
+  }
+
+  // Previous image in this conversation → treat follow-ups like "make her hair red" as edits.
+  const prior = await repo.getMessages(user.id, conversationId).catch(() => []);
+  const lastImage = [...prior].reverse().map((m) => m.content.match(/\]\((https:\/\/[^)\s]+\.(?:png|jpe?g|webp)[^)\s]*)\)/i)?.[1]).find(Boolean);
+  const isEdit = Boolean(lastImage) && /\b(make|change|edit|turn|add|remove|replace|same|now|instead|but)\b/i.test(prompt) && prompt.length < 240;
+  const aspect = /\b(16:9|landscape|wide|banner|youtube)\b/i.test(prompt) ? '16:9' : /\b(9:16|portrait|vertical|story|reel|tiktok|poster)\b/i.test(prompt) ? '9:16' : /\b4:3\b/.test(prompt) ? '4:3' : '1:1';
+
+  await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId, role: 'user', content: prompt });
+  onEvent('task_created', { conversationId, prompt, taskClass: 'image_generation' });
+  try {
+    const r = await generateAndStoreImage(
+      { userId: user.id, prompt, aspectRatio: aspect, referenceImageUrl: isEdit ? lastImage : undefined, enhancer, googleApiKey: googleKey, openaiApiKey: openaiKey },
+      new PlatformRepo()
+    );
+    const text = `![${prompt.replace(/[\[\]]/g, '').slice(0, 100)}](${r.asset.url})\n\n<sub>${r.provider} · ${r.model}${isEdit ? ' · edited previous image' : ''}${r.enhanced ? ` · prompt expanded: “${r.finalPrompt.slice(0, 220)}${r.finalPrompt.length > 220 ? '…' : ''}”` : ''}</sub>`;
+    onEvent('delta', { text });
+    await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId, role: 'assistant', content: text });
+    await repo.touchConversation(user.id, conversationId);
+    onEvent('done', { fullText: text, usage: { promptTokens: 0, completionTokens: 0, tokensKind: 'estimated' }, costUSD: 0, costKind: 'estimated' });
+  } catch (err: any) {
+    onEvent('error', { message: err.message || 'Image generation failed.' });
   }
 }

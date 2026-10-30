@@ -6,6 +6,7 @@
 
 import { parsePatchesFromText, applySearchReplace, type SearchReplacePatch } from './patcher';
 import { buildProjectIndex } from './indexer';
+import { validateFilePath } from './policy';
 
 export interface AgentTool {
   name: string;
@@ -49,6 +50,16 @@ export const AGENT_TOOLS: AgentTool[] = [
     parameters: '{"path": "string", "startLine": number, "endLine": number}',
   },
   {
+    name: 'list_files',
+    description: 'List project file paths, optionally filtered by a path prefix (e.g. "src/").',
+    parameters: '{"prefix": "string"}',
+  },
+  {
+    name: 'search_code',
+    description: 'Case-insensitive text search across all project files. Returns matching lines as path:line: text.',
+    parameters: '{"query": "string"}',
+  },
+  {
     name: 'edit_file',
     description: 'Surgically replace a unique block of text inside an existing file without deleting the rest of the file.',
     parameters: '{"path": "string", "searchBlock": "string", "replaceBlock": "string"}',
@@ -60,7 +71,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   },
   {
     name: 'run_command',
-    description: 'Execute a shell command locally (e.g. npm test, tsc --noEmit, git status) to verify code changes.',
+    description: 'Execute a shell command (e.g. npm test, tsc --noEmit) on the connected local bridge. If no bridge is connected the command is NOT run and you must say so.',
     parameters: '{"command": "string"}',
   },
   {
@@ -92,11 +103,42 @@ Rules:
 THOUGHT: <your reasoning for the next step>
 2. Choose exactly ONE action per turn formatted strictly as:
 ACTION: tool_name {"arg": "value"}
-3. When editing existing code, ALWAYS use edit_file with exact matching searchBlock and replaceBlock. NEVER overwrite whole files.
-4. After editing code, run a test or typecheck command (e.g. run_command {"command": "npm test"}) to verify your fix.
-5. If a test fails, inspect the error output from OBSERVATION and call edit_file again to self-correct.
-6. When all changes are verified and working, call finish_task {"summary": "..."}.
+3. The ACTION arguments must be a single valid JSON object. Escape newlines inside strings as \n.
+4. Explore before editing: use list_files, search_code and read_file. Never guess file contents.
+5. When editing existing code, ALWAYS use edit_file with a searchBlock copied exactly from read_file output. NEVER overwrite whole existing files. Use create_file only for new files.
+6. After editing code, run a test or typecheck command (e.g. run_command {"command": "npm test"}) to verify your fix.
+7. If a test fails, inspect the error output from OBSERVATION and call edit_file again to self-correct.
+8. Never claim tests passed unless an OBSERVATION shows real passing output. If commands could not run, say so in the summary.
+9. When the task is done, call finish_task {"summary": "..."} listing the files you changed.
 `;
+}
+
+/**
+ * Extracts the first balanced JSON object starting at or after `from`, ignoring
+ * braces that appear inside JSON strings (code payloads are full of them).
+ */
+function extractJsonObject(text: string, from: number): string | null {
+  const start = text.indexOf('{', from);
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 /**
@@ -104,7 +146,7 @@ ACTION: tool_name {"arg": "value"}
  */
 export function parseReActTurn(output: string): { thought: string; tool: string; args: Record<string, any> } | null {
   const thoughtMatch = output.match(/THOUGHT:\s*([\s\S]*?)(?=ACTION:|$)/i);
-  const actionMatch = output.match(/ACTION:\s*([a-zA-Z0-9_-]+)\s*(\{[\s\S]*\})/i);
+  const actionMatch = output.match(/ACTION:\s*`*([a-zA-Z0-9_-]+)`*/i);
 
   if (!actionMatch) {
     // Check if model concluded naturally or wrote finish
@@ -119,12 +161,14 @@ export function parseReActTurn(output: string): { thought: string; tool: string;
   }
 
   const tool = actionMatch[1].trim();
-  let args = {};
-  try {
-    args = JSON.parse(actionMatch[2].trim());
-  } catch {
-    // Attempt relaxed parsing or argument extraction
-    args = { raw: actionMatch[2].trim() };
+  const rawArgs = extractJsonObject(output, (actionMatch.index ?? 0) + actionMatch[0].length);
+  let args: Record<string, any> = {};
+  if (rawArgs) {
+    try {
+      args = JSON.parse(rawArgs);
+    } catch {
+      args = { raw: rawArgs };
+    }
   }
 
   return {
@@ -141,7 +185,7 @@ export async function executeReActLoop(
   initialPrompt: string,
   context: ReActContext
 ): Promise<ReActResult> {
-  const { projectName, files, daemonUrl, daemonToken, maxTurns = 6, onEvent, invokeLLM } = context;
+  const { projectName, files, daemonUrl, daemonToken, maxTurns = 20, onEvent, invokeLLM } = context;
 
   // Build project symbol and tree index
   const index = buildProjectIndex(files);
@@ -156,6 +200,7 @@ export async function executeReActLoop(
   const filesModified = new Set<string>();
   let finalSummary = '';
   let success = false;
+  let formatNudges = 0;
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     // 1. Invoke LLM for next thought & action
@@ -163,9 +208,19 @@ export async function executeReActLoop(
     const parsed = parseReActTurn(response);
 
     if (!parsed) {
-      // Model responded in natural language without calling a tool; conclude loop
+      // Free models often drift into prose. Remind them of the protocol a couple of
+      // times before accepting the prose as the final answer.
+      if (formatNudges < 2 && filesModified.size === 0) {
+        formatNudges++;
+        messages.push({ role: 'assistant', content: response });
+        messages.push({
+          role: 'user',
+          content: 'OBSERVATION: No tool call found. Do not paste code into chat. Respond with THOUGHT: ... then exactly one ACTION: tool_name {json}. Use create_file / edit_file to write code.',
+        });
+        continue;
+      }
       finalSummary = response;
-      success = true;
+      success = filesModified.size > 0;
       break;
     }
 
@@ -180,7 +235,7 @@ export async function executeReActLoop(
 
     // 2. Conclude if finished
     if (tool === 'finish_task') {
-      finalSummary = args.summary || thought || 'Task concluded successfully.';
+      finalSummary = args.summary || args.raw || thought || 'Task concluded successfully.';
       success = true;
       steps.push({
         step: turn,
@@ -198,7 +253,29 @@ export async function executeReActLoop(
     let isError = false;
 
     try {
-      if (tool === 'read_file') {
+      const pathCheck = (tool === 'edit_file' || tool === 'create_file') ? validateFilePath(args.path) : { valid: true };
+      if (!pathCheck.valid) {
+        observation = `Blocked by safety policy: ${pathCheck.error}`;
+        isError = true;
+      } else if (args.raw !== undefined && tool !== 'finish_task') {
+        observation = `Error: ACTION arguments for ${tool} were not valid JSON. Re-send them as one JSON object with newlines escaped as \\n.`;
+        isError = true;
+      } else if (tool === 'list_files') {
+        const prefix = String(args.prefix || '').toLowerCase();
+        const paths = files.map((f) => f.path).filter((p) => p.toLowerCase().startsWith(prefix));
+        observation = paths.length > 0 ? paths.slice(0, 300).join('\n') : 'No files found (the project may be empty; use create_file).';
+      } else if (tool === 'search_code') {
+        const query = String(args.query || '').toLowerCase();
+        const hits: string[] = [];
+        if (query) {
+          for (const f of files) {
+            f.content.split('\n').forEach((line, i) => {
+              if (hits.length < 80 && line.toLowerCase().includes(query)) hits.push(`${f.path}:${i + 1}: ${line.trim().slice(0, 200)}`);
+            });
+          }
+        }
+        observation = hits.length > 0 ? hits.join('\n') : `No matches for "${args.query}".`;
+      } else if (tool === 'read_file') {
         const filePath = args.path;
         const targetFile = files.find((f) => f.path.toLowerCase() === filePath?.toLowerCase());
         if (targetFile) {
@@ -272,10 +349,11 @@ export async function executeReActLoop(
             body: JSON.stringify({ command: cmd }),
           });
           const text = await res.text();
-          observation = `Command Output ($ ${cmd}):\n${text.slice(0, 2000)}`;
-          isError = text.includes('ERR') || text.includes('failed') || text.includes('exit code 1');
+          observation = `Command Output ($ ${cmd}):\n${text.slice(-4000)}`;
+          isError = !res.ok || /\bERR|failed|exit code [1-9]/.test(text);
         } else {
-          observation = `[Sandboxed Test Output for "$ ${cmd}"]: All syntax checks and static assertions passed.`;
+          observation = `NOT RUN: "$ ${cmd}" was not executed because no local bridge or sandbox is connected. Do not claim it passed; mention in your summary that verification is pending.`;
+          isError = true;
         }
       } else {
         observation = `Unknown tool: "${tool}". Supported tools: ${AGENT_TOOLS.map((t) => t.name).join(', ')}`;

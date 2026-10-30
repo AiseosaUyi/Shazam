@@ -1,5 +1,6 @@
 'use client';
 
+import { GoogleConnectCard } from '@/components/GoogleConnectCard';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -176,6 +177,8 @@ export default function ConnectionsPage() {
             <span>Zero Server Key Leaks</span>
           </div>
         </div>
+
+      {user && <GoogleConnectCard />}
 
       {/* Guest Mode Banner */}
       {!user && !loading && (

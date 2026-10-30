@@ -7,6 +7,8 @@ export interface ExecuteOptions {
   model: Model;
   route: Route;
   prompt: string;
+  /** Overrides the default Shazam identity prompt (e.g. the coding agent loop). */
+  systemPrompt?: string;
   history?: ChatMessage[];
   apiKey: string;
   signal?: AbortSignal;
@@ -25,7 +27,7 @@ export async function executeOpenAICompatible(options: ExecuteOptions, endpoint:
   const { model, route, prompt, history = [], apiKey, signal, onChunk } = options;
 
   const messages: any[] = [
-    { role: 'system', content: SHAZAM_SYSTEM_IDENTITY },
+    { role: 'system', content: (options.systemPrompt ?? SHAZAM_SYSTEM_IDENTITY) },
   ];
   for (const h of history) {
     messages.push({ role: h.role, content: h.content });

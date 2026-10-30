@@ -27,7 +27,7 @@ export async function executeAnthropic(options: ExecuteOptions): Promise<Adapter
       },
       body: JSON.stringify({
         model: liveModelId,
-        system: SHAZAM_SYSTEM_IDENTITY,
+        system: (options.systemPrompt ?? SHAZAM_SYSTEM_IDENTITY),
         messages,
         max_tokens: model.maxOutputTokens ?? 4096,
         stream: true,

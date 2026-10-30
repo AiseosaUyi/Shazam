@@ -20,7 +20,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
   });
 
   const liveModelId = resolveLiveProviderModel('google', model.providerModelId);
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(liveModelId)}:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(liveModelId)}:streamGenerateContent?alt=sse`;
 
   const { signal: timedSignal, cleanup } = createTimeoutSignal(signal, 45000);
 
@@ -34,7 +34,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
       },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: SHAZAM_SYSTEM_IDENTITY }],
+          parts: [{ text: (options.systemPrompt ?? SHAZAM_SYSTEM_IDENTITY) }],
         },
         contents,
         generationConfig: {
@@ -53,7 +53,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
 
   // If 404 (model not found on target region), fallback to gemini-3.5-flash-lite
   if (res.status === 404 && liveModelId !== 'gemini-3.5-flash-lite') {
-    const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent?key=${encodeURIComponent(apiKey)}&alt=sse`;
+    const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent?alt=sse`;
     const { signal: fbSignal, cleanup: fbCleanup } = createTimeoutSignal(signal, 45000);
     try {
       res = await fetch(fallbackEndpoint, {
@@ -64,7 +64,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
         },
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{ text: SHAZAM_SYSTEM_IDENTITY }],
+            parts: [{ text: (options.systemPrompt ?? SHAZAM_SYSTEM_IDENTITY) }],
           },
           contents,
           generationConfig: {

@@ -1215,14 +1215,34 @@ ${textToSend}`;
     }
 
     try {
-      const targetEndpoint = autonomousMode && currentProject ? '/api/v1/agent/loop' : '/api/v1/tasks';
-      const requestPayload = autonomousMode && currentProject
+      // The coding agent always runs as a real tool-using agent. With no project open we create
+      // one so its files persist (previously this fell back to a chatbot that pasted code).
+      let agentProject = currentProject;
+      if (autonomousMode && !agentProject) {
+        const created = await fetch('/api/v1/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: textToSend.replace(/\s+/g, ' ').slice(0, 48) || 'Scratch project' }),
+        }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (created?.project) {
+          agentProject = created.project;
+          setProjects((prev) => [created.project, ...prev]);
+          setCurrentProject(created.project);
+        }
+      }
+
+      const useAgentLoop = autonomousMode && Boolean(agentProject);
+      const targetEndpoint = useAgentLoop ? '/api/v1/agent/loop' : '/api/v1/tasks';
+      const requestPayload = useAgentLoop
         ? {
             prompt: textToSend,
-            projectId: currentProject?.id || undefined,
-            daemonToken: daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : ''),
-            daemonPort: typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_port') || '4040' : '4040',
-            maxTurns: 8,
+            projectId: agentProject?.id || undefined,
+            maxTurns: 40,
+            pinnedModel: selectedModel === 'auto' ? undefined : selectedModel,
+            history: messages
+              .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+              .slice(-12)
+              .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content.slice(0, 6000) })),
           }
         : {
             prompt: contextualPrompt,
@@ -1258,6 +1278,8 @@ ${textToSend}`;
       let buffer = '';
       let fullOutput = '';
       let fullThought = '';
+      let agentChangedFiles: string[] | null = null;
+      let agentCommands: Array<{ command: string; exitCode: number }> = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1281,8 +1303,8 @@ ${textToSend}`;
 
           try {
             const data = JSON.parse(dataStr);
-            if (eventType === 'delta') {
-              fullOutput += data.text || '';
+            if (eventType === 'delta' || eventType === 'agent_text') {
+              fullOutput += data.text || data.delta || '';
               setStreamingOutput(fullOutput);
             } else if (eventType === 'reasoning') {
               fullThought += data.text || '';
@@ -1313,8 +1335,10 @@ ${textToSend}`;
             } else if (eventType === 'done' || eventType === 'react_done') {
               fullOutput = data.finalSummary || data.fullText || fullOutput;
               setStreamingOutput(fullOutput);
-              if (currentProject) {
-                loadProjectFiles(currentProject.id);
+              if (Array.isArray(data.filesModified)) agentChangedFiles = data.filesModified;
+              if (Array.isArray(data.commandsRun)) agentCommands = data.commandsRun;
+              if (agentProject) {
+                loadProjectFiles(agentProject.id);
               }
             } else if (eventType === 'react_error' || eventType === 'error') {
               const errMsg = data.message || 'Execution error occurred.';
@@ -1327,9 +1351,16 @@ ${textToSend}`;
         }
       }
 
-      // Parse surgical code patches & new file creations (Claude Code / Antigravity standard)
-      const parsedPatches = parsePatchesFromText(fullOutput);
+      // Parse surgical code patches & new file creations (Claude Code / Antigravity standard).
+      // The agent loop writes files itself via tools, so its reply is never scraped for code.
+      const parsedPatches = agentChangedFiles ? [] : parsePatchesFromText(fullOutput);
       const generatedFiles: Array<{ path: string; added: number; deleted: number; code?: string }> = [];
+      if (agentChangedFiles) {
+        for (const p of agentChangedFiles) generatedFiles.push({ path: p, added: 0, deleted: 0 });
+        if (agentCommands.length > 0) {
+          fullOutput += `\n\n**Verified in sandbox:** ${agentCommands.map((c) => `\`${c.command}\` → exit ${c.exitCode}`).join(', ')}`;
+        }
+      }
       const activeToken = daemonToken || (typeof window !== 'undefined' ? localStorage.getItem('shazam_daemon_token') || '' : '');
 
       for (const patch of parsedPatches) {
@@ -1411,21 +1442,29 @@ ${textToSend}`;
         }
       }
 
-      // Backward-compatible Fallback: If model wrote generic code block without explicit headers
-      if (generatedFiles.length === 0) {
-        const genericCodeRegex = /```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-        const singleMatch = genericCodeRegex.exec(fullOutput);
-        if (singleMatch && singleMatch[1]) {
-          const code = singleMatch[1].trim();
+      // Backward-compatible Fallback: the model wrote plain fenced code blocks without patch headers.
+      // Only treat a block as a file when we can find its path (first-line comment, or a filename
+      // mentioned just above the fence). Never invent a path: a guessed default used to overwrite
+      // the user's real src/App.tsx through the local bridge.
+      if (generatedFiles.length === 0 && !agentChangedFiles) {
+        const genericCodeRegex = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
+        const pathLike = /([a-zA-Z0-9_.\-]+(?:\/[a-zA-Z0-9_.\-]+)*\.(?:tsx?|jsx?|mjs|cjs|json|css|scss|html|md|py|go|rs|java|kt|swift|rb|php|sql|ya?ml|toml|sh|vue|svelte))\b/;
+        let match: RegExpExecArray | null;
+        while ((match = genericCodeRegex.exec(fullOutput)) !== null) {
+          const lang = (match[1] || '').toLowerCase();
+          if (['bash', 'sh', 'shell', 'zsh', 'console', 'text', 'txt'].includes(lang)) continue;
+          const code = match[2].replace(/\s+$/, '');
           const firstLine = code.split('\n')[0] || '';
           const commentPathMatch = firstLine.match(/^(?:\/\/|#|\/\*)\s*([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)/);
-          const detectedPath = commentPathMatch ? commentPathMatch[1].trim() : 'src/App.tsx';
-          const lineCount = code.split('\n').length;
+          const precedingLines = fullOutput.slice(Math.max(0, match.index - 300), match.index).split('\n').slice(-4).reverse();
+          const headingPath = precedingLines.map((l) => l.match(pathLike)?.[1]).find(Boolean);
+          const detectedPath = commentPathMatch?.[1].trim() || headingPath;
+          if (!detectedPath || generatedFiles.some((f) => f.path === detectedPath)) continue;
 
           generatedFiles.push({
             path: detectedPath,
-            added: lineCount,
-            deleted: Math.max(1, Math.floor(lineCount / 4)),
+            added: code.split('\n').length,
+            deleted: 0,
             code,
           });
 
@@ -1969,8 +2008,12 @@ ${textToSend}`;
                             >
                               <FileCode className="w-3.5 h-3.5 text-amber-400" />
                               <span>{file.path}</span>
-                              <span className="text-[10px] text-emerald-400 font-bold">+{file.added}</span>
-                              <span className="text-[10px] text-red-400 font-bold">-{file.deleted}</span>
+                              {(file.added > 0 || file.deleted > 0) && (
+                                <>
+                                  <span className="text-[10px] text-emerald-400 font-bold">+{file.added}</span>
+                                  <span className="text-[10px] text-red-400 font-bold">-{file.deleted}</span>
+                                </>
+                              )}
                               <span className="text-[10px] text-zinc-500 underline ml-1">Click to preview</span>
                             </button>
                           ))}
@@ -2297,10 +2340,10 @@ ${textToSend}`;
                     title="Choose AI Model or Auto-Route"
                   >
                     <option value="auto" className="bg-[#0f1118] text-zinc-200">⚡ Auto (Smart Route)</option>
-                    <option value="claude-sonnet-5-5" className="bg-[#0f1118] text-zinc-200">🟣 Claude 3.5 Sonnet</option>
-                    <option value="gpt-6.1-terra" className="bg-[#0f1118] text-zinc-200">🟢 GPT-4o</option>
-                    <option value="gemini-3.8-flash" className="bg-[#0f1118] text-zinc-200">🔵 Gemini 2.0 Flash</option>
-                    <option value="deepseek-flash" className="bg-[#0f1118] text-zinc-200">🧠 DeepSeek V3</option>
+                    <option value="claude-sonnet-5-5" className="bg-[#0f1118] text-zinc-200">🟣 Claude Sonnet 5.5 (BYOK)</option>
+                    <option value="gpt-6.1-terra" className="bg-[#0f1118] text-zinc-200">🟢 GPT-6.1 Terra (BYOK)</option>
+                    <option value="gemini-3.8-flash" className="bg-[#0f1118] text-zinc-200">🔵 Gemini 3.8 Flash (free tier)</option>
+                    <option value="deepseek-flash" className="bg-[#0f1118] text-zinc-200">🧠 DeepSeek Flash (BYOK)</option>
                   </select>
                   <ChevronDown className="w-3 h-3 text-zinc-400 pointer-events-none absolute right-2" />
                 </div>
