@@ -1,5 +1,8 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { SystemStrip } from '@/components/SystemStrip';
+import { useDialog } from '@/components/ui/dialog';
 import { AgentSuggestion } from '@/components/AgentSuggestion';
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
@@ -64,6 +67,8 @@ interface ProjectItem {
 }
 
 export default function WorkspacePage() {
+  const router = useRouter();
+  const dialog = useDialog();
   const [user, setUser] = useState<{ email: string; name?: string; role?: string } | null>(null);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [currentConvId, setCurrentConvId] = useState<string | null>(null);
@@ -136,10 +141,10 @@ export default function WorkspacePage() {
   // Time of day greeting (Morning, Afternoon, Evening, Night)
   function getGreeting() {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return 'Morning, how are things?';
-    if (hour >= 12 && hour < 17) return 'Afternoon, how are things?';
-    if (hour >= 17 && hour < 22) return 'Evening, how are things?';
-    return 'Good evening, how are things?';
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 22) return 'Good evening';
+    return 'Late session';
   }
 
   // Load conversations, catalog & user projects
@@ -294,7 +299,7 @@ export default function WorkspacePage() {
   async function handleConnectFolder() {
     setAttachMenuOpen(false);
     if (!('showDirectoryPicker' in window)) {
-      alert('Your browser does not support local folder picker. You can choose a project from the dropdown.');
+      dialog.alert({ title: 'Folder picker not supported', body: 'This browser can’t open local folders. Use the Shazam desktop app, or choose a project instead.' });
       return;
     }
 
@@ -325,6 +330,19 @@ export default function WorkspacePage() {
 
   async function handleSend(promptText = prompt) {
     if (!promptText.trim() || isStreaming) return;
+
+    // Route to the right agent automatically, like Claude: building software goes to Code,
+    // inbox/calendar/scheduling/video work goes to Co-Work. Images and questions stay here.
+    if (!connectedFolder && attachedDocs.length === 0) {
+      const s = await fetch('/api/v1/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: promptText }) })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      const agent = s?.suggestion?.agent;
+      if (s?.suggestion?.confidence >= 0.6 && (agent === 'code' || agent === 'cowork' || agent === 'video')) {
+        router.push(`${agent === 'code' ? '/agent' : '/cowork'}?prompt=${encodeURIComponent(promptText.trim())}&autorun=1`);
+        return;
+      }
+    }
 
     setErrorBanner(null);
     const userPrompt = promptText.trim();
@@ -636,18 +654,18 @@ export default function WorkspacePage() {
         const codeId = `code_${index}`;
 
         return (
-          <div key={index} className="my-3 rounded-2xl bg-black/60 border border-white/[0.08] overflow-hidden shadow-lg">
-            <div className="px-4 py-2 bg-white/[0.03] border-b border-white/5 flex items-center justify-between text-[11px] font-mono text-zinc-400">
-              <span className="uppercase tracking-wider text-[10px] text-zinc-500 font-semibold">{lang}</span>
+          <div key={index} className="my-3 rounded-2xl bg-black/60 border border-line/[0.08] overflow-hidden shadow-lg">
+            <div className="px-4 py-2 bg-line/[0.03] border-b border-line/5 flex items-center justify-between text-[11px] font-mono text-ink-2">
+              <span className="tracking-wider text-[10px] text-ink-3 font-semibold">{lang}</span>
               <button
                 onClick={() => handleCopy(code, codeId)}
-                className="hover:text-amber-400 flex items-center gap-1.5 transition text-xs"
+                className="hover:text-brand flex items-center gap-1.5 transition text-xs"
               >
                 {copiedId === codeId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedId === codeId ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <pre className="p-4 text-xs font-mono text-zinc-200 overflow-x-auto leading-relaxed">
+            <pre className="p-4 text-xs font-mono text-ink overflow-x-auto leading-relaxed">
               <code>{code}</code>
             </pre>
           </div>
@@ -655,29 +673,11 @@ export default function WorkspacePage() {
       }
 
       return (
-        <span key={index} className="whitespace-pre-wrap leading-relaxed text-[14px] text-zinc-200">
+        <span key={index} className="whitespace-pre-wrap leading-relaxed text-[14px] text-ink">
           {part}
         </span>
       );
     });
-  }
-
-  function handleToggleImageMode() {
-    const isImagePinned = pinnedModelName && (
-      pinnedModelName.toLowerCase().includes('flux') ||
-      pinnedModelName.toLowerCase().includes('banana') ||
-      pinnedModelName.toLowerCase().includes('imagen')
-    );
-    if (isImagePinned) {
-      setPinnedModelName('');
-      try { localStorage.removeItem('shazam_pinned_model'); } catch {}
-    } else {
-      const nanoBanana = models.find((m) => m.id === 'model_google_imagen_3' || m.name.toLowerCase().includes('banana') || m.name.toLowerCase().includes('imagen'));
-      const flux = models.find((m) => m.id === 'model_flux_1_schnell' || m.name.toLowerCase().includes('flux'));
-      const target = (connectedProviders['google'] && nanoBanana) ? nanoBanana.name : (flux?.name || 'Google Nano Banana 2.1');
-      setPinnedModelName(target);
-      try { localStorage.setItem('shazam_pinned_model', target); } catch {}
-    }
   }
 
   function getModelButtonLabel() {
@@ -695,8 +695,8 @@ export default function WorkspacePage() {
 
   function renderModelDropdown() {
     return (
-      <div className="absolute right-0 bottom-full mb-2 w-72 max-h-80 overflow-y-auto rounded-2xl bg-[#12131a] border border-white/10 shadow-2xl p-2 space-y-1 z-50 text-xs font-sans backdrop-blur-2xl">
-        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+      <div className="absolute right-0 bottom-full mb-2 w-72 max-h-80 overflow-y-auto rounded-2xl bg-[#12131a] border border-line/10 shadow-2xl p-2 space-y-1 z-50 text-xs font-sans backdrop-blur-2xl">
+        <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
           Intelligent Routing
         </div>
 
@@ -708,23 +708,23 @@ export default function WorkspacePage() {
             setModelDropdownOpen(false);
           }}
           className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
-            !pinnedModelName ? 'bg-white/10 text-white font-medium border border-white/15' : 'text-zinc-300 hover:bg-white/5'
+            !pinnedModelName ? 'bg-line/10 text-ink font-medium border border-line/15' : 'text-ink-2 hover:bg-line/5'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-zinc-400" />
+            <Zap className="w-3.5 h-3.5 text-ink-2" />
             <div>
-              <div className="font-medium text-zinc-200">Auto Routing</div>
-              <div className="text-[10px] text-zinc-500">Automatically routes per task</div>
+              <div className="font-medium text-ink">Auto Routing</div>
+              <div className="text-[10px] text-ink-3">Automatically routes per task</div>
             </div>
           </div>
-          <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+          <span className="text-[10px] text-ink-2 font-mono shrink-0 ml-1">
             {connectedProviders['google'] ? 'Gemini Ready' : 'Auto'}
           </span>
         </button>
 
-        <div className="border-t border-white/5 my-1" />
-        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+        <div className="border-t border-line/5 my-1" />
+        <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
           Image Generation
         </div>
 
@@ -738,18 +738,18 @@ export default function WorkspacePage() {
           }}
           className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
             pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
-              ? 'bg-white/10 text-white font-medium border border-white/15'
-              : 'text-zinc-300 hover:bg-white/5'
+              ? 'bg-line/10 text-ink font-medium border border-line/15'
+              : 'text-ink-2 hover:bg-line/5'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <Sparkles className="w-3.5 h-3.5 text-ink-2 shrink-0" />
             <div className="truncate">
-              <div className="font-medium text-zinc-200 truncate">Google Nano Banana 2.1</div>
-              <div className="text-[10px] text-zinc-500 truncate">AI Studio key with billing (no free tier)</div>
+              <div className="font-medium text-ink truncate">Google Nano Banana 2.1</div>
+              <div className="text-[10px] text-ink-3 truncate">AI Studio key with billing (no free tier)</div>
             </div>
           </div>
-          <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+          <span className="text-[10px] text-ink-2 font-mono shrink-0 ml-1">
             BYOK · paid
           </span>
         </button>
@@ -764,24 +764,24 @@ export default function WorkspacePage() {
           }}
           className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
             pinnedModelName?.toLowerCase().includes('flux')
-              ? 'bg-white/10 text-white font-medium border border-white/15'
-              : 'text-zinc-300 hover:bg-white/5'
+              ? 'bg-line/10 text-ink font-medium border border-line/15'
+              : 'text-ink-2 hover:bg-line/5'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Palette className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <Palette className="w-3.5 h-3.5 text-ink-2 shrink-0" />
             <div className="truncate">
-              <div className="font-medium text-zinc-200 truncate">FLUX.1 Schnell</div>
-              <div className="text-[10px] text-zinc-500 truncate">Free · Fast · No Key Needed</div>
+              <div className="font-medium text-ink truncate">FLUX.1 Schnell</div>
+              <div className="text-[10px] text-ink-3 truncate">Free · Fast · No Key Needed</div>
             </div>
           </div>
-          <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">
+          <span className="text-[10px] text-ink-2 font-mono shrink-0 ml-1">
             Free
           </span>
         </button>
 
-        <div className="border-t border-white/5 my-1" />
-        <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+        <div className="border-t border-line/5 my-1" />
+        <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
           Google Gemini
         </div>
 
@@ -800,12 +800,12 @@ export default function WorkspacePage() {
                   setModelDropdownOpen(false);
                 }}
                 className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                  isPinned ? 'bg-white/10 text-white font-medium border border-white/15' : 'text-zinc-300 hover:bg-white/5'
+                  isPinned ? 'bg-line/10 text-ink font-medium border border-line/15' : 'text-ink-2 hover:bg-line/5'
                 }`}
               >
-                <span className="truncate text-zinc-200">{m.name}</span>
+                <span className="truncate text-ink">{m.name}</span>
                 {isModelConnected && (
-                  <span className="text-[9px] text-zinc-400 font-mono shrink-0 ml-1 flex items-center gap-0.5">
+                  <span className="text-[9px] text-ink-2 font-mono shrink-0 ml-1 flex items-center gap-0.5">
                     <Check className="w-2.5 h-2.5" /> Connected
                   </span>
                 )}
@@ -815,8 +815,8 @@ export default function WorkspacePage() {
 
         {models.some((m) => m.providerId === 'ollama') && (
           <>
-            <div className="border-t border-white/5 my-1" />
-            <div className="px-2 py-0.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+            <div className="border-t border-line/5 my-1" />
+            <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
               Local Compute
             </div>
             {models
@@ -833,11 +833,11 @@ export default function WorkspacePage() {
                       setModelDropdownOpen(false);
                     }}
                     className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                      isPinned ? 'bg-white/10 text-white font-medium border border-white/15' : 'text-zinc-300 hover:bg-white/5'
+                      isPinned ? 'bg-line/10 text-ink font-medium border border-line/15' : 'text-ink-2 hover:bg-line/5'
                     }`}
                   >
-                    <span className="truncate text-zinc-200">{m.name}</span>
-                    <span className="text-[9px] text-zinc-400 font-mono">Local</span>
+                    <span className="truncate text-ink">{m.name}</span>
+                    <span className="text-[9px] text-ink-2 font-mono">Local</span>
                   </button>
                 );
               })}
@@ -871,99 +871,53 @@ export default function WorkspacePage() {
       {/* Left Sidebar (Matching Claude / Cursor Desktop Layout in Screenshot)     */}
       {/* ========================================================================= */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#07080c] backdrop-blur-2xl border-r border-white/[0.06] flex flex-col transition-transform duration-200 md:static md:translate-x-0 select-none ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-sidebar border-r border-line/[0.06] flex flex-col transition-transform duration-200 md:static md:translate-x-0 select-none ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Top: Search & + New Button */}
-        <div className="p-3 space-y-2 border-b border-white/[0.05]">
+        {/* Top: New chat, search, library (Claude-style) */}
+        <div className="space-y-0.5 p-3">
+          <button onClick={handleNewChat} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium text-ink hover:bg-surface-2">
+            <Plus className="h-4 w-4 text-brand" /> New chat
+          </button>
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-2.5" />
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-3" />
             <input
               type="text"
-              placeholder="Search"
+              placeholder="Search chats"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-xl text-xs text-zinc-300 placeholder-zinc-500 focus:outline-none focus:border-white/20 transition"
+              className="w-full rounded-xl bg-transparent py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink-2 hover:bg-surface-2/60 focus:bg-surface-2 focus:outline-none"
             />
           </div>
-
-          <button
-            onClick={handleNewChat}
-            className="w-full py-2 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs font-semibold text-zinc-200 flex items-center justify-center gap-2 transition shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5 text-amber-400" />
-            <span>New</span>
+          <button type="button" onClick={loadArtifacts} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] text-ink-2 hover:bg-surface-2/60 hover:text-ink">
+            <Layers className="h-4 w-4" /> Library
           </button>
-        </div>
-
-        {/* Real Working Navigation Links */}
-        <div className="p-2 space-y-0.5 border-b border-white/[0.05] text-xs text-zinc-400 font-medium">
-          <Link
-            href="/agent"
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.04] hover:text-zinc-200 transition"
-          >
-            <Folder className="w-3.5 h-3.5 text-amber-400" />
-            <span>Projects & Code</span>
-          </Link>
-
-          <Link
-            href="/cowork"
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.04] hover:text-zinc-200 transition"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>Co-Work Canvas</span>
-          </Link>
-
-          <button
-            type="button"
-            onClick={loadArtifacts}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.04] hover:text-zinc-200 cursor-pointer transition text-left"
-          >
-            <Layers className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Artifacts</span>
-          </button>
-
-          <Link
-            href="/connections"
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.04] hover:text-zinc-200 transition"
-          >
-            <Cpu className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Skills & Models</span>
-          </Link>
-
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.04] hover:text-zinc-200 transition"
-          >
-            <Sliders className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Settings</span>
-          </Link>
         </div>
 
         {/* Conversations History: Pinned & Recents */}
         <div className="flex-1 overflow-y-auto p-2 space-y-3">
-          <div className="px-2 py-1 text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
+          <div className="px-2 py-1 text-[10px] font-bold text-ink-3">
             Recents
           </div>
 
           <div className="space-y-0.5">
             {!user ? (
-              <div className="p-3 mx-1 my-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
-                <Sparkles className="w-4 h-4 text-amber-400 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-zinc-200">Guest Session</p>
-                <p className="text-[11px] text-zinc-400 mt-1 mb-2.5 leading-relaxed">
+              <div className="p-3 mx-1 my-2 rounded-xl bg-line/[0.02] border border-line/[0.06] text-center">
+                <Sparkles className="w-4 h-4 text-brand mx-auto mb-1.5" />
+                <p className="text-xs font-medium text-ink">Guest Session</p>
+                <p className="text-[11px] text-ink-2 mt-1 mb-2.5 leading-relaxed">
                   Sign in to save and sync your conversations across devices.
                 </p>
                 <Link
                   href="/login"
-                  className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs transition shadow-sm"
+                  className="inline-block px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs transition shadow-sm"
                 >
                   Sign In
                 </Link>
               </div>
             ) : conversations.length === 0 ? (
-              <div className="px-2 py-4 text-center text-xs text-zinc-500">
+              <div className="px-2 py-4 text-center text-xs text-ink-3">
                 No conversations yet
               </div>
             ) : (
@@ -978,8 +932,8 @@ export default function WorkspacePage() {
                     }}
                     className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
                       currentConvId === conv.id
-                        ? 'bg-amber-500/10 text-amber-300 font-medium'
-                        : 'text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
+                        ? 'bg-brand/10 text-brand-soft font-medium'
+                        : 'text-ink-2 hover:bg-line/[0.03] hover:text-ink'
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate">
@@ -989,7 +943,7 @@ export default function WorkspacePage() {
                     <button
                       type="button"
                       onClick={(e) => handleDeleteConversation(e, conv.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-red-400 transition rounded"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-ink-3 hover:text-red-400 transition rounded"
                       title="Delete chat"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -1000,46 +954,24 @@ export default function WorkspacePage() {
           </div>
         </div>
 
-        {/* User Profile */}
-        <div className="p-3 border-t border-white/[0.06] bg-black/30 flex items-center justify-between">
-          {user ? (
-            <div className="flex items-center gap-2 truncate">
-              <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 text-xs font-semibold">
-                {user.email.charAt(0).toUpperCase()}
-              </div>
-              <div className="truncate">
-                <p className="text-xs font-medium text-white truncate">{user.name || user.email.split('@')[0]}</p>
-                <p className="text-[10px] text-zinc-500">{user.role === 'admin' ? 'Administrator' : 'Free Tier'}</p>
-              </div>
-            </div>
-          ) : (
-            <Link
-              href="/login"
-              className="w-full py-1.5 px-3 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-300 hover:text-white font-medium text-xs text-center transition"
-            >
-              Sign In to Save History
-            </Link>
-          )}
-          {user && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
-        </div>
       </aside>
 
       {/* ========================================================================= */}
       {/* Main Conversational Workspace                                             */}
       {/* ========================================================================= */}
-      <div className="flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden relative bg-[#0b0d13]">
+      <div className="flex-1 h-full min-h-0 min-w-0 flex flex-col overflow-hidden relative bg-canvas">
         {/* Subtle Top Mobile Bar */}
-        <div className="md:hidden border-b border-white/[0.06] bg-[#090a0f]/80 backdrop-blur-md px-4 py-2 flex items-center justify-between">
+        <div className="md:hidden border-b border-line/[0.06] bg-canvas/80 backdrop-blur-md px-4 py-2 flex items-center justify-between">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg bg-white/5 text-zinc-300 flex items-center gap-2 text-xs"
+            className="p-1.5 rounded-lg bg-line/5 text-ink-2 flex items-center gap-2 text-xs"
           >
             <MessageSquare className="w-4 h-4" />
             <span>Chats</span>
           </button>
           <button
             onClick={handleNewChat}
-            className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs flex items-center gap-1"
+            className="p-1.5 rounded-lg bg-brand/10 text-brand border border-brand/20 text-xs flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New</span>
@@ -1052,14 +984,14 @@ export default function WorkspacePage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold text-zinc-100">{errorBanner.message}</p>
-                {errorBanner.subtext && <p className="text-zinc-400 mt-0.5">{errorBanner.subtext}</p>}
+                <p className="font-semibold text-ink">{errorBanner.message}</p>
+                {errorBanner.subtext && <p className="text-ink-2 mt-0.5">{errorBanner.subtext}</p>}
               </div>
             </div>
             {errorBanner.fixHref && (
               <Link
                 href={errorBanner.fixHref}
-                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-lg text-xs transition"
+                className="px-3 py-1 bg-brand hover:bg-brand-soft text-brand-ink font-semibold rounded-lg text-xs transition"
               >
                 {errorBanner.fixAction}
               </Link>
@@ -1071,36 +1003,35 @@ export default function WorkspacePage() {
         <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
           {messages.length === 0 && !isStreaming ? (
             /* Warm, Open Greeting Hero Matching Screenshot */
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-2xl mx-auto space-y-8 pt-10 pb-20">
+            <div className="shz-atmosphere -mx-8 -mt-6 h-full flex flex-col items-center justify-center text-center px-8 space-y-8 pt-10 pb-20 [&>*]:w-full [&>*]:max-w-2xl">
               {/* Center Editorial Greeting */}
               <div className="space-y-3">
-                <h1 className="text-3xl sm:text-4xl font-serif text-zinc-100 tracking-tight font-normal flex items-center justify-center gap-3">
-                  <span className="text-amber-500 text-3xl">✳️</span>
-                  <span>{getGreeting()}</span>
-                </h1>
+                <p className="shz-mono text-[11px] tracking-[0.2em] text-brand/80">{getGreeting()}</p>
+                <h1 className="text-[30px] font-semibold tracking-[-0.025em] text-ink">What are we making today?</h1>
+                <SystemStrip show={['models', 'desktop', 'google']} />
               </div>
 
               {/* Main Input Box (Matching User's Screenshot Exactly) */}
               <div className="w-full relative">
-                <div className="rounded-2xl bg-[#12141c]/90 border border-white/10 shadow-2xl p-4 space-y-3 focus-within:border-amber-500/40 transition">
+                <div className="shz-composer p-4 space-y-3">
                   {/* Attached Context Capsules */}
                   {(attachedDocs.length > 0 || connectedFolder || selectedProject) && (
                     <div className="flex flex-wrap gap-1.5 pb-1">
                       {selectedProject && (
-                        <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs flex items-center gap-1.5">
+                        <span className="px-2.5 py-1 rounded-lg bg-brand/10 border border-brand/20 text-brand-soft text-xs flex items-center gap-1.5">
                           <Folder className="w-3 h-3" />
                           <span>{selectedProject.name}</span>
-                          <button onClick={() => setSelectedProject(null)} className="hover:text-white">
+                          <button onClick={() => setSelectedProject(null)} className="hover:text-ink">
                             <X className="w-3 h-3" />
                           </button>
                         </span>
                       )}
 
                       {connectedFolder && (
-                        <span className="px-2.5 py-1 rounded-lg bg-white/[0.05] border border-white/10 text-zinc-300 text-xs flex items-center gap-1.5">
-                          <FolderOpen className="w-3 h-3 text-amber-400" />
+                        <span className="px-2.5 py-1 rounded-lg bg-line/[0.05] border border-line/10 text-ink-2 text-xs flex items-center gap-1.5">
+                          <FolderOpen className="w-3 h-3 text-brand" />
                           <span>{connectedFolder.name} ({connectedFolder.files.length} files)</span>
-                          <button onClick={() => setConnectedFolder(null)} className="hover:text-white">
+                          <button onClick={() => setConnectedFolder(null)} className="hover:text-ink">
                             <X className="w-3 h-3" />
                           </button>
                         </span>
@@ -1109,13 +1040,13 @@ export default function WorkspacePage() {
                       {attachedDocs.map((doc, idx) => (
                         <span
                           key={idx}
-                          className="px-2.5 py-1 rounded-lg bg-white/[0.05] border border-white/10 text-zinc-300 text-xs flex items-center gap-1.5"
+                          className="px-2.5 py-1 rounded-lg bg-line/[0.05] border border-line/10 text-ink-2 text-xs flex items-center gap-1.5"
                         >
                           <FileText className="w-3 h-3 text-emerald-400" />
                           <span>{doc.name}</span>
                           <button
                             onClick={() => setAttachedDocs((prev) => prev.filter((_, i) => i !== idx))}
-                            className="hover:text-white"
+                            className="hover:text-ink"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -1139,18 +1070,18 @@ export default function WorkspacePage() {
                     placeholder={
                       pinnedModelName?.toLowerCase().includes('flux')
                         ? "Describe an image to generate with FLUX.1 (e.g. Cyberpunk samurai in neon Tokyo rain)..."
-                        : "Ask anything, build an app, or type 'draw ...' to generate images..."
+                        : 'Ask anything, or describe an image to create…'
                     }
-                    className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed"
+                    className="w-full bg-transparent text-sm text-ink placeholder:text-ink-3 focus:outline-none resize-none leading-relaxed"
                   />
 
                   {/* Inner Bar: "+" attach button on left, model & send on right */}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/[0.06] text-xs">
+                  <div className="flex items-center justify-between pt-2 border-t border-line/[0.06] text-xs">
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setAttachMenuOpen(!attachMenuOpen)}
-                        className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-zinc-200 transition flex items-center gap-1"
+                        className="p-1.5 rounded-lg bg-line/[0.04] hover:bg-line/[0.08] text-ink-2 hover:text-ink transition flex items-center gap-1"
                         title="Add context (Document, Project, Folder)"
                       >
                         <Plus className="w-4 h-4" />
@@ -1158,13 +1089,13 @@ export default function WorkspacePage() {
 
                       {/* Attach Popover */}
                       {attachMenuOpen && (
-                        <div className="absolute left-0 bottom-full mb-2 w-56 rounded-xl bg-[#161822] border border-white/10 shadow-2xl p-1.5 space-y-1 z-30 text-xs">
+                        <div className="absolute left-0 bottom-full mb-2 w-56 rounded-xl bg-surface border border-line/10 shadow-2xl p-1.5 space-y-1 z-30 text-xs">
                           <button
                             onClick={() => {
                               fileInputRef.current?.click();
                               setAttachMenuOpen(false);
                             }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-zinc-300 flex items-center gap-2 transition"
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2 transition"
                           >
                             <FileText className="w-3.5 h-3.5 text-emerald-400" />
                             <span>Upload Document / File</span>
@@ -1172,9 +1103,9 @@ export default function WorkspacePage() {
 
                           <button
                             onClick={handleConnectFolder}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-zinc-300 flex items-center gap-2 transition"
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2 transition"
                           >
-                            <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                            <FolderOpen className="w-3.5 h-3.5 text-brand" />
                             <span>Connect Local Folder</span>
                           </button>
                         </div>
@@ -1186,7 +1117,7 @@ export default function WorkspacePage() {
                         type="button"
                         onClick={() => handleSend()}
                         disabled={!prompt.trim()}
-                        className="p-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-30 text-zinc-950 font-semibold rounded-xl transition shadow-md flex items-center justify-center"
+                        className="p-2 bg-brand hover:bg-brand-soft disabled:opacity-30 text-brand-ink font-semibold rounded-xl transition shadow-md flex items-center justify-center"
                       >
                         <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                       </button>
@@ -1195,26 +1126,26 @@ export default function WorkspacePage() {
                 </div>
 
                 {/* Sub-bar Below Composer (Matching Screenshot): Project or folder selector & Model Pill */}
-                <div className="flex items-center justify-between px-2 pt-3 text-xs text-zinc-400">
+                <div className="flex items-center justify-between px-2 pt-3 text-xs text-ink-2">
                   <div className="relative">
                     <button
                       onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
-                      className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition"
+                      className="flex items-center gap-1.5 text-ink-2 hover:text-ink transition"
                     >
-                      <Folder className="w-3.5 h-3.5 text-amber-400" />
+                      <Folder className="w-3.5 h-3.5 text-brand" />
                       <span>{selectedProject ? selectedProject.name : 'Project or folder'}</span>
-                      <ChevronDown className="w-3 h-3 text-zinc-500" />
+                      <ChevronDown className="w-3 h-3 text-ink-3" />
                     </button>
 
                     {/* Projects Dropdown Menu */}
                     {projectDropdownOpen && (
-                      <div className="absolute left-0 top-full mt-1.5 w-52 rounded-xl bg-[#161822] border border-white/10 shadow-2xl p-1.5 space-y-1 z-30 text-xs">
+                      <div className="absolute left-0 top-full mt-1.5 w-52 rounded-xl bg-surface border border-line/10 shadow-2xl p-1.5 space-y-1 z-30 text-xs">
                         <button
                           onClick={() => {
                             setSelectedProject(null);
                             setProjectDropdownOpen(false);
                           }}
-                          className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-zinc-300 flex items-center gap-2"
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2"
                         >
                           <span>None (General Chat)</span>
                         </button>
@@ -1226,20 +1157,20 @@ export default function WorkspacePage() {
                               setSelectedProject(proj);
                               setProjectDropdownOpen(false);
                             }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-zinc-300 flex items-center gap-2 truncate"
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2 truncate"
                           >
-                            <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <Folder className="w-3.5 h-3.5 text-brand shrink-0" />
                             <span className="truncate">{proj.name}</span>
                           </button>
                         ))}
 
-                        <div className="border-t border-white/5 pt-1 mt-1">
+                        <div className="border-t border-line/5 pt-1 mt-1">
                           <button
                             onClick={() => {
                               setProjectDropdownOpen(false);
                               handleConnectFolder();
                             }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/5 text-amber-300 flex items-center gap-2"
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-brand-soft flex items-center gap-2"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>Connect local folder...</span>
@@ -1250,33 +1181,19 @@ export default function WorkspacePage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* One-Click Image Mode Toggle Chip */}
-                    <button
-                      type="button"
-                      onClick={handleToggleImageMode}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition border ${
-                        pinnedModelName?.toLowerCase().includes('flux') || pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
-                          ? 'bg-white/10 text-white border-white/20'
-                          : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      title="Toggle Image Generation"
-                    >
-                      <Palette className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>Image Gen</span>
-                    </button>
 
                     {/* Model Dropdown Button */}
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-zinc-300 text-xs transition"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-line/10 bg-line/[0.03] hover:bg-line/[0.06] text-ink-2 text-xs transition"
                       >
-                        <Cpu className="w-3.5 h-3.5 text-zinc-400" />
+                        <Cpu className="w-3.5 h-3.5 text-ink-2" />
                         <span className="font-mono truncate max-w-[140px]">
                           {getModelButtonLabel()}
                         </span>
-                        <ChevronDown className="w-3 h-3 text-zinc-500" />
+                        <ChevronDown className="w-3 h-3 text-ink-3" />
                       </button>
 
                       {modelDropdownOpen && renderModelDropdown()}
@@ -1294,17 +1211,17 @@ export default function WorkspacePage() {
                 >
                   {/* User Bubble */}
                   {msg.role === 'user' ? (
-                    <div className="max-w-2xl rounded-2xl rounded-tr-sm px-4.5 py-3 text-sm bg-zinc-800/90 text-zinc-100 border border-white/10 shadow-sm leading-relaxed whitespace-pre-wrap">
+                    <div className="max-w-2xl rounded-2xl rounded-tr-sm px-4.5 py-3 text-sm bg-surface-2/90 text-ink border border-line/10 shadow-sm leading-relaxed whitespace-pre-wrap">
                       {msg.content}
                     </div>
                   ) : (
                     /* Assistant Bubble */
                     <div className="w-full space-y-3">
-                      <div className="flex items-center gap-2 text-xs text-zinc-400">
-                        <div className="w-5 h-5 rounded-md bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                      <div className="flex items-center gap-2 text-xs text-ink-2">
+                        <div className="w-5 h-5 rounded-md bg-brand/20 border border-brand/30 flex items-center justify-center text-brand">
                           <Sparkles className="w-3 h-3" />
                         </div>
-                        <span className="font-medium text-zinc-300">
+                        <span className="font-medium text-ink-2">
                           {msg.routeInfo?.model?.name || 'Shazam AI'}
                         </span>
                         {msg.routeInfo?.route?.costClass && (
@@ -1313,7 +1230,7 @@ export default function WorkspacePage() {
                           </span>
                         )}
                         {msg.routeInfo?.fallback && (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 text-[10px] font-mono border border-amber-500/20" title={msg.routeInfo.fallback.reason || 'Primary provider unavailable'}>
+                          <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand-soft text-[10px] font-mono border border-brand/20" title={msg.routeInfo.fallback.reason || 'Primary provider unavailable'}>
                             fallback
                           </span>
                         )}
@@ -1321,12 +1238,12 @@ export default function WorkspacePage() {
 
                       {/* Reasoning Drawer */}
                       {msg.reasoning && (
-                        <details className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden text-zinc-400">
-                          <summary className="px-3.5 py-2 cursor-pointer text-xs font-mono text-zinc-400 hover:text-zinc-200 flex items-center gap-2 select-none">
-                            <Cpu className="w-3.5 h-3.5 text-amber-400" />
+                        <details className="rounded-xl bg-line/[0.02] border border-line/[0.06] overflow-hidden text-ink-2">
+                          <summary className="px-3.5 py-2 cursor-pointer text-xs font-mono text-ink-2 hover:text-ink flex items-center gap-2 select-none">
+                            <Cpu className="w-3.5 h-3.5 text-brand" />
                             <span>View model thought process</span>
                           </summary>
-                          <div className="p-3.5 text-xs font-mono text-zinc-400 whitespace-pre-wrap border-t border-white/[0.06] bg-black/20">
+                          <div className="p-3.5 text-xs font-mono text-ink-2 whitespace-pre-wrap border-t border-line/[0.06] bg-black/20">
                             {msg.reasoning}
                           </div>
                         </details>
@@ -1336,12 +1253,12 @@ export default function WorkspacePage() {
                         <MarkdownRenderer content={msg.content} />
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-zinc-500">
+                      <div className="flex items-center justify-between pt-2 border-t border-line/5 text-xs text-ink-3">
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleCopy(msg.content, msg.id)}
                             title="Copy response"
-                            className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-lg hover:bg-white/5 transition"
+                            className="p-1.5 text-ink-2 hover:text-ink rounded-lg hover:bg-line/5 transition"
                           >
                             {copiedId === msg.id ? (
                               <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -1354,10 +1271,10 @@ export default function WorkspacePage() {
                               <button
                                 onClick={() => handleFeedback(msg.taskId!, 1)}
                                 title="Helpful"
-                                className={`p-1.5 rounded-lg hover:bg-white/5 transition ${
+                                className={`p-1.5 rounded-lg hover:bg-line/5 transition ${
                                   feedbackSent[msg.taskId!] === 1
                                     ? 'text-emerald-400'
-                                    : 'text-zinc-400 hover:text-zinc-200'
+                                    : 'text-ink-2 hover:text-ink'
                                 }`}
                               >
                                 <ThumbsUp className="w-3.5 h-3.5" />
@@ -1365,10 +1282,10 @@ export default function WorkspacePage() {
                               <button
                                 onClick={() => handleFeedback(msg.taskId!, -1)}
                                 title="Not helpful"
-                                className={`p-1.5 rounded-lg hover:bg-white/5 transition ${
+                                className={`p-1.5 rounded-lg hover:bg-line/5 transition ${
                                   feedbackSent[msg.taskId!] === -1
                                     ? 'text-red-400'
-                                    : 'text-zinc-400 hover:text-zinc-200'
+                                    : 'text-ink-2 hover:text-ink'
                                 }`}
                               >
                                 <ThumbsDown className="w-3.5 h-3.5" />
@@ -1385,19 +1302,19 @@ export default function WorkspacePage() {
               {/* Streaming Assistant Card */}
               {isStreaming && (
                 <div className="w-full space-y-3 pt-2">
-                  <div className="flex items-center gap-2 text-xs text-zinc-400">
-                    <div className="w-5 h-5 rounded-md bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <div className="flex items-center gap-2 text-xs text-ink-2">
+                    <div className="w-5 h-5 rounded-md bg-brand/20 border border-brand/30 flex items-center justify-center text-brand">
                       <Sparkles className="w-3 h-3 animate-pulse" />
                     </div>
-                    <span className="font-medium text-zinc-300">
+                    <span className="font-medium text-ink-2">
                       {activeRouteInfo?.model?.name || 'Evaluating optimum model...'}
                     </span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand animate-ping" />
                   </div>
 
                   {streamingReasoning && (
-                    <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs font-mono text-zinc-400 whitespace-pre-wrap max-h-36 overflow-y-auto">
-                      <div className="text-[10px] uppercase font-semibold text-amber-400 mb-1 flex items-center gap-1.5">
+                    <div className="p-3.5 rounded-xl bg-line/[0.02] border border-line/[0.06] text-xs font-mono text-ink-2 whitespace-pre-wrap max-h-36 overflow-y-auto">
+                      <div className="text-[10px] font-semibold text-brand mb-1 flex items-center gap-1.5">
                         <Cpu className="w-3 h-3" /> Thinking:
                       </div>
                       {streamingReasoning}
@@ -1409,8 +1326,8 @@ export default function WorkspacePage() {
                       <MarkdownRenderer content={streamingText} />
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2.5 text-zinc-400 text-xs py-2">
-                      <span className="inline-block w-2 h-4 bg-amber-400 animate-pulse rounded-sm" />
+                    <div className="flex items-center gap-2.5 text-ink-2 text-xs py-2">
+                      <span className="inline-block w-2 h-4 bg-brand animate-pulse rounded-sm" />
                       <span>Streaming response tokens...</span>
                     </div>
                   )}
@@ -1424,10 +1341,10 @@ export default function WorkspacePage() {
 
         {/* Floating Composer Container when conversation has messages */}
         {messages.length > 0 && (
-          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 bg-gradient-to-t from-[#090a0f] via-[#090a0f]/90 to-transparent pointer-events-none">
+          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 bg-gradient-to-t from-canvas via-canvas/90 to-transparent pointer-events-none">
             <div className="max-w-3xl mx-auto pointer-events-auto relative">
               <AgentSuggestion prompt={prompt} current="chat" />
-              <div className="rounded-2xl bg-[#12141c]/90 backdrop-blur-2xl border border-white/10 shadow-2xl p-3 sm:p-3.5 transition-all">
+              <div className="shz-composer p-3 sm:p-3.5">
                 <textarea
                   ref={textareaRef}
                   value={prompt}
@@ -1444,17 +1361,17 @@ export default function WorkspacePage() {
                       ? "Describe an image to generate with Google Nano Banana (e.g. Cyberpunk samurai in neon Lagos)..."
                       : pinnedModelName?.toLowerCase().includes('flux')
                       ? "Describe an image to generate with FLUX.1 (e.g. Cyberpunk samurai in neon Tokyo rain)..."
-                      : "Ask anything, build an app, or type 'draw ...' to generate images..."
+                      : 'Ask anything, or describe an image to create…'
                   }
-                  className="w-full bg-transparent text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed max-h-48"
+                  className="w-full bg-transparent text-sm text-ink placeholder:text-ink-3 focus:outline-none resize-none leading-relaxed max-h-48"
                 />
 
-                <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-white/[0.06]">
+                <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-line/[0.06]">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200"
+                      className="p-1.5 rounded-lg hover:bg-line/5 text-ink-2 hover:text-ink"
                       title="Attach file"
                     >
                       <Paperclip className="w-4 h-4" />
@@ -1463,39 +1380,25 @@ export default function WorkspacePage() {
                     <button
                       type="button"
                       onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
-                      className="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
+                      className="text-xs text-ink-2 hover:text-ink flex items-center gap-1"
                     >
-                      <Folder className="w-3.5 h-3.5 text-zinc-400" />
+                      <Folder className="w-3.5 h-3.5 text-ink-2" />
                       <span>{selectedProject ? selectedProject.name : 'Context'}</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={handleToggleImageMode}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition border ${
-                        pinnedModelName?.toLowerCase().includes('flux') || pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
-                          ? 'bg-white/10 text-white border-white/20'
-                          : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      title="Toggle Image Generation"
-                    >
-                      <Palette className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>Image</span>
-                    </button>
-
-                    <div className="h-3 w-px bg-white/10" />
+                    <div className="h-3 w-px bg-line/10" />
 
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-zinc-300 text-xs transition"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-line/10 bg-line/[0.03] hover:bg-line/[0.06] text-ink-2 text-xs transition"
                       >
-                        <Cpu className="w-3.5 h-3.5 text-zinc-400" />
+                        <Cpu className="w-3.5 h-3.5 text-ink-2" />
                         <span className="font-mono truncate max-w-[130px]">
                           {getModelButtonLabel()}
                         </span>
-                        <ChevronDown className="w-3 h-3 text-zinc-500" />
+                        <ChevronDown className="w-3 h-3 text-ink-3" />
                       </button>
 
                       {modelDropdownOpen && renderModelDropdown()}
@@ -1507,7 +1410,7 @@ export default function WorkspacePage() {
                       <button
                         type="button"
                         onClick={handleStop}
-                        className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-xl transition shadow-md"
+                        className="p-2 bg-red-600 hover:bg-red-500 text-ink rounded-xl transition shadow-md"
                       >
                         <Square className="w-4 h-4 fill-white" />
                       </button>
@@ -1516,7 +1419,7 @@ export default function WorkspacePage() {
                         type="button"
                         onClick={() => handleSend()}
                         disabled={!prompt.trim()}
-                        className="p-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold rounded-xl transition shadow-md disabled:opacity-30"
+                        className="p-2 bg-brand hover:bg-brand-soft text-brand-ink font-semibold rounded-xl transition shadow-md disabled:opacity-30"
                       >
                         <ArrowUp className="w-4 h-4" />
                       </button>
@@ -1532,16 +1435,16 @@ export default function WorkspacePage() {
       {/* Real Working Artifacts Modal */}
       {showArtifactsModal && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-[#0f1118] border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-full max-w-2xl bg-surface border border-line/10 rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="p-4 border-b border-white/[0.06] flex items-center justify-between">
+            <div className="p-4 border-b border-line/[0.06] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <div className="w-8 h-8 rounded-xl bg-brand/15 border border-brand/30 flex items-center justify-center text-brand">
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Workspace Artifacts</h3>
-                  <p className="text-[11px] text-zinc-400">
+                  <h3 className="text-sm font-semibold text-ink">Workspace Artifacts</h3>
+                  <p className="text-[11px] text-ink-2">
                     Files, code proposals, and assets generated in your sessions.
                   </p>
                 </div>
@@ -1551,7 +1454,7 @@ export default function WorkspacePage() {
                   setShowArtifactsModal(false);
                   setSelectedArtifact(null);
                 }}
-                className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition"
+                className="p-1.5 rounded-lg hover:bg-line/5 text-ink-2 hover:text-ink transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1560,8 +1463,8 @@ export default function WorkspacePage() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4">
               {loadingArtifacts ? (
-                <div className="py-12 text-center text-xs text-zinc-500">
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping mr-2" />
+                <div className="py-12 text-center text-xs text-ink-3">
+                  <span className="inline-block w-2 h-2 rounded-full bg-brand animate-ping mr-2" />
                   Loading workspace artifacts...
                 </div>
               ) : selectedArtifact ? (
@@ -1569,7 +1472,7 @@ export default function WorkspacePage() {
                   <div className="flex items-center justify-between">
                     <button
                       onClick={() => setSelectedArtifact(null)}
-                      className="text-xs text-amber-400 hover:underline flex items-center gap-1"
+                      className="text-xs text-brand hover:underline flex items-center gap-1"
                     >
                       ← Back to Artifacts list
                     </button>
@@ -1579,49 +1482,49 @@ export default function WorkspacePage() {
                         setCopiedId('artifact-copied');
                         setTimeout(() => setCopiedId(null), 2000);
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-300 flex items-center gap-1 transition"
+                      className="px-2.5 py-1 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink-2 flex items-center gap-1 transition"
                     >
                       {copiedId === 'artifact-copied' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedId === 'artifact-copied' ? 'Copied' : 'Copy Content'}</span>
                     </button>
                   </div>
-                  <div className="p-3 bg-black/50 border border-white/5 rounded-xl font-mono text-xs text-zinc-200 overflow-x-auto max-h-96 whitespace-pre">
+                  <div className="p-3 bg-black/50 border border-line/5 rounded-xl font-mono text-xs text-ink overflow-x-auto max-h-96 whitespace-pre">
                     {selectedArtifact.content}
                   </div>
                 </div>
               ) : artifactsList.length === 0 ? (
                 <div className="py-12 text-center space-y-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-center mx-auto text-zinc-500">
+                  <div className="w-10 h-10 rounded-2xl bg-line/[0.03] border border-line/5 flex items-center justify-center mx-auto text-ink-3">
                     <FileText className="w-5 h-5" />
                   </div>
-                  <p className="text-xs font-medium text-zinc-300">No workspace artifacts saved yet</p>
-                  <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                  <p className="text-xs font-medium text-ink-2">No workspace artifacts saved yet</p>
+                  <p className="text-[11px] text-ink-3 max-w-sm mx-auto">
                     When you use Code Studio or Co-Work to write code and generate documents, your saved files will appear here.
                   </p>
                   <Link
                     href="/agent"
                     onClick={() => setShowArtifactsModal(false)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs transition shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs transition shadow-sm"
                   >
                     <Folder className="w-3.5 h-3.5" />
                     <span>Open Code Studio</span>
                   </Link>
                 </div>
               ) : (
-                <div className="divide-y divide-white/[0.04]">
+                <div className="divide-y divide-line/[0.04]">
                   {artifactsList.map((art, idx) => (
                     <div
                       key={idx}
                       onClick={() => setSelectedArtifact(art)}
-                      className="py-2.5 px-3 rounded-xl hover:bg-white/[0.04] cursor-pointer flex items-center justify-between transition group"
+                      className="py-2.5 px-3 rounded-xl hover:bg-line/[0.04] cursor-pointer flex items-center justify-between transition group"
                     >
                       <div className="flex items-center gap-2.5 truncate">
-                        <FileText className="w-4 h-4 text-amber-400 shrink-0" />
-                        <span className="text-xs font-mono text-zinc-200 group-hover:text-amber-300 truncate">
+                        <FileText className="w-4 h-4 text-brand shrink-0" />
+                        <span className="text-xs font-mono text-ink group-hover:text-brand-soft truncate">
                           {art.path}
                         </span>
                       </div>
-                      <span className="text-[10px] text-zinc-500 shrink-0">
+                      <span className="text-[10px] text-ink-3 shrink-0">
                         {art.content.length} bytes · Click to view →
                       </span>
                     </div>

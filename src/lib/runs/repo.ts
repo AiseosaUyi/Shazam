@@ -7,7 +7,7 @@ export type RunStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
 
 export interface RunEvent {
   at: string;
-  type: 'step' | 'result' | 'approval' | 'media' | 'note' | 'error';
+  type: 'step' | 'result' | 'approval' | 'media' | 'note' | 'error' | 'preview' | 'file' | 'project' | 'question' | 'answer' | 'plan';
   text: string;
 }
 

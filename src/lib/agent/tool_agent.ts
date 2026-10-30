@@ -31,6 +31,8 @@ export interface ToolAgentOptions {
   /** Extra tools, e.g. connected MCP servers and skills. */
   extraTools?: ToolSet;
   extraInstructions?: string;
+  /** Work directly in a folder on the user's computer through the desktop bridge. */
+  local?: { root: string; deviceName: string; call: (command: string, payload: Record<string, unknown>, timeoutMs?: number) => Promise<string> };
   maxSteps?: number;
   signal?: AbortSignal;
   onEvent?: (event: string, data: unknown) => void;
@@ -80,7 +82,8 @@ export function applyEdit(content: string, oldString: string, newString: string,
 function buildInstructions(projectName: string, files: AgentFile[], hasExecution: boolean, extra?: string): string {
   const index = buildProjectIndex(files);
   return `You are Shazam Code, an autonomous senior software engineer working in the project "${projectName}".
-You work by calling tools. Do not paste whole files into chat: write them with tools.
+You work by calling tools. Do not paste whole files into chat: write them with tools. Never ask the user to copy code.
+Do not ask clarifying questions for normal requests: pick sensible defaults (e.g. Next.js + Tailwind, or plain HTML/CSS for a simple page), build it, and mention the choices in your summary.
 
 Workflow:
 1. Explore first: list_files, grep, read_file. Never guess what a file contains.
@@ -89,7 +92,8 @@ Workflow:
     ? 'Verify with run_command (install deps, typecheck, run tests). If something fails, read the error, fix it, and re-run until it passes.'
     : 'No execution environment is connected, so run_command will report NOT RUN. Say clearly in your final message that the code was not executed.'}
 4. Keep a todo list with todo_write for multi-step tasks.
-5. Finish with a short summary: what changed (file list), how it was verified, and anything left to do.
+5. For web UIs, install dependencies, then call start_preview so the user can see it live.
+6. Finish with a short summary: what changed (file list), how it was verified, the preview URL, and anything left to do.
 
 Rules:
 - Never claim a command, test or build succeeded unless a run_command result in this conversation shows it.
@@ -101,14 +105,29 @@ ${index.summaryPrompt}
 ${extra ? `\n${extra}` : ''}`;
 }
 
+function buildLocalInstructions(root: string, deviceName: string, index: string, extra?: string): string {
+  return `You are Shazam Code, an autonomous senior software engineer working directly in the user's folder ${root} on their computer "${deviceName}".
+Work like Claude Code: do the task end to end with tools. Never ask the user to copy code, and never paste whole files into chat.
+Do not ask clarifying questions for normal requests: choose sensible defaults (e.g. Next.js + Tailwind, or plain HTML/CSS for a simple page) and state them in your summary.
+
+Workflow: explore (list_files, grep, read_file) → change files (edit_file / write_file) → verify with run_command (install, build, test) → fix until it works → for web UIs call start_preview → summarize what changed, how it was verified and the preview URL.
+Never claim something passed unless run_command output shows it. Risky commands (git push, deletes) are confirmed by the user on their computer.
+
+Files in the folder (partial):
+${index.slice(0, 6000)}
+${extra ? `\n${extra}` : ''}`;
+}
+
 export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgentResult> {
-  const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, maxSteps = 40, signal, onEvent } = options;
+  const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, local, maxSteps = 40, signal, onEvent } = options;
 
   const filesModified = new Set<string>();
   const filesDeleted = new Set<string>();
   const commandsRun: Array<{ command: string; exitCode: number }> = [];
-  const findFile = (p: string) => files.find((f) => f.path === p.replace(/^\.\//, ''));
-  const hasExecution = Boolean(sandbox || runCommand);
+  /** Models often send "/app/x.tsx", "./x" or sandbox-absolute paths; map them all to project paths. */
+  const norm = (p: string) => (p || '').replace(/^\/vercel\/sandbox\//, '').replace(/^\.?\//, '').replace(/^\/+/, '');
+  const findFile = (p: string) => files.find((f) => f.path === norm(p));
+  const hasExecution = Boolean(sandbox || runCommand || local);
 
   const guardPath = (p: string): string | null => {
     const check = validateFilePath(p);
@@ -181,7 +200,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       execute: async ({ path, content }) => {
         const blocked = guardPath(path);
         if (blocked) return blocked;
-        const clean = path.replace(/^\.\//, '');
+        const clean = norm(path);
         const existing = findFile(clean);
         if (existing) existing.content = content;
         else files.push({ path: clean, content });
@@ -197,7 +216,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       execute: async ({ path }) => {
         const blocked = guardPath(path);
         if (blocked) return blocked;
-        const idx = files.findIndex((f) => f.path === path.replace(/^\.\//, ''));
+        const idx = files.findIndex((f) => f.path === norm(path));
         if (idx === -1) return `Error: ${path} does not exist.`;
         const [removed] = files.splice(idx, 1);
         filesModified.delete(removed.path);
@@ -207,7 +226,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       },
     }),
     run_command: tool({
-      description: 'Run a shell command in the project root (e.g. "npm install", "npx tsc --noEmit", "npm test"). Returns exit code and output.',
+      description: 'Run a shell command in the project root (e.g. "npm install", "npx tsc --noEmit", "npm test"). Must finish on its own: never start dev servers here, use start_preview. Returns exit code and output.',
       inputSchema: z.object({ command: z.string() }),
       execute: async ({ command }, { abortSignal }) => {
         if (!sandbox && !runCommand) {
@@ -255,9 +274,98 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     ...extraTools,
   };
 
+  if (sandbox && !local) {
+    tools.start_preview = tool({
+      description: 'Start the dev server in the background and get a public preview URL to show the user (e.g. command "npm run dev -- --port 3000 --hostname 0.0.0.0", port 3000). Install dependencies first.',
+      inputSchema: z.object({ command: z.string(), port: z.union([z.literal(3000), z.literal(5173)]) }),
+      execute: async ({ command, port }) => {
+        try {
+          await sandbox.sync(files);
+          const r = await sandbox.startPreview(command, port);
+          onEvent?.('preview', { url: r.url });
+          return `Preview running at ${r.url}\n${r.output.slice(-2000)}`;
+        } catch (err: any) {
+          return `Error: preview failed: ${err.message || err}`;
+        }
+      },
+    });
+  }
+
+  let localIndex = '';
+  if (local) {
+    // Same tool names, backed by the user's real folder via the desktop bridge.
+    const abs = (p: string) => (p.startsWith('/') ? p : `${local.root.replace(/\/$/, '')}/${p.replace(/^\.\//, '')}`);
+    const mark = (p: string, action: string) => {
+      filesModified.add(p);
+      onEvent?.('file_changed', { path: p, action });
+    };
+    Object.assign(tools, {
+      list_files: tool({
+        description: `List files in the user's folder ${local.root} (skips node_modules, .git).`,
+        inputSchema: z.object({ prefix: z.string().optional() }),
+        execute: async ({ prefix }) => local.call('list_files', { path: abs(prefix || '.'), max: 800 }),
+      }),
+      grep: tool({
+        description: 'Search the folder for a regular expression. Returns path:line: text.',
+        inputSchema: z.object({ pattern: z.string() }),
+        execute: async ({ pattern }) => local.call('grep', { path: local.root, pattern }),
+      }),
+      read_file: tool({
+        description: 'Read a file (with line numbers) from the user\'s folder.',
+        inputSchema: z.object({ path: z.string() }),
+        execute: async ({ path }) => local.call('read_file', { path: abs(path) }),
+      }),
+      edit_file: tool({
+        description: 'Replace an exact old_string with new_string in a file in the user\'s folder.',
+        inputSchema: z.object({ path: z.string(), old_string: z.string(), new_string: z.string() }),
+        execute: async ({ path, old_string, new_string }) => {
+          const out = await local.call('edit_file', { path: abs(path), old_string, new_string });
+          if (!/^Error/.test(out)) mark(path, 'edit');
+          return out;
+        },
+      }),
+      write_file: tool({
+        description: 'Create or overwrite a file in the user\'s folder.',
+        inputSchema: z.object({ path: z.string(), content: z.string() }),
+        execute: async ({ path, content }) => {
+          const out = await local.call('write_file', { path: abs(path), content });
+          if (!/^Error/.test(out)) mark(path, 'write');
+          return out;
+        },
+      }),
+      delete_file: tool({
+        description: 'Delete a file in the user\'s folder.',
+        inputSchema: z.object({ path: z.string() }),
+        execute: async ({ path }) => local.call('exec', { cwd: local.root, command: `rm -- ${JSON.stringify(abs(path))}` }),
+      }),
+      run_command: tool({
+        description: `Run a shell command in ${local.root} on the user's computer (installs, tests, builds, git). Must finish on its own: never start servers here, use start_preview. Returns exit code and output.`,
+        inputSchema: z.object({ command: z.string() }),
+        execute: async ({ command }) => {
+          const out = await local.call('exec', { cwd: local.root, command, timeoutMs: 300_000 }, 330_000);
+          const code = Number(out.match(/exit code: (\d+)/)?.[1] ?? 1);
+          commandsRun.push({ command, exitCode: code });
+          return out;
+        },
+      }),
+      start_preview: tool({
+        description: 'Start the dev server on the user\'s computer in the background (e.g. "npm run dev"). Returns the localhost URL to share with the user.',
+        inputSchema: z.object({ command: z.string(), port: z.number().int().min(1024).max(65535) }),
+        execute: async ({ command, port }) => {
+          const out = await local.call('spawn', { cwd: local.root, command, waitMs: 9000 }, 40_000);
+          onEvent?.('preview', { url: `http://localhost:${port}` });
+          return `${out}\nPreview: http://localhost:${port} (on ${local.deviceName})`;
+        },
+      }),
+    });
+    localIndex = await local.call('list_files', { path: local.root, max: 400 }).catch(() => '');
+  }
+
   const { text, steps } = await streamAgent({
     model,
-    instructions: buildInstructions(projectName, files, hasExecution, extraInstructions),
+    instructions: local
+      ? buildLocalInstructions(local.root, local.deviceName, localIndex, extraInstructions)
+      : buildInstructions(projectName, files, hasExecution, extraInstructions),
     messages: [...history, { role: 'user', content: prompt }],
     tools,
     maxSteps,

@@ -3,10 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --background: #090a0f;
-  --foreground: #f4f4f6;
-  --surface: #10121a;
-  --surface-border: rgba(255, 255, 255, 0.08);
+  /* Shazam design tokens. Channels are space-separated RGB so Tailwind can apply alpha. */
+  --canvas: 10 10 13;          /* app background */
+  --sidebar: 13 13 17;         /* side panels */
+  --surface: 19 19 24;         /* cards, composer, menus */
+  --surface-2: 26 26 33;       /* hover / raised */
+  --line: 255 255 255;         /* borders use line/[alpha] */
+  --ink: 237 237 242;          /* primary text */
+  --ink-2: 160 160 172;        /* secondary text */
+  --ink-3: 108 108 122;        /* tertiary / placeholders */
+  --brand: 198 244 50;         /* Volt */
+  --brand-soft: 222 250 140;   /* Volt, lighter (text on dark) */
+  --brand-ink: 12 14 6;        /* text on brand */
+  --ion: 52 225 216;           /* secondary accent for gradients */
+  --danger: 248 113 113;
+  --success: 52 211 153;
+
+  --background: rgb(var(--canvas));
+  --foreground: rgb(var(--ink));
+  --radius: 12px;
 }
 
 body {
@@ -20,9 +35,24 @@ body {
 
 /* Subtle ambient backdrop */
 .ambient-glow {
-  background: radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.06) 0%, transparent 60%),
-              radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.03) 0%, transparent 40%);
+  background: radial-gradient(circle at 50% 0%, rgb(var(--brand) / 0.05) 0%, transparent 60%),
+              radial-gradient(circle at 100% 100%, rgb(var(--ion) / 0.03) 0%, transparent 40%);
 }
+
+.brand-gradient {
+  background-image: linear-gradient(135deg, rgb(var(--brand)) 0%, rgb(var(--ion)) 100%);
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--brand) / 0.6);
+  outline-offset: 2px;
+}
+
+@keyframes shz-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-shz-in { animation: shz-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
@@ -40,3 +70,46 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
+
+/* ---------- Shazam signature ---------- */
+
+/* Faint dot grid + Volt glow behind empty states */
+.shz-atmosphere {
+  background-image:
+    radial-gradient(ellipse 60% 40% at 50% 0%, rgb(var(--brand) / 0.07), transparent 70%),
+    radial-gradient(rgb(var(--line) / 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 22px 22px;
+  background-position: center top, center;
+}
+
+/* Composer: a Volt → Ion ring that lights up on focus */
+.shz-composer {
+  position: relative;
+  border-radius: 18px;
+  background: rgb(var(--surface));
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.35), inset 0 0 0 1px rgb(var(--line) / 0.09);
+  transition: box-shadow 200ms ease;
+}
+.shz-composer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgb(var(--brand) / 0.9), rgb(var(--ion) / 0.8) 50%, rgb(var(--brand) / 0.2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+.shz-composer:focus-within::before { opacity: 1; }
+.shz-composer:focus-within { box-shadow: 0 10px 50px rgb(var(--brand) / 0.08), 0 10px 40px rgb(0 0 0 / 0.35); }
+
+/* Mono metadata */
+.shz-mono { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace; letter-spacing: -0.01em; }
+
+/* Live status dot */
+@keyframes shz-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.shz-live { animation: shz-pulse 2.2s ease-in-out infinite; }

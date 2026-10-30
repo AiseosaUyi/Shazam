@@ -12,10 +12,14 @@ export async function streamAgent(opts: {
   maxSteps: number;
   signal?: AbortSignal;
   onEvent?: (event: string, data: unknown) => void;
-}): Promise<{ text: string; steps: number }> {
+}): Promise<{ text: string; steps: number; transcript: string }> {
   const { onEvent } = opts;
   let stepNumber = 0;
   let text = '';
+  // The final answer is the last step that said something; earlier "let me check…" narration
+  // is progress, not the result.
+  let stepText = '';
+  let lastSaid = '';
 
   const result = streamText({
     model: opts.model,
@@ -30,9 +34,12 @@ export async function streamAgent(opts: {
     switch (part.type) {
       case 'start-step':
         stepNumber++;
+        if (stepText.trim()) lastSaid = stepText;
+        stepText = '';
         break;
       case 'text-delta':
         text += part.text;
+        stepText += part.text;
         onEvent?.('agent_text', { delta: part.text });
         break;
       case 'tool-call':
@@ -57,5 +64,6 @@ export async function streamAgent(opts: {
       }
     }
   }
-  return { text: text.trim(), steps: stepNumber };
+  if (stepText.trim()) lastSaid = stepText;
+  return { text: (lastSaid || text).trim(), steps: stepNumber, transcript: text.trim() };
 }

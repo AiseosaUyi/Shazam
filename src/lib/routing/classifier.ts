@@ -59,7 +59,9 @@ export function classifyTask(
       p.includes('sketch of') ||
       p.includes('picture of') ||
       p.includes('photo of') ||
-      /^(draw|paint|sketch|illustrate|render)\b/i.test(p);
+      /^(draw|paint|sketch|illustrate|render)\b/i.test(p) ||
+      // "make a poster for…", "design a logo for…", "create a 9:16 flyer" — but not "explain how images work"
+      /\b(make|create|design|generate|give me|produce)\b[^.?!]{0,40}\b(poster|logo|flyer|banner|thumbnail|illustration|wallpaper|cover art|album art|mockup|sticker|avatar|headshot|portrait|image|picture|photo|graphic)s?\b/i.test(p);
 
     if (isImageIntent) {
       taskClass = 'image_generation';

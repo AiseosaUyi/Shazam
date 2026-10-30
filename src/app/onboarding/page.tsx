@@ -99,60 +99,60 @@ export default function OnboardingPage() {
       <div className="w-full max-w-xl space-y-6">
         {/* Welcome Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-mono">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/10 border border-brand/20 text-brand text-xs font-mono">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Welcome to Shazam AI</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold text-ink tracking-tight">
             Intelligent AI, Made Simple & Free
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-400 max-w-md mx-auto">
+          <p className="text-xs sm:text-sm text-ink-2 max-w-md mx-auto">
             You describe what you want to achieve, and Shazam selects the best AI model for the job.
           </p>
         </div>
 
         {/* Primary Card: Start Free Forever */}
-        <div className="bg-[#10131d] border border-[#232736] rounded-2xl p-6 sm:p-7 shadow-2xl relative overflow-hidden space-y-5">
+        <div className="bg-surface border border-line/10 rounded-2xl p-6 sm:p-7 shadow-2xl relative overflow-hidden space-y-5">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   Recommended
                 </span>
-                <span className="text-xs text-zinc-500 font-mono">100% Free Guarantee</span>
+                <span className="text-xs text-ink-3 font-mono">100% Free Guarantee</span>
               </div>
-              <h2 className="text-lg font-bold text-white">Start Free Forever</h2>
-              <p className="text-xs text-zinc-400 leading-relaxed">
+              <h2 className="text-lg font-bold text-ink">Start Free Forever</h2>
+              <p className="text-xs text-ink-2 leading-relaxed">
                 No credit card required. No API keys needed. You will never be billed for usage on our free tier.
               </p>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand shrink-0">
               <Zap className="w-6 h-6" />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-            <div className="p-3 rounded-xl bg-[#090b10] border border-[#1e2333] space-y-1">
-              <div className="font-semibold text-zinc-200 flex items-center gap-1.5">
+            <div className="p-3 rounded-xl bg-canvas border border-[#1e2333] space-y-1">
+              <div className="font-semibold text-ink flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> $0.00 Cost
               </div>
-              <p className="text-[11px] text-zinc-500 leading-normal">
+              <p className="text-[11px] text-ink-3 leading-normal">
                 Strict guardrails guarantee you never incur unexpected charges.
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-[#090b10] border border-[#1e2333] space-y-1">
-              <div className="font-semibold text-zinc-200 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Auto-Routing
+            <div className="p-3 rounded-xl bg-canvas border border-[#1e2333] space-y-1">
+              <div className="font-semibold text-ink flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-brand" /> Auto-Routing
               </div>
-              <p className="text-[11px] text-zinc-500 leading-normal">
+              <p className="text-[11px] text-ink-3 leading-normal">
                 Automatically routes each prompt to the fastest, smartest free model.
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-[#090b10] border border-[#1e2333] space-y-1">
-              <div className="font-semibold text-zinc-200 flex items-center gap-1.5">
+            <div className="p-3 rounded-xl bg-canvas border border-[#1e2333] space-y-1">
+              <div className="font-semibold text-ink flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" /> Instant Access
               </div>
-              <p className="text-[11px] text-zinc-500 leading-normal">
+              <p className="text-[11px] text-ink-3 leading-normal">
                 Jump right in and start asking questions or generating code right now.
               </p>
             </div>
@@ -160,7 +160,7 @@ export default function OnboardingPage() {
 
           <Link
             href="/"
-            className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10"
+            className="w-full py-3 px-4 bg-brand hover:bg-brand-soft text-brand-ink font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-brand/10"
           >
             <span>Enter Workspace — It&apos;s Free</span>
             <ArrowRight className="w-4 h-4" />
@@ -168,17 +168,17 @@ export default function OnboardingPage() {
         </div>
 
         {/* Secondary Expandable Section: Power User / BYOK */}
-        <div className="bg-[#0c0e14] border border-[#1e2333] rounded-2xl p-5">
+        <div className="bg-canvas border border-[#1e2333] rounded-2xl p-5">
           <button
             type="button"
             onClick={() => setShowAdvancedByok(!showAdvancedByok)}
-            className="w-full flex items-center justify-between text-left text-xs text-zinc-400 hover:text-zinc-200 transition"
+            className="w-full flex items-center justify-between text-left text-xs text-ink-2 hover:text-ink transition"
           >
             <div className="flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-amber-500" />
+              <KeyRound className="w-4 h-4 text-brand" />
               <div>
-                <span className="font-semibold text-zinc-200">Power User or Developer?</span>
-                <span className="text-zinc-500 ml-1.5 hidden sm:inline">Connect your own custom API key (Optional)</span>
+                <span className="font-semibold text-ink">Power User or Developer?</span>
+                <span className="text-ink-3 ml-1.5 hidden sm:inline">Connect your own custom API key (Optional)</span>
               </div>
             </div>
             {showAdvancedByok ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -186,7 +186,7 @@ export default function OnboardingPage() {
 
           {showAdvancedByok && (
             <div className="mt-5 pt-5 border-t border-[#1e2333] space-y-4 animate-in fade-in duration-200">
-              <p className="text-xs text-zinc-400 leading-relaxed">
+              <p className="text-xs text-ink-2 leading-relaxed">
                 Connecting your own free key gives you your own daily quota on top of Shazam's free platform models.
                 You can get a free key from Google AI Studio in 30 seconds using your normal Google account (no credit card needed).
               </p>
@@ -206,7 +206,7 @@ export default function OnboardingPage() {
               ) : (
                 <form onSubmit={handleConnect} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-medium text-zinc-300 mb-2">Select Provider</label>
+                    <label className="block text-xs font-medium text-ink-2 mb-2">Select Provider</label>
                     <div className="grid grid-cols-2 gap-2">
                       {PROVIDER_OPTIONS.map((p) => (
                         <button
@@ -215,12 +215,12 @@ export default function OnboardingPage() {
                           onClick={() => setSelectedProvider(p.id)}
                           className={`p-2.5 rounded-lg border text-left transition flex flex-col justify-between ${
                             selectedProvider === p.id
-                              ? 'border-amber-500 bg-amber-500/10 text-white'
-                              : 'border-[#232736] bg-[#080a0f] text-zinc-400 hover:text-zinc-200'
+                              ? 'border-brand bg-brand/10 text-ink'
+                              : 'border-line/10 bg-canvas text-ink-2 hover:text-ink'
                           }`}
                         >
                           <span className="text-xs font-semibold">{p.name}</span>
-                          <span className="text-[10px] text-zinc-500 truncate mt-1">{p.hint}</span>
+                          <span className="text-[10px] text-ink-3 truncate mt-1">{p.hint}</span>
                         </button>
                       ))}
                     </div>
@@ -228,7 +228,7 @@ export default function OnboardingPage() {
 
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-medium text-zinc-300">
+                      <label className="text-xs font-medium text-ink-2">
                         {currentOption.name} API Key
                       </label>
                       {currentOption.keyUrl && (
@@ -236,7 +236,7 @@ export default function OnboardingPage() {
                           href={currentOption.keyUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-mono"
+                          className="text-[11px] text-brand hover:underline flex items-center gap-1 font-mono"
                         >
                           Get Free Key ↗
                         </a>
@@ -248,9 +248,9 @@ export default function OnboardingPage() {
                       onChange={(e) => setApiKey(e.target.value)}
                       required
                       placeholder={currentOption.placeholder}
-                      className="w-full px-3 py-2 bg-[#090b10] border border-[#232736] rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono"
+                      className="w-full px-3 py-2 bg-canvas border border-line/10 rounded-lg text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand font-mono"
                     />
-                    <p className="text-[11px] text-zinc-500 mt-1">
+                    <p className="text-[11px] text-ink-3 mt-1">
                       Keys are encrypted at rest with AES-256-GCM and never exposed to the browser.
                     </p>
                   </div>
@@ -258,7 +258,7 @@ export default function OnboardingPage() {
                   <button
                     type="submit"
                     disabled={loading || !apiKey}
-                    className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    className="w-full py-2.5 px-4 bg-surface-2 hover:bg-zinc-700 text-ink font-semibold text-xs rounded-lg transition flex items-center justify-center gap-1.5 disabled:opacity-50"
                   >
                     {loading ? 'Encrypting & Saving...' : 'Save & Connect Custom Key'}
                   </button>

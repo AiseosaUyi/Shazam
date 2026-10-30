@@ -65,6 +65,14 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
   };
 
   const tools: ToolSet = {
+    todo_write: tool({
+      description: 'Record your plan for a multi-step task (3-7 steps). Pass the full list with statuses each time it changes.',
+      inputSchema: z.object({ todos: z.array(z.object({ content: z.string(), status: z.enum(['pending', 'in_progress', 'completed']) })) }),
+      execute: async ({ todos }) => {
+        onEvent?.('todos', { todos });
+        return 'Plan updated.';
+      },
+    }),
     current_time: tool({
       description: 'Get the current date and time in the user\'s timezone. Call this before scheduling anything relative ("tomorrow 9am").',
       inputSchema: z.object({}),

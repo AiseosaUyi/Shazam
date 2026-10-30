@@ -1,5 +1,6 @@
 'use client';
 
+import { useDialog } from '@/components/ui/dialog';
 import React, { useEffect, useRef, useState } from 'react';
 import { Plus, Upload, Download, Trash2, Sparkles, Loader2, Save, X } from 'lucide-react';
 
@@ -38,6 +39,7 @@ description: Use when the user asks for an investor or stakeholder update email.
 `;
 
 export function SkillsManager() {
+  const dialog = useDialog();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<Skill> | null>(null);
@@ -90,26 +92,26 @@ export function SkillsManager() {
   }
 
   async function remove(skill: Skill) {
-    if (!confirm(`Delete the skill "${skill.name}"?`)) return;
+    if (!(await dialog.confirm({ title: `Delete “${skill.name}”?`, body: 'Agents will no longer use this skill.', confirmLabel: 'Delete', tone: 'danger' }))) return;
     await fetch(`/api/v1/skills/${skill.id}`, { method: 'DELETE' });
     load();
   }
 
   return (
-    <div className="bg-[#0f1118] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-5">
+    <div className="bg-surface border border-line/[0.08] rounded-2xl p-6 shadow-xl space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-base font-semibold text-white">Skills</h3>
-          <p className="text-xs text-zinc-400 mt-1 max-w-xl">
+          <h3 className="text-base font-semibold text-ink">Skills</h3>
+          <p className="text-xs text-ink-2 mt-1 max-w-xl">
             Reusable instructions the agents load when a task matches. Uses the open SKILL.md format, so skills from other agents import directly.
           </p>
         </div>
         <div className="flex gap-2 self-start">
           <input ref={fileRef} type="file" accept=".md,text/markdown" multiple className="hidden" onChange={(e) => { importFiles(e.target.files); e.target.value = ''; }} />
-          <button onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1.5">
+          <button onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-xl bg-line/5 hover:bg-line/10 text-ink text-xs flex items-center gap-1.5">
             <Upload className="w-3.5 h-3.5" /> Import SKILL.md
           </button>
-          <button onClick={() => setEditing({ name: '', description: '', instructions: '', modes: ['cowork', 'code'] })} className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs flex items-center gap-1.5">
+          <button onClick={() => setEditing({ name: '', description: '', instructions: '', modes: ['cowork', 'code'] })} className="px-3 py-2 rounded-xl bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs flex items-center gap-1.5">
             <Plus className="w-3.5 h-3.5" /> New skill
           </button>
         </div>
@@ -118,16 +120,16 @@ export function SkillsManager() {
       {error && <p className="text-xs text-red-300 bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
 
       {editing && (
-        <div className="rounded-xl border border-amber-500/30 bg-black/30 p-4 space-y-3">
+        <div className="rounded-xl border border-brand/30 bg-black/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-amber-300">{editing.id ? `Edit ${editing.name}` : 'New skill'}</p>
-            <button onClick={() => setEditing(null)}><X className="w-4 h-4 text-zinc-400 hover:text-white" /></button>
+            <p className="text-xs font-semibold text-brand-soft">{editing.id ? `Edit ${editing.name}` : 'New skill'}</p>
+            <button onClick={() => setEditing(null)}><X className="w-4 h-4 text-ink-2 hover:text-ink" /></button>
           </div>
-          <input value={editing.name || ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Name (e.g. Weekly investor update)" maxLength={64} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-200" />
-          <textarea value={editing.description || ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="When should the agent use this? (the agent decides from this line)" rows={2} maxLength={1024} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-200" />
-          <textarea value={editing.instructions || ''} onChange={(e) => setEditing({ ...editing, instructions: e.target.value })} placeholder={EXAMPLE.split('---\n')[2]} rows={10} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-200 font-mono" />
-          <div className="flex items-center gap-3 text-xs text-zinc-300">
-            <span className="text-zinc-500">Available in:</span>
+          <input value={editing.name || ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Name (e.g. Weekly investor update)" maxLength={64} className="w-full bg-black/40 border border-line/10 rounded-lg px-3 py-2 text-xs text-ink" />
+          <textarea value={editing.description || ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="When should the agent use this? (the agent decides from this line)" rows={2} maxLength={1024} className="w-full bg-black/40 border border-line/10 rounded-lg px-3 py-2 text-xs text-ink" />
+          <textarea value={editing.instructions || ''} onChange={(e) => setEditing({ ...editing, instructions: e.target.value })} placeholder={EXAMPLE.split('---\n')[2]} rows={10} className="w-full bg-black/40 border border-line/10 rounded-lg px-3 py-2 text-xs text-ink font-mono" />
+          <div className="flex items-center gap-3 text-xs text-ink-2">
+            <span className="text-ink-3">Available in:</span>
             {MODES.map((m) => (
               <label key={m.id} className="flex items-center gap-1.5">
                 <input
@@ -139,35 +141,35 @@ export function SkillsManager() {
               </label>
             ))}
           </div>
-          <button onClick={save} disabled={saving || !editing.name || !editing.description || !editing.instructions} className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-semibold text-xs flex items-center gap-1.5">
+          <button onClick={save} disabled={saving || !editing.name || !editing.description || !editing.instructions} className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-soft disabled:opacity-40 text-brand-ink font-semibold text-xs flex items-center gap-1.5">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save skill
           </button>
         </div>
       )}
 
       {loading ? (
-        <div className="text-xs text-zinc-500 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading skills…</div>
+        <div className="text-xs text-ink-3 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading skills…</div>
       ) : skills.length === 0 && !editing ? (
-        <div className="rounded-xl border border-dashed border-white/10 p-6 text-center space-y-2">
-          <Sparkles className="w-5 h-5 text-amber-400 mx-auto" />
-          <p className="text-xs text-zinc-400">No skills yet. Create one or import a SKILL.md.</p>
-          <button onClick={() => importMarkdown(EXAMPLE, 'example').then(load)} className="text-[11px] text-amber-300 hover:underline">Add an example skill</button>
+        <div className="rounded-xl border border-dashed border-line/10 p-6 text-center space-y-2">
+          <Sparkles className="w-5 h-5 text-brand mx-auto" />
+          <p className="text-xs text-ink-2">No skills yet. Create one or import a SKILL.md.</p>
+          <button onClick={() => importMarkdown(EXAMPLE, 'example').then(load)} className="text-[11px] text-brand-soft hover:underline">Add an example skill</button>
         </div>
       ) : (
         <div className="space-y-2">
           {skills.map((s) => (
-            <div key={s.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 flex items-start gap-3">
-              <button onClick={() => toggle(s)} className={`mt-0.5 w-8 h-4.5 rounded-full relative shrink-0 transition ${s.enabled ? 'bg-amber-500' : 'bg-zinc-700'}`} style={{ height: 18 }} title={s.enabled ? 'Disable' : 'Enable'}>
+            <div key={s.id} className="rounded-xl border border-line/[0.06] bg-line/[0.02] p-3 flex items-start gap-3">
+              <button onClick={() => toggle(s)} className={`mt-0.5 w-8 h-4.5 rounded-full relative shrink-0 transition ${s.enabled ? 'bg-brand' : 'bg-zinc-700'}`} style={{ height: 18 }} title={s.enabled ? 'Disable' : 'Enable'}>
                 <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition ${s.enabled ? 'left-4' : 'left-0.5'}`} />
               </button>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100 font-medium">{s.name} <span className="text-[10px] text-zinc-500 font-normal">v{s.version} · {s.modes.join(', ')}</span></p>
-                <p className="text-xs text-zinc-400 mt-0.5">{s.description}</p>
+                <p className="text-sm text-ink font-medium">{s.name} <span className="text-[10px] text-ink-3 font-normal">v{s.version} · {s.modes.join(', ')}</span></p>
+                <p className="text-xs text-ink-2 mt-0.5">{s.description}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => setEditing(s)} className="px-2 py-1 rounded-md text-[11px] text-zinc-300 hover:bg-white/5">Edit</button>
-                <a href={`/api/v1/skills/${s.id}?format=md`} className="p-1.5 rounded-md text-zinc-400 hover:bg-white/5" title="Download SKILL.md"><Download className="w-3.5 h-3.5" /></a>
-                <button onClick={() => remove(s)} className="p-1.5 rounded-md text-zinc-400 hover:text-red-400 hover:bg-white/5" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setEditing(s)} className="px-2 py-1 rounded-md text-[11px] text-ink-2 hover:bg-line/5">Edit</button>
+                <a href={`/api/v1/skills/${s.id}?format=md`} className="p-1.5 rounded-md text-ink-2 hover:bg-line/5" title="Download SKILL.md"><Download className="w-3.5 h-3.5" /></a>
+                <button onClick={() => remove(s)} className="p-1.5 rounded-md text-ink-2 hover:text-red-400 hover:bg-line/5" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             </div>
           ))}

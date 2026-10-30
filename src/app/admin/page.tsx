@@ -76,10 +76,10 @@ export default function AdminPage() {
   if (error) {
     return (
       <div className="flex-1 max-w-4xl w-full mx-auto p-8 flex items-center justify-center">
-        <div className="bg-[#10131d] border border-red-900/50 rounded-xl p-6 text-center space-y-3">
+        <div className="bg-surface border border-red-900/50 rounded-xl p-6 text-center space-y-3">
           <ShieldAlert className="w-10 h-10 text-red-500 mx-auto" />
-          <h2 className="text-base font-bold text-white font-mono">Restricted Area</h2>
-          <p className="text-xs text-zinc-400">{error}</p>
+          <h2 className="text-base font-bold text-ink font-mono">Restricted Area</h2>
+          <p className="text-xs text-ink-2">{error}</p>
         </div>
       </div>
     );
@@ -90,22 +90,22 @@ export default function AdminPage() {
   return (
     <div className="flex-1 h-full min-h-0 overflow-y-auto">
       <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#232736] pb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-line/10 pb-6">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-white font-mono">Admin Control Center</h1>
-            <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-amber-950 text-amber-400 border border-amber-800">
+            <h1 className="text-2xl font-bold tracking-tight text-ink font-mono">Admin Control Center</h1>
+            <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-amber-950 text-brand border border-brand">
               ROLE: ADMIN
             </span>
           </div>
-          <p className="text-sm text-zinc-400 mt-1">
+          <p className="text-sm text-ink-2 mt-1">
             Global provider and route kill switches, tenant audit log inspection, and security events.
           </p>
         </div>
 
         <button
           onClick={loadData}
-          className="px-3 py-1.5 rounded-lg bg-[#141824] border border-[#232736] text-xs text-zinc-300 hover:text-white flex items-center gap-1.5 transition self-start"
+          className="px-3 py-1.5 rounded-lg bg-surface border border-line/10 text-xs text-ink-2 hover:text-ink flex items-center gap-1.5 transition self-start"
         >
           <RefreshCw className="w-3.5 h-3.5" /> Refresh
         </button>
@@ -119,9 +119,9 @@ export default function AdminPage() {
       )}
 
       {/* Provider Kill Switches */}
-      <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-4">
-        <h2 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-          <Power className="w-4 h-4 text-amber-500" /> Provider Kill Switches
+      <div className="bg-surface border border-line/10 rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-bold font-mono text-ink flex items-center gap-2">
+          <Power className="w-4 h-4 text-brand" /> Provider Kill Switches
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -133,11 +133,11 @@ export default function AdminPage() {
             return (
               <div
                 key={p.id}
-                className="p-3.5 rounded-lg bg-[#141824] border border-[#232736] flex items-center justify-between"
+                className="p-3.5 rounded-lg bg-surface border border-line/10 flex items-center justify-between"
               >
                 <div>
-                  <h4 className="text-xs font-bold text-white">{p.name}</h4>
-                  <p className="text-[10px] font-mono text-zinc-400">ID: {p.id}</p>
+                  <h4 className="text-xs font-bold text-ink">{p.name}</h4>
+                  <p className="text-[10px] font-mono text-ink-2">ID: {p.id}</p>
                 </div>
                 <button
                   onClick={() => handleToggleOverride('provider', p.id, effectiveStatus)}
@@ -157,17 +157,17 @@ export default function AdminPage() {
       </div>
 
       {/* Audit Log Table */}
-      <div className="bg-[#10131d] border border-[#232736] rounded-xl p-5 space-y-4">
-        <h2 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-          <Lock className="w-4 h-4 text-amber-500" /> Security & Admin Audit Log ({auditEvents.length})
+      <div className="bg-surface border border-line/10 rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-bold font-mono text-ink flex items-center gap-2">
+          <Lock className="w-4 h-4 text-brand" /> Security & Admin Audit Log ({auditEvents.length})
         </h2>
 
         {auditEvents.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500 text-xs font-mono">No audit events recorded.</div>
+          <div className="text-center py-8 text-ink-3 text-xs font-mono">No audit events recorded.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs font-mono">
-              <thead className="border-b border-[#232736] text-[11px] uppercase text-zinc-500">
+              <thead className="border-b border-line/10 text-[11px] text-ink-3">
                 <tr>
                   <th className="pb-3 font-semibold">Timestamp</th>
                   <th className="pb-3 font-semibold">Action</th>
@@ -176,15 +176,15 @@ export default function AdminPage() {
                   <th className="pb-3 font-semibold">Outcome</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1b1f2e] text-zinc-300">
+              <tbody className="divide-y divide-[#1b1f2e] text-ink-2">
                 {auditEvents.map((ev: any) => (
-                  <tr key={ev.id} className="hover:bg-[#141824] transition">
-                    <td className="py-2.5 text-zinc-400 text-[11px]">
+                  <tr key={ev.id} className="hover:bg-surface transition">
+                    <td className="py-2.5 text-ink-2 text-[11px]">
                       {new Date(ev.created_at).toLocaleString()}
                     </td>
-                    <td className="py-2.5 font-semibold text-zinc-100">{ev.action}</td>
-                    <td className="py-2.5 text-zinc-400 truncate max-w-[120px]">{ev.actor_id}</td>
-                    <td className="py-2.5 text-zinc-300">
+                    <td className="py-2.5 font-semibold text-ink">{ev.action}</td>
+                    <td className="py-2.5 text-ink-2 truncate max-w-[120px]">{ev.actor_id}</td>
+                    <td className="py-2.5 text-ink-2">
                       {ev.target_type}: {ev.target_id}
                     </td>
                     <td className="py-2.5">

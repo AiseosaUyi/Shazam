@@ -13,6 +13,7 @@ const Schema = z.object({
   maxTurns: z.number().min(1).max(60).optional(),
   allowExternalWrites: z.boolean().optional(),
   pinnedModel: z.string().max(120).optional(),
+  localRoot: z.string().max(1024).optional(),
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).max(40).optional(),
 });
 
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = Schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid parameters' }, { status: 400 });
-  const { prompt, projectId, maxTurns = 40, allowExternalWrites = false, history = [], pinnedModel } = parsed.data;
+  const { prompt, projectId, maxTurns = 40, allowExternalWrites = false, history = [], pinnedModel, localRoot } = parsed.data;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       };
       send('react_start', { prompt });
       try {
-        const out = await runCodeTask({ user, prompt, projectId, history, pinnedModel, maxSteps: maxTurns, allowExternalWrites, signal: req.signal, onEvent: send });
+        const out = await runCodeTask({ user, prompt, projectId, history, pinnedModel, localRoot, maxSteps: maxTurns, allowExternalWrites, signal: req.signal, onEvent: send });
         send('react_done', {
           success: true,
           projectId: out.projectId,

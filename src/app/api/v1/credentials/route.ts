@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkProviderKey } from '@/lib/agent/models';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
@@ -61,6 +62,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { providerId, apiKey } = parseResult.data;
+
+  const check = await checkProviderKey(providerId, apiKey.trim());
+  if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 });
 
   // Encrypt secret with AES-256-GCM
   let encryptedKey: string;

@@ -4,16 +4,27 @@ import { RunsRepo, type AgentRun, type RunAgent } from './repo';
 import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
 
 /** Runs an agent task to completion and records progress/results on the run row. */
-export async function executeRun(user: User, run: AgentRun, opts: { history?: ModelMessage[]; timezone?: string; pinnedModel?: string | null } = {}): Promise<void> {
+export async function executeRun(user: User, run: AgentRun, opts: { history?: ModelMessage[]; timezone?: string; pinnedModel?: string | null; maxSteps?: number } = {}): Promise<void> {
   const runs = new RunsRepo();
   const rec = eventRecorder(run.id, user.id, runs);
   await runs.update(user.id, run.id, { status: 'running' });
   try {
     const out = run.agent === 'code'
-      ? await runCodeTask({ user, prompt: run.prompt, projectId: run.projectId, history: opts.history, pinnedModel: opts.pinnedModel, onEvent: rec.sink })
-      : await runCoworkTask({ user, prompt: run.prompt, history: opts.history, timezone: opts.timezone, pinnedModel: opts.pinnedModel, onEvent: rec.sink });
+      ? await runCodeTask({
+          user,
+          prompt: run.prompt,
+          projectId: run.projectId?.startsWith('local:') ? null : run.projectId,
+          localRoot: run.projectId?.startsWith('local:') ? run.projectId.slice(6) : null,
+          history: opts.history,
+          pinnedModel: opts.pinnedModel,
+          maxSteps: opts.maxSteps,
+          runId: run.id,
+          onEvent: rec.sink,
+        })
+      : await runCoworkTask({ user, runId: run.id, prompt: run.prompt, history: opts.history, timezone: opts.timezone, pinnedModel: opts.pinnedModel, onEvent: rec.sink });
     await rec.flush();
-    const verified = out.commandsRun.length ? `\n\nCommands run: ${out.commandsRun.map((c) => `\`${c.command}\` → exit ${c.exitCode}`).join(', ')}` : '';
+ // The web UI shows commands as chips; assistants on MCP get them in the text.
+    const verified = run.source === 'mcp' && out.commandsRun.length ? `\n\nCommands run: ${out.commandsRun.map((c) => `\`${c.command}\` → exit ${c.exitCode}`).join(', ')}` : '';
     await runs.update(user.id, run.id, { status: 'done', result: `${out.text}${verified}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
     if (out.projectId && out.projectId !== run.projectId) {
       // Link the auto-created project so feedback continues in the same files.

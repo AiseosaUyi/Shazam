@@ -1,5 +1,6 @@
 'use client';
 
+import { LogoMark } from '@/components/brand/Logo';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -56,14 +57,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex-1 h-full min-h-0 overflow-y-auto flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md bg-[#10131d] border border-[#232736] rounded-xl p-6 sm:p-8 shadow-2xl">
+    <div className="shz-atmosphere flex-1 h-full min-h-0 overflow-y-auto flex items-center justify-center px-4 py-12">
+      <div className="w-full max-w-sm rounded-2xl border border-line/[0.08] bg-surface/90 p-6 shadow-2xl backdrop-blur sm:p-8">
         <div className="flex flex-col items-center mb-6 text-center">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-900/30 mb-3">
-            <Zap className="w-5 h-5 text-white fill-white" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-white font-mono">Sign in to Shazam AI</h1>
-          <p className="text-xs text-zinc-400 mt-1">Access intelligent multi-model routing and task execution</p>
+          <LogoMark size={40} className="mb-4" />
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">Welcome back</h1>
+          <p className="mt-1 text-[13px] text-ink-3">Sign in to your free agents.</p>
         </div>
 
         {error && (
@@ -75,25 +74,25 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-zinc-300 mb-1.5">Email Address</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1.5">Email Address</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-[#090b10] border border-[#232736] rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full px-3 py-2 bg-canvas border border-line/10 rounded-lg text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               placeholder="you@domain.com"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-zinc-300 mb-1.5">Password</label>
+            <label className="block text-xs font-medium text-ink-2 mb-1.5">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-[#090b10] border border-[#232736] rounded-lg text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full px-3 py-2 bg-canvas border border-line/10 rounded-lg text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand"
               placeholder="••••••••"
             />
           </div>
@@ -101,16 +100,16 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-md disabled:opacity-50"
+            className="w-full py-2.5 px-4 bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-md disabled:opacity-50"
           >
             {loading ? 'Signing in...' : 'Sign In'}
             {!loading && <ArrowRight className="w-3.5 h-3.5" />}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-xs text-zinc-400">
+        <div className="mt-6 text-center text-xs text-ink-2">
           Don&apos;t have an account?{' '}
-          <Link href="/signup" className="text-amber-400 hover:underline font-medium">
+          <Link href="/signup" className="text-brand hover:underline font-medium">
             Create an account
           </Link>
         </div>

@@ -11,6 +11,7 @@ import { loadSuggestContext } from '@/lib/agents/context';
 import { generateAndStoreImage } from '@/lib/media/image';
 import { executeApprovedAction } from '@/lib/cowork/actions';
 import { decryptSecret } from '@/lib/crypto/vault';
+import { QuestionsRepo } from '@/lib/agents/ask';
 
 /**
  * Shazam as an MCP server: lets Claude Code / Claude Desktop, Codex, Antigravity, Cursor…
@@ -71,16 +72,17 @@ const handler = createMcpHandler(
           prompt: z.string().describe('Complete, self-contained instructions (Shazam does not see your conversation).'),
           agent: z.enum(['auto', 'code', 'cowork']).default('auto'),
           project_id: z.string().optional().describe('Continue in an existing Shazam project (from a previous task).'),
+          local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer (must be allowed in the Shazam desktop app). The agent edits and runs code there.'),
         }),
       },
-      async ({ prompt, agent, project_id }, ctx) => {
+      async ({ prompt, agent, project_id, local_folder }, ctx) => {
         const user = await userFrom(ctx);
         let chosen = agent;
         if (chosen === 'auto') {
           const s = suggestAgent(prompt, await loadSuggestContext(user.id));
           chosen = s.agent === 'code' ? 'code' : 'cowork';
         }
-        const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: project_id, source: 'mcp' });
+        const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: local_folder ? `local:${local_folder}` : project_id, source: 'mcp' });
         after(() => executeRun(user, run));
         return text(`Started ${chosen} task.\ntask_id: ${run.id}\nPoll get_task_status(task_id) every ~30s. Watch it live: ${APP_URL}/runs/${run.id}`);
       }
@@ -96,7 +98,10 @@ const handler = createMcpHandler(
       async ({ task_id, since_event }, ctx) => {
         const user = await userFrom(ctx);
         const run = await new RunsRepo().get(user.id, task_id);
-        return text(run ? summarizeRun(run, since_event || 0) : `No task ${task_id}.`);
+        if (!run) return text(`No task ${task_id}.`);
+        const q = await new QuestionsRepo().pendingForRun(user.id, task_id);
+        const ask = q ? `\n\nQUESTION FOR YOU (question_id ${q.id}): ${q.question}\nOptions: ${q.options.join(' | ')}\nAnswer with answer_question (ask your human if you are unsure).` : '';
+        return text(summarizeRun(run, since_event || 0) + ask);
       }
     );
 
@@ -117,6 +122,20 @@ const handler = createMcpHandler(
         const run = await runs.create(user.id, { agent: parent.agent, prompt, projectId: parent.projectId, parentRunId: parent.id, source: 'mcp' });
         after(() => executeRun(user, run, { history: buildFeedbackHistory(parent) }));
         return text(`Feedback sent. New task_id: ${run.id} (continues ${parent.id}${parent.projectId ? ` in project ${parent.projectId}` : ''}).`);
+      }
+    );
+
+    server.registerTool(
+      'answer_question',
+      {
+        title: 'Answer a question from a Shazam task',
+        description: 'When get_task_status shows a QUESTION, answer it here so the task can continue. Pick one of the options or write a short answer.',
+        inputSchema: z.object({ question_id: z.string(), answer: z.string() }),
+      },
+      async ({ question_id, answer }, ctx) => {
+        const user = await userFrom(ctx);
+        const ok = await new QuestionsRepo().answer(user.id, question_id, answer);
+        return text(ok ? 'Answer sent; the task is continuing.' : 'That question was already answered or does not exist.');
       }
     );
 

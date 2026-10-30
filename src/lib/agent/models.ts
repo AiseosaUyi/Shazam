@@ -1,4 +1,4 @@
-import type { LanguageModel } from 'ai';
+import { gateway, type LanguageModel } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -75,6 +75,27 @@ const PREFERENCES: Record<string, RegExp[]> = {
   cerebras: [/gpt-oss-120b/, /qwen-?3\.8/, /qwen/],
 };
 
+/** Verifies a pasted key against the provider before it is saved. */
+export async function checkProviderKey(providerId: string, apiKey: string): Promise<{ ok: boolean; models: number; error?: string }> {
+  const urls: Record<string, { url: string; headers: Record<string, string> }> = {
+    google: { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=5', headers: { 'x-goog-api-key': apiKey } },
+    anthropic: { url: 'https://api.anthropic.com/v1/models?limit=5', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } },
+    ...Object.fromEntries(Object.entries(OPENAI_COMPATIBLE_BASES).map(([k, base]) => [k, { url: `${base}/models`, headers: { Authorization: `Bearer ${apiKey}` } }])),
+    github: { url: 'https://api.github.com/user', headers: { Authorization: `Bearer ${apiKey}`, 'User-Agent': 'shazam-ai' } },
+  };
+  const target = urls[providerId];
+  if (!target) return { ok: true, models: 0 };
+  try {
+    const res = await fetch(target.url, { headers: target.headers, signal: AbortSignal.timeout(8000) });
+    if (res.status === 401 || res.status === 403) return { ok: false, models: 0, error: 'The provider rejected this key. Check you copied all of it.' };
+    if (!res.ok) return { ok: true, models: 0 }; // provider hiccup: don't block saving
+    const data: any = await res.json().catch(() => ({}));
+    return { ok: true, models: (data.models || data.data || []).length };
+  } catch {
+    return { ok: true, models: 0 };
+  }
+}
+
 export async function resolveLiveModelId(providerId: string, catalogModelId: string, apiKey: string): Promise<string> {
   const ids = await listProviderModels(providerId, apiKey);
   if (ids.length === 0) return catalogModelId;
@@ -96,6 +117,7 @@ export async function resolveLiveModelId(providerId: string, catalogModelId: str
 }
 
 export async function createLanguageModel(providerId: string, catalogModelId: string, apiKey: string): Promise<{ model: LanguageModel; modelId: string }> {
+  if (providerId === 'gateway') return { model: gateway(catalogModelId), modelId: catalogModelId };
   const modelId = providerId === 'ollama' ? catalogModelId : await resolveLiveModelId(providerId, catalogModelId, apiKey);
 
   switch (providerId) {

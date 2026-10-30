@@ -42,26 +42,26 @@ export function AgentSuggestion({ prompt, current }: { prompt: string; current: 
   const target = `${HOME[s.agent]}?prompt=${encodeURIComponent(prompt.trim().slice(0, 1500))}`;
 
   return (
-    <div className="mb-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[11px] space-y-1">
+    <div className="mb-2 rounded-xl border border-line/[0.07] bg-line/[0.02] px-3 py-2 text-[11px] space-y-1">
       <div className="flex items-center gap-2 flex-wrap">
-        <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-        <span className="text-zinc-300">
-          Best fit: <strong className="text-white">{LABEL[s.agent]}</strong> · {s.model}
+        <Sparkles className="w-3.5 h-3.5 text-brand shrink-0" />
+        <span className="text-ink-2">
+          Best fit: <strong className="text-ink">{LABEL[s.agent]}</strong> · {s.model}
         </span>
         {!handledHere && (
-          <Link href={target} className="ml-auto flex items-center gap-1 text-amber-300 hover:text-amber-200">
+          <Link href={target} className="ml-auto flex items-center gap-1 text-brand-soft hover:text-brand-soft">
             Open in {LABEL[s.agent]} <ArrowRight className="w-3 h-3" />
           </Link>
         )}
       </div>
       {s.missing.map((m) => (
-        <p key={m.what} className="flex items-start gap-1.5 text-amber-200/90">
+        <p key={m.what} className="flex items-start gap-1.5 text-brand-soft/90">
           <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
           <span><strong>{m.what}:</strong> {m.fix} <Link href="/connections" className="underline">Connections</Link></span>
         </p>
       ))}
       {s.tips.slice(0, 1).map((tip) => (
-        <p key={tip} className="flex items-start gap-1.5 text-zinc-500"><Lightbulb className="w-3 h-3 mt-0.5 shrink-0" />{tip}</p>
+        <p key={tip} className="flex items-start gap-1.5 text-ink-3"><Lightbulb className="w-3 h-3 mt-0.5 shrink-0" />{tip}</p>
       ))}
     </div>
   );

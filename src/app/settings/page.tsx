@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { SkillsManager } from '@/components/SkillsManager';
 import React, { useState, useEffect } from 'react';
 import {
@@ -333,23 +334,23 @@ export default function SettingsPage() {
     return (
       <div className="flex-1 max-w-md w-full mx-auto p-8 flex flex-col items-center justify-center text-center">
         {error ? (
-          <div className="p-6 rounded-2xl bg-[#10131d] border border-white/10 text-center space-y-4 shadow-xl w-full">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mx-auto">
+          <div className="p-6 rounded-2xl bg-surface border border-line/10 text-center space-y-4 shadow-xl w-full">
+            <div className="w-10 h-10 rounded-xl bg-brand/10 border border-brand/20 flex items-center justify-center text-brand mx-auto">
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white">Sign In Required</h2>
-              <p className="text-xs text-zinc-400 mt-1">{error}</p>
+              <h2 className="text-base font-semibold text-ink">Sign In Required</h2>
+              <p className="text-xs text-ink-2 mt-1">{error}</p>
             </div>
             <a
               href="/login"
-              className="inline-block w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs transition shadow-md"
+              className="inline-block w-full py-2.5 px-4 rounded-xl bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs transition shadow-md"
             >
               Sign In to Access Settings
             </a>
           </div>
         ) : (
-          <div className="text-zinc-500 text-sm font-sans text-center py-16">Loading settings...</div>
+          <div className="text-ink-3 text-sm font-sans text-center py-16">Loading settings...</div>
         )}
       </div>
     );
@@ -360,60 +361,48 @@ export default function SettingsPage() {
       <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 font-sans">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white font-sans">Settings & Connectors</h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Manage your task routing policies, monthly budget, and custom Model Context Protocol (MCP) integrations.
+          <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Settings</h1>
+          <p className="text-sm text-ink-2 mt-1">
+            How Shazam picks models, what it may spend, and your skills.
           </p>
         </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-white/[0.08] gap-6">
+      <div className="flex border-b border-line/[0.08] gap-6">
         <button
           onClick={() => setActiveTab('preferences')}
           className={`pb-3 text-sm font-medium transition flex items-center gap-2 relative ${
-            activeTab === 'preferences' ? 'text-amber-400 font-semibold' : 'text-zinc-400 hover:text-zinc-200'
+            activeTab === 'preferences' ? 'text-brand font-semibold' : 'text-ink-2 hover:text-ink'
           }`}
         >
           <Sliders className="w-4 h-4" />
-          <span>Routing & Budget</span>
+          <span>Preferences</span>
           {activeTab === 'preferences' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('skills')}
           className={`pb-3 text-sm font-medium transition flex items-center gap-2 relative ${
-            activeTab === 'skills' ? 'text-amber-400 font-semibold' : 'text-zinc-400 hover:text-zinc-200'
+            activeTab === 'skills' ? 'text-brand font-semibold' : 'text-ink-2 hover:text-ink'
           }`}
         >
           <Zap className="w-4 h-4" />
-          <span>Autonomous Skills & Connectors</span>
-          <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono">
+          <span>Skills</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-brand/20 text-brand-soft text-[10px] font-mono">
             Skills
           </span>
           {activeTab === 'skills' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand rounded-full" />
           )}
         </button>
 
-        <button
-          onClick={() => setActiveTab('mcp')}
-          className={`pb-3 text-sm font-medium transition flex items-center gap-2 relative ${
-            activeTab === 'mcp' ? 'text-amber-400 font-semibold' : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Network className="w-4 h-4" />
-          <span>MCP Servers & Tools</span>
-          {mcpServers.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono">
-              {mcpServers.length}
-            </span>
-          )}
-          {activeTab === 'mcp' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-full" />
-          )}
-        </button>
+        <Link href="/connections#apps" className="relative flex items-center gap-2 pb-3 text-sm font-medium text-ink-2 transition hover:text-ink">
+          <Network className="h-4 w-4" />
+          <span>MCP servers</span>
+          <span className="text-[11px] text-ink-3">moved to Connections →</span>
+        </Link>
       </div>
 
       {saved && (
@@ -426,7 +415,7 @@ export default function SettingsPage() {
       {skillsSaved && (
         <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          Autonomous Skills & Connectors configuration saved.
+          Skills saved.
         </div>
       )}
 
@@ -439,22 +428,21 @@ export default function SettingsPage() {
 
       {/* Tab 1: Routing & Budget */}
       {activeTab === 'preferences' && (
-        <form onSubmit={handleSave} className="bg-[#0f1118] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-6">
+        <form onSubmit={handleSave} className="bg-surface border border-line/[0.08] rounded-2xl p-6 shadow-xl space-y-6">
           {/* Cost Policy Selection */}
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider font-sans">
-              Default Routing Policy
+            <label className="block text-xs font-semibold text-ink-2 font-sans">
+              How to pick models
             </label>
-            <p className="text-xs text-zinc-400">
-              Governs model selection. Free-only strictly guarantees zero paid API calls.
+            <p className="text-xs text-ink-2">
+              “Free only” never uses a paid model, even with your keys connected.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
               {[
-                { id: 'free_only', title: 'Free Only', desc: 'Verified $0 routes only. Zero paid API charges.' },
-                { id: 'lowest_cost', title: 'Lowest Cost', desc: 'Prioritizes free & lowest cost routes while maintaining quality.' },
-                { id: 'balanced', title: 'Balanced (Recommended)', desc: 'Optimizes quality-to-cost ratio for the best overall experience.' },
-                { id: 'best_quality', title: 'Best Quality', desc: 'Picks the highest-rated eligible model regardless of price.' },
-                { id: 'manual_pin', title: 'Manual Pin', desc: 'Only runs models you explicitly specify in your prompt.' },
+                { id: 'free_only', title: 'Free only', desc: 'Never spend money. Uses free and local models only.' },
+                { id: 'lowest_cost', title: 'Cheapest', desc: 'Free first, the cheapest paid model only when needed.' },
+                { id: 'balanced', title: 'Balanced', desc: 'Recommended. Good quality without surprise costs.' },
+                { id: 'best_quality', title: 'Best quality', desc: 'The strongest model you have, whatever it costs.' },
               ].map((p) => (
                 <button
                   key={p.id}
@@ -462,22 +450,22 @@ export default function SettingsPage() {
                   onClick={() => setPref({ ...pref, defaultCostPolicy: p.id as any })}
                   className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
                     pref.defaultCostPolicy === p.id
-                      ? 'border-amber-500 bg-amber-500/10 text-white'
-                      : 'border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
+                      ? 'border-brand bg-brand/10 text-ink'
+                      : 'border-line/[0.06] bg-line/[0.02] text-ink-2 hover:text-ink hover:bg-line/[0.04]'
                   }`}
                 >
-                  <span className="text-xs font-semibold text-zinc-200">{p.title}</span>
-                  <span className="text-[11px] text-zinc-400 mt-1 leading-relaxed">{p.desc}</span>
+                  <span className="text-xs font-semibold text-ink">{p.title}</span>
+                  <span className="text-[11px] text-ink-2 mt-1 leading-relaxed">{p.desc}</span>
                 </button>
               ))}
             </div>
           </div>
 
           {/* Financial Ceilings */}
-          <div className="pt-4 border-t border-white/[0.06] grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="pt-4 border-t border-line/[0.06] grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider font-sans mb-1">
-                Max Cost Per Task (USD)
+              <label className="block text-xs font-semibold text-ink-2 font-sans mb-1">
+                Spend limit per task (USD)
               </label>
               <input
                 type="number"
@@ -486,14 +474,14 @@ export default function SettingsPage() {
                 max="50"
                 value={pref.maxCostPerTaskUSD}
                 onChange={(e) => setPref({ ...pref, maxCostPerTaskUSD: parseFloat(e.target.value) || 0.01 })}
-                className="w-full px-3.5 py-2.5 bg-black/40 border border-white/[0.08] rounded-xl text-sm text-zinc-100 font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 bg-black/40 border border-line/[0.08] rounded-xl text-sm text-ink font-mono focus:outline-none focus:border-brand"
               />
-              <p className="text-[11px] text-zinc-500 mt-1">Routes exceeding this ceiling are excluded.</p>
+              <p className="text-[11px] text-ink-3 mt-1">Paid models that would cost more are skipped.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider font-sans mb-1">
-                Monthly Budget Cap (USD)
+              <label className="block text-xs font-semibold text-ink-2 font-sans mb-1">
+                Monthly spend limit (USD)
               </label>
               <input
                 type="number"
@@ -502,16 +490,16 @@ export default function SettingsPage() {
                 max="5000"
                 value={pref.monthlyBudgetUSD}
                 onChange={(e) => setPref({ ...pref, monthlyBudgetUSD: parseFloat(e.target.value) || 1.0 })}
-                className="w-full px-3.5 py-2.5 bg-black/40 border border-white/[0.08] rounded-xl text-sm text-zinc-100 font-mono focus:outline-none focus:border-amber-500"
+                className="w-full px-3.5 py-2.5 bg-black/40 border border-line/[0.08] rounded-xl text-sm text-ink font-mono focus:outline-none focus:border-brand"
               />
-              <p className="text-[11px] text-zinc-500 mt-1">Stops paid routing once spend reaches cap.</p>
+              <p className="text-[11px] text-ink-3 mt-1">Shazam switches to free models once you reach it.</p>
             </div>
           </div>
 
           {/* Privacy Mode */}
-          <div className="pt-4 border-t border-white/[0.06] space-y-2">
-            <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider font-sans">
-              Privacy Mode
+          <div className="pt-4 border-t border-line/[0.06] space-y-2">
+            <label className="block text-xs font-semibold text-ink-2 font-sans">
+              Privacy
             </label>
             <div className="flex gap-3">
               <button
@@ -519,35 +507,35 @@ export default function SettingsPage() {
                 onClick={() => setPref({ ...pref, privacyMode: 'standard' })}
                 className={`flex-1 p-3.5 rounded-xl border text-left transition ${
                   pref.privacyMode === 'standard'
-                    ? 'border-amber-500 bg-amber-500/10 text-white'
-                    : 'border-white/[0.06] bg-white/[0.02] text-zinc-400'
+                    ? 'border-brand bg-brand/10 text-ink'
+                    : 'border-line/[0.06] bg-line/[0.02] text-ink-2'
                 }`}
               >
-                <div className="text-xs font-semibold text-zinc-200">Standard</div>
-                <div className="text-[11px] text-zinc-400 mt-0.5">Allows free tier routes with standard provider policies.</div>
+                <div className="text-xs font-semibold text-ink">Standard</div>
+                <div className="text-[11px] text-ink-2 mt-0.5">Allows free tier routes with standard provider policies.</div>
               </button>
               <button
                 type="button"
                 onClick={() => setPref({ ...pref, privacyMode: 'strict' })}
                 className={`flex-1 p-3.5 rounded-xl border text-left transition ${
                   pref.privacyMode === 'strict'
-                    ? 'border-amber-500 bg-amber-500/10 text-white'
-                    : 'border-white/[0.06] bg-white/[0.02] text-zinc-400'
+                    ? 'border-brand bg-brand/10 text-ink'
+                    : 'border-line/[0.06] bg-line/[0.02] text-ink-2'
                 }`}
               >
-                <div className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                <div className="text-xs font-semibold text-brand flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5" /> Strict Privacy
                 </div>
-                <div className="text-[11px] text-zinc-400 mt-0.5">Excludes any route where user data may be used for model training.</div>
+                <div className="text-[11px] text-ink-2 mt-0.5">Excludes any route where user data may be used for model training.</div>
               </button>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-white/[0.06] flex justify-end">
+          <div className="pt-4 border-t border-line/[0.06] flex justify-end">
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-md disabled:opacity-50"
+              className="px-5 py-2.5 bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-md disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" />
               {saving ? 'Saving...' : 'Save Preferences'}
@@ -561,99 +549,18 @@ export default function SettingsPage() {
 
       {/* Tab 3: MCP Connectors & Tools */}
       {activeTab === 'mcp' && (
-        <div className="space-y-6">
-          <div className="bg-[#0f1118] border border-white/[0.08] rounded-2xl p-6 shadow-xl space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-white">Connected MCP Servers</h3>
-                <p className="text-xs text-zinc-400 mt-0.5">
-                  Connect custom Model Context Protocol (MCP) servers to give Shazam AI tools to interact with external databases, APIs, and services.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setMcpModalOpen(true)}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 shadow-md"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add MCP Server</span>
-              </button>
-            </div>
-
-            {loadingMcp ? (
-              <div className="text-center py-8 text-xs text-zinc-500">Loading connected servers...</div>
-            ) : mcpServers.length === 0 ? (
-              <div className="border border-dashed border-white/10 rounded-xl p-8 text-center space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/5 mx-auto flex items-center justify-center text-zinc-400">
-                  <Server className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-semibold text-zinc-200">No Custom MCP Servers Connected</h4>
-                  <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                    Just like in Claude Desktop, you can connect your own MCP endpoints (e.g. Postgres DB, GitHub, Slack) to let Shazam execute actions on your platform.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setMcpModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-xs font-medium text-zinc-200 rounded-lg transition"
-                >
-                  Connect your first MCP
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {mcpServers.map((server) => (
-                  <div
-                    key={server.id}
-                    className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] flex items-start justify-between gap-4"
-                  >
-                    <div className="space-y-1.5 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        <span className="text-sm font-semibold text-zinc-100">{server.name}</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/[0.05] text-zinc-400 border border-white/5 uppercase">
-                          {server.transport}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400 font-mono truncate max-w-xl">{server.url}</p>
-
-                      {server.tools && server.tools.length > 0 && (
-                        <div className="pt-2 flex flex-wrap gap-1.5">
-                          {server.tools.map((t, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 rounded-md bg-white/[0.04] text-[11px] font-mono text-zinc-300 border border-white/5"
-                              title={t.description || t.name}
-                            >
-                              ⚙️ {t.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={() => handleDeleteMcp(server.id)}
-                      className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition"
-                      title="Disconnect Server"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        <div className="rounded-2xl border border-line/[0.08] bg-surface p-5 text-[13px] text-ink-2">
+          MCP servers now live in <Link href="/connections#apps" className="text-brand-soft underline-offset-2 hover:underline">Connections → Apps</Link>, next to Gmail and GitHub.
         </div>
       )}
 
       {/* Add MCP Modal */}
       {mcpModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#0f1118] border border-white/10 rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-full max-w-md bg-surface border border-line/10 rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div>
-              <h3 className="text-base font-semibold text-white">Add Custom MCP Server</h3>
-              <p className="text-xs text-zinc-400 mt-1">
+              <h3 className="text-base font-semibold text-ink">Add Custom MCP Server</h3>
+              <p className="text-xs text-ink-2 mt-1">
                 Provide the SSE or HTTP endpoint for your Model Context Protocol server.
               </p>
             </div>
@@ -666,36 +573,36 @@ export default function SettingsPage() {
 
             <form onSubmit={handleAddMcp} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">Server Name</label>
+                <label className="block text-xs font-medium text-ink-2 mb-1">Server Name</label>
                 <input
                   type="text"
                   placeholder="e.g. Postgres DB Inspector"
                   value={newMcpName}
                   onChange={(e) => setNewMcpName(e.target.value)}
-                  className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-black/40 border border-line/10 rounded-xl text-xs text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">Server URL</label>
+                <label className="block text-xs font-medium text-ink-2 mb-1">Server URL</label>
                 <input
                   type="url"
                   placeholder="https://mcp.yourdomain.com/sse"
                   value={newMcpUrl}
                   onChange={(e) => setNewMcpUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono"
+                  className="w-full px-3 py-2 bg-black/40 border border-line/10 rounded-xl text-xs text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand font-mono"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">Transport</label>
+                  <label className="block text-xs font-medium text-ink-2 mb-1">Transport</label>
                   <select
                     value={newMcpTransport}
                     onChange={(e) => setNewMcpTransport(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-black/40 border border-line/10 rounded-xl text-xs text-ink focus:outline-none focus:border-brand"
                   >
                     <option value="sse">Server-Sent Events (SSE)</option>
                     <option value="http">HTTP POST / Stream</option>
@@ -704,29 +611,29 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">Auth Token (Optional)</label>
+                  <label className="block text-xs font-medium text-ink-2 mb-1">Auth Token (Optional)</label>
                   <input
                     type="password"
                     placeholder="Bearer token"
                     value={newMcpToken}
                     onChange={(e) => setNewMcpToken(e.target.value)}
-                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono"
+                    className="w-full px-3 py-2 bg-black/40 border border-line/10 rounded-xl text-xs text-ink placeholder:text-ink-3 focus:outline-none focus:border-brand font-mono"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/5">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-line/5">
                 <button
                   type="button"
                   onClick={() => setMcpModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-zinc-200 transition"
+                  className="px-4 py-2 rounded-xl text-xs text-ink-2 hover:text-ink transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addingMcp}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-semibold text-xs rounded-xl transition shadow-md disabled:opacity-50"
+                  className="px-4 py-2 bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs rounded-xl transition shadow-md disabled:opacity-50"
                 >
                   {addingMcp ? 'Connecting...' : 'Connect Server'}
                 </button>

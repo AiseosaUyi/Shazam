@@ -14,7 +14,7 @@ export function MarkdownRenderer({ content, className = '', onOpenFile }: Markdo
   const blocks = splitCodeBlocks(content);
 
   return (
-    <div className={`space-y-3 font-sans text-sm text-zinc-200 leading-relaxed ${className}`}>
+    <div className={`space-y-3 font-sans text-sm text-ink leading-relaxed ${className}`}>
       {blocks.map((block, index) => {
         if (block.type === 'code') {
           return <CodeBlock key={index} language={block.language} code={block.code} />;
@@ -75,17 +75,17 @@ function CodeBlock({ language, code = '' }: { language?: string; code?: string }
   }
 
   return (
-    <div className="my-3 rounded-2xl bg-black/70 border border-white/[0.08] overflow-hidden shadow-xl group">
-      <div className="px-4 py-2 bg-white/[0.03] border-b border-white/[0.06] flex items-center justify-between text-xs">
+    <div className="my-3 rounded-2xl bg-black/70 border border-line/[0.08] overflow-hidden shadow-xl group">
+      <div className="px-4 py-2 bg-line/[0.03] border-b border-line/[0.06] flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
-          <Terminal className="w-3.5 h-3.5 text-amber-400" />
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          <Terminal className="w-3.5 h-3.5 text-brand" />
+          <span className="font-mono text-[11px] font-semibold text-ink-2">
             {language}
           </span>
         </div>
         <button
           onClick={handleCopy}
-          className="px-2 py-1 rounded-lg hover:bg-white/[0.06] text-zinc-400 hover:text-white flex items-center gap-1.5 transition text-xs"
+          className="px-2 py-1 rounded-lg hover:bg-line/[0.06] text-ink-2 hover:text-ink flex items-center gap-1.5 transition text-xs"
           title="Copy code"
         >
           {copied ? (
@@ -101,7 +101,7 @@ function CodeBlock({ language, code = '' }: { language?: string; code?: string }
           )}
         </button>
       </div>
-      <pre className="p-4 text-xs font-mono text-zinc-200 overflow-x-auto leading-relaxed selection:bg-amber-500/30">
+      <pre className="p-4 text-xs font-mono text-ink overflow-x-auto leading-relaxed selection:bg-brand/30">
         <code>{code}</code>
       </pre>
     </div>
@@ -134,26 +134,26 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
   }
 
   return (
-    <div className="my-4 rounded-2xl bg-zinc-950/80 border border-white/[0.08] overflow-hidden shadow-2xl group max-w-2xl">
-      <div className="relative aspect-square max-h-[512px] bg-zinc-900 flex items-center justify-center overflow-hidden">
+    <div className="my-4 rounded-2xl bg-canvas/80 border border-line/[0.08] overflow-hidden shadow-2xl group max-w-2xl">
+      <div className="relative aspect-square max-h-[512px] bg-surface-2 flex items-center justify-center overflow-hidden">
         {!loaded && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-500 bg-zinc-900/50 backdrop-blur-sm">
-            <div className="w-8 h-8 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-3 bg-surface-2/50 backdrop-blur-sm">
+            <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
             <span className="text-xs font-mono">Rendering high-res frame...</span>
           </div>
         )}
         {error ? (
-          <div className="p-6 text-center text-zinc-400 space-y-3">
-            <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+          <div className="p-6 text-center text-ink-2 space-y-3">
+            <AlertTriangle className="w-8 h-8 text-brand mx-auto" />
             <div>
-              <p className="text-xs font-medium text-zinc-200">Unable to display preview</p>
-              <p className="text-[11px] text-zinc-500 mt-0.5">GPU rendering queue busy or network delay</p>
+              <p className="text-xs font-medium text-ink">Unable to display preview</p>
+              <p className="text-[11px] text-ink-3 mt-0.5">GPU rendering queue busy or network delay</p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={handleRetry}
-                className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+                className="px-3 py-1.5 rounded-lg bg-brand/20 hover:bg-brand/30 text-brand-soft border border-brand/30 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
               >
                 <RotateCw className="w-3.5 h-3.5" />
                 <span>Retry Rendering</span>
@@ -162,7 +162,7 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
                 href={imgSrc}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-medium border border-white/10 flex items-center gap-1 transition"
+                className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-ink-2 text-xs font-medium border border-line/10 flex items-center gap-1 transition"
               >
                 <span>Direct Link</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -180,10 +180,10 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
           />
         )}
 
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-lg">
+        <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-md p-1 rounded-xl border border-line/10 shadow-lg">
           <button
             onClick={handleRetry}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"
+            className="p-1.5 rounded-lg hover:bg-line/10 text-ink-2 hover:text-ink transition text-xs"
             title="Refresh image"
           >
             <RotateCw className="w-3.5 h-3.5" />
@@ -192,14 +192,14 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
             href={imgSrc}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"
+            className="p-1.5 rounded-lg hover:bg-line/10 text-ink-2 hover:text-ink transition text-xs"
             title="Open in new tab"
           >
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
           <button
             onClick={handleCopy}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition text-xs"
+            className="p-1.5 rounded-lg hover:bg-line/10 text-ink-2 hover:text-ink transition text-xs"
             title="Copy image link"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -221,8 +221,8 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
       elements.push(
         <ul key={`ul-${elements.length}`} className="my-2 space-y-1.5 pl-1">
           {currentList.items.map((item, idx) => (
-            <li key={idx} className="flex items-start gap-2.5 text-zinc-300 leading-relaxed">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0 opacity-80" />
+            <li key={idx} className="flex items-start gap-2.5 text-ink-2 leading-relaxed">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand mt-2 shrink-0 opacity-80" />
               <span className="flex-1">{renderInline(item, onOpenFile)}</span>
             </li>
           ))}
@@ -232,8 +232,8 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
       elements.push(
         <ol key={`ol-${elements.length}`} className="my-2 space-y-1.5 pl-1">
           {currentList.items.map((item, idx) => (
-            <li key={idx} className="flex items-start gap-2.5 text-zinc-300 leading-relaxed">
-              <span className="px-1.5 py-0.2 rounded bg-white/[0.05] border border-white/10 text-[10px] font-mono text-amber-300 font-semibold shrink-0 mt-0.5">
+            <li key={idx} className="flex items-start gap-2.5 text-ink-2 leading-relaxed">
+              <span className="px-1.5 py-0.2 rounded bg-line/[0.05] border border-line/10 text-[10px] font-mono text-brand-soft font-semibold shrink-0 mt-0.5">
                 {idx + 1}
               </span>
               <span className="flex-1">{renderInline(item, onOpenFile)}</span>
@@ -260,9 +260,9 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
       elements.push(
         <div
           key={`alert-${i}`}
-          className="my-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs flex items-start gap-2.5 shadow-md"
+          className="my-3 p-3.5 rounded-2xl bg-brand/10 border border-brand/25 text-brand-soft text-xs flex items-start gap-2.5 shadow-md"
         >
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <AlertTriangle className="w-4 h-4 text-brand shrink-0 mt-0.5" />
           <div className="leading-relaxed flex-1">{renderInline(trimmed.replace(/^⚠️\s*/, ''), onOpenFile)}</div>
         </div>
       );
@@ -285,7 +285,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
       elements.push(
         <blockquote
           key={`quote-${i}`}
-          className="border-l-2 border-amber-500/50 pl-3.5 my-2.5 text-zinc-400 italic text-xs leading-relaxed"
+          className="border-l-2 border-brand/50 pl-3.5 my-2.5 text-ink-2 italic text-xs leading-relaxed"
         >
           {renderInline(trimmed.replace(/^>\s*/, ''), onOpenFile)}
         </blockquote>
@@ -297,7 +297,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     if (trimmed.startsWith('# ') && !trimmed.startsWith('## ')) {
       flushList();
       elements.push(
-        <h1 key={`h1-${i}`} className="text-lg font-bold text-white mt-4 mb-2 tracking-tight">
+        <h1 key={`h1-${i}`} className="text-lg font-bold text-ink mt-4 mb-2 tracking-tight">
           {renderInline(trimmed.slice(2).trim(), onOpenFile)}
         </h1>
       );
@@ -306,7 +306,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     if (trimmed.startsWith('## ') && !trimmed.startsWith('### ')) {
       flushList();
       elements.push(
-        <h2 key={`h2-${i}`} className="text-base font-bold text-white mt-3.5 mb-1.5 tracking-tight">
+        <h2 key={`h2-${i}`} className="text-base font-bold text-ink mt-3.5 mb-1.5 tracking-tight">
           {renderInline(trimmed.slice(3).trim(), onOpenFile)}
         </h2>
       );
@@ -315,7 +315,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     if (trimmed.startsWith('### ')) {
       flushList();
       elements.push(
-        <h3 key={`h3-${i}`} className="text-sm font-bold text-amber-300 mt-3 mb-1 tracking-tight">
+        <h3 key={`h3-${i}`} className="text-sm font-bold text-brand-soft mt-3 mb-1 tracking-tight">
           {renderInline(trimmed.slice(4).trim(), onOpenFile)}
         </h3>
       );
@@ -324,7 +324,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     if (trimmed.startsWith('#### ')) {
       flushList();
       elements.push(
-        <h4 key={`h4-${i}`} className="text-xs font-semibold text-zinc-100 mt-2.5 mb-1 tracking-tight">
+        <h4 key={`h4-${i}`} className="text-xs font-semibold text-ink mt-2.5 mb-1 tracking-tight">
           {renderInline(trimmed.slice(5).trim(), onOpenFile)}
         </h4>
       );
@@ -356,7 +356,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     // Regular paragraph
     flushList();
     elements.push(
-      <p key={`p-${i}`} className="text-zinc-200 leading-relaxed my-1">
+      <p key={`p-${i}`} className="text-ink leading-relaxed my-1">
         {renderInline(trimmed, onOpenFile)}
       </p>
     );
@@ -408,7 +408,7 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
             key={`file-${match.index}`}
             type="button"
             onClick={() => onOpenFile(inner)}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-mono text-[12px] font-medium transition cursor-pointer hover:underline mx-0.5 shadow-sm"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-brand/15 hover:bg-brand/25 border border-brand/30 text-brand-soft font-mono text-[12px] font-medium transition cursor-pointer hover:underline mx-0.5 shadow-sm"
             title={`Click to open ${inner}`}
           >
             <span>📄</span>
@@ -419,7 +419,7 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
         tokens.push(
           <code
             key={`code-${match.index}`}
-            className="px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-amber-300 font-mono text-[12px] font-medium"
+            className="px-1.5 py-0.5 rounded-md bg-line/[0.06] border border-line/10 text-brand-soft font-mono text-[12px] font-medium"
           >
             {inner}
           </code>
@@ -427,13 +427,13 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
       }
     } else if (token.startsWith('**') && token.endsWith('**')) {
       tokens.push(
-        <strong key={`bold-${match.index}`} className="font-semibold text-white">
+        <strong key={`bold-${match.index}`} className="font-semibold text-ink">
           {token.slice(2, -2)}
         </strong>
       );
     } else if (token.startsWith('*') && token.endsWith('*')) {
       tokens.push(
-        <em key={`italic-${match.index}`} className="italic text-zinc-300">
+        <em key={`italic-${match.index}`} className="italic text-ink-2">
           {token.slice(1, -1)}
         </em>
       );
@@ -446,7 +446,7 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
             href={linkMatch[2]}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-amber-400 underline underline-offset-2 hover:text-amber-300 transition"
+            className="text-brand underline underline-offset-2 hover:text-brand-soft transition"
           >
             {linkMatch[1]}
           </a>

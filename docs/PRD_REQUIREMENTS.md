@@ -139,9 +139,25 @@ Last QA: 2026-10-30. Score history in §9. Setup steps that need an account owne
 | B3 | GitHub push and PRs from the cloud sandbox with the user's fine-grained token, passed as an env var and redacted from output. |
 | B4 | Chrome extension (MV3): one dedicated agent tab, numbered elements, approval notifications before clicks and typing, never types into password or payment fields, screenshots go to Blob. **Not yet live-tested in Chrome**: load `extensions/chrome` unpacked and pair. |
 
+## 13. Product UX and brand (vet every UI change)
+
+| ID | Rule |
+|---|---|
+| U1 | **No jargon in the UI.** No "ReAct", "routes", "D1", "ledger", "smart route", "BYOK vault". Use plain verbs: "Runs on your computer", "Add key", "Free". |
+| U2 | **One composer per mode**: text, a "+" menu and a model picker ("Auto" first). No mode toggles: intent is inferred (image, code, co-work), and Chat routes to Code or Co-Work automatically. |
+| U3 | **No canned suggestion cards.** Empty states show a heading, one line and the live system strip. |
+| U4 | **Act first, ask rarely.** Agents plan with a visible checklist and ask with `ask_user` only when the answer materially changes the result (at most 2 per task), via in-stream cards with options. |
+| U5 | **No browser dialogs.** Use `useDialog()` (confirm, alert, prompt) and inline expanding rows. No `window.alert`, `confirm` or `prompt`. |
+| U6 | **Shell**: the logo sits over the sidebar column; the mode switcher appears only on Chat, Co-Work and Code; account pages show "← Back to <mode>" plus the title; the profile menu is top-right; there's one profile UI, never two. |
+| U7 | **Information architecture**: Connections is the single place for models, apps (Google, GitHub, MCP), devices and assistants. `/models` redirects there. Settings holds preferences and skills. Usage covers cost and limits only. |
+| U8 | **Brand**: graphite neutrals and Volt `#C6F432` (to Ion `#34E1D8` for gradients) through tokens only (`bg-surface`, `text-ink-2`, `bg-brand`…), no raw hex in components. Signature elements: the live system strip, the energized composer ring, the timeline step rail, mono metadata and a dot-grid atmosphere. No all-caps labels and no emoji in UI. Distinct from Claude: no serif greeting, no flat cream surfaces. |
+| U9 | **Durable work**: Code tasks run as background runs (they survive refresh, tab close and network blips), files save as they're written, and threads rebuild from runs. |
+| U10 | Every screen is checked at 1440px and 390px before shipping. |
+
 ## 9. Scorecard history
 
 | Date | Code | Co-Work | MCP | Skills | Image | Video | Overall | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 2026-10-30 | 2 | 2 | 1 | 2 | 3 | 0 | **3/10** | Before the fixes in this commit: agent prompt was dropped, test output was faked, the App.tsx fallback overwrote files, MCP tools were fake, the image error was wrong, the email schedule was fake, and video only produced scripts. |
 | 2026-10-30 (pm) | 9 | 8 | 9 | 8 | 8 | 8 | **8.5/10** (local QA) | Native tool-calling agent with real sandbox (tests fail → fix → pass, free models); Co-Work with Gmail, Calendar, schedules, approvals and a cron runner; real MCP; SKILL.md skills; FLUX.2 images; ffmpeg video; Turso adapter; device bridge; MCP server with OAuth; fail-over. **Production pending owner setup (SETUP.md).** |
+| 2026-10-30 (eve) | 9 | 8.5 | 9 | 8 | 8.5 | 8 | **8.7/10** (local QA; UX ~8) | Redesign: brand and tokens, new shell, merged Connections, inline keys with validation, branded dialogs, intent auto-routing, durable Code runs with previews, local-folder mode, plan and ask_user cards. Still pending: production (owner setup), Chrome extension live test, Gmail live test. |

@@ -32,6 +32,7 @@ export class ProjectSandbox {
         name: sandboxName(this.userId, this.projectId),
         runtime: 'node24',
         timeout: 15 * 60 * 1000,
+        ports: [3000, 5173],
       });
     }
     return this.sandbox;
@@ -60,6 +61,20 @@ export class ProjectSandbox {
       : await sbx.runCommand('bash', ['-lc', command], { timeoutMs, signal });
     const output = await result.output('both');
     return { exitCode: result.exitCode, output };
+  }
+
+  /** Starts a dev server in the background and returns its public preview URL. */
+  async startPreview(command: string, port: number): Promise<{ url: string; output: string }> {
+    const sbx = await this.get();
+    const cmd = await sbx.runCommand({ cmd: 'bash', args: ['-lc', command], detached: true } as any);
+    await new Promise((r) => setTimeout(r, 6000));
+    let output = '';
+    try {
+      output = await (cmd as any).output?.('both', { signal: AbortSignal.timeout(2000) });
+    } catch {
+      // still running; output is streamed
+    }
+    return { url: sbx.domain(port), output: output || '' };
   }
 
   /** Reads a file the command produced (e.g. a rendered video) back out of the sandbox. */

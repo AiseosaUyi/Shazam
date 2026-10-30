@@ -80,7 +80,8 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
     const resolution = await resolveAgentRoute(user, repo, prompt, taskClass, pinnedModel);
     if (resolution.selectedRoute.providerId !== 'simulation') {
       const { model, modelId } = await createLanguageModel(resolution.selectedRoute.providerId, resolution.selectedModel.providerModelId, resolution.apiKey);
-      chain.push({ model, modelId, provider: resolution.selectedRoute.providerId, label: `${resolution.selectedModel.name} (your key)` });
+      const ownKey = resolution.selectedProvider.requiresApiKey;
+      chain.push({ model, modelId, provider: resolution.selectedRoute.providerId, label: ownKey ? `${resolution.selectedModel.name} · your key` : resolution.selectedModel.name });
     }
   } catch {
     // no routed BYOK model; continue with free options
@@ -94,7 +95,7 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
       try {
         const key = await decryptSecret(cred.encryptedKey);
         const built = await createLanguageModel(provider, modelId, key);
-        chain.push({ model: built.model, modelId: built.modelId, provider, label: `${built.modelId} (your free ${provider} key)` });
+        chain.push({ model: built.model, modelId: built.modelId, provider, label: `${built.modelId} · your ${provider} key` });
       } catch {
         // skip unusable key
       }
@@ -108,7 +109,7 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
     const desktop = await new BridgeRepo().onlineDevice(user.id, 'desktop');
     const local = desktop ? pickLocalModel((desktop.capabilities.localModels as any[]) || []) : null;
     if (desktop && local) {
-      const entry = { model: createLocalModel(user.id, desktop, local), modelId: local.id, provider: 'local', label: `${local.id} (local on ${desktop.name})` };
+      const entry = { model: createLocalModel(user.id, desktop, local), modelId: local.id, provider: 'local', label: `${local.id} · on ${desktop.name}` };
       if (/^local/i.test(pinnedModel || '')) chain.unshift(entry);
       else chain.push(entry);
     }
@@ -117,7 +118,7 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
   }
 
   if (process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN) {
-    for (const id of GATEWAY_FREE_CHAINS[taskClass]) chain.push({ model: gateway(id.trim()), modelId: id.trim(), provider: 'gateway', label: `${id.trim()} (free platform model)` });
+    for (const id of GATEWAY_FREE_CHAINS[taskClass]) chain.push({ model: gateway(id.trim()), modelId: id.trim(), provider: 'gateway', label: `${id.trim().split('/').pop()} · free` });
   }
 
   if (chain.length === 0) throw new Error('No model available. Add a free Google AI Studio, Groq or OpenRouter key in Connections.');

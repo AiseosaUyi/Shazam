@@ -32,7 +32,7 @@ export function GoogleConnectCard() {
   }
 
   return (
-    <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/[0.08] space-y-3">
+    <div className="p-5 rounded-2xl bg-surface border border-line/[0.08] space-y-3">
       {flash && (
         <div className={`text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${flash === 'connected' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
           {flash === 'connected' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
@@ -40,28 +40,28 @@ export function GoogleConnectCard() {
         </div>
       )}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-          <Mail className="w-5 h-5 text-amber-400" />
+        <div className="w-10 h-10 rounded-xl bg-line/5 border border-line/10 flex items-center justify-center shrink-0">
+          <Mail className="w-5 h-5 text-brand" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white">Gmail & Google Calendar</p>
-          <p className="text-xs text-zinc-400">
+          <p className="text-sm font-semibold text-ink">Gmail & Google Calendar</p>
+          <p className="text-xs text-ink-2">
             {state?.connected
               ? `Connected as ${state.email || 'your Google account'}. Co-Work can search, draft, send and schedule email (sends always ask you first).`
               : 'Lets Co-Work read your inbox, send and schedule email, and create calendar events, always with your approval.'}
           </p>
         </div>
         {!state ? (
-          <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />
+          <Loader2 className="w-4 h-4 animate-spin text-ink-3" />
         ) : state.connected ? (
           <div className="flex gap-2">
-            <a href="/api/v1/oauth/google/start" className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-zinc-200">Reconnect</a>
-            <button onClick={disconnect} className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/10 text-xs text-zinc-300 hover:text-red-300">Disconnect</button>
+            <a href="/api/v1/oauth/google/start" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">Reconnect</a>
+            <button onClick={disconnect} className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-red-500/10 text-xs text-ink-2 hover:text-red-300">Disconnect</button>
           </div>
         ) : state.configured ? (
-          <a href="/api/v1/oauth/google/start" className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-semibold">Connect Google</a>
+          <a href="/api/v1/oauth/google/start" className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-soft text-brand-ink text-xs font-semibold">Connect Google</a>
         ) : (
-          <span className="text-[11px] text-zinc-500">Awaiting admin setup</span>
+          <span className="text-[11px] text-ink-3">Awaiting admin setup</span>
         )}
       </div>
     </div>

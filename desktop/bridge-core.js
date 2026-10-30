@@ -18,6 +18,9 @@ const DEFAULT_SERVER = process.env.SHAZAM_SERVER || 'https://shazam-opal.vercel.
 
 const SECRET_PATTERNS = [/(^|\/)\.env(\.|$)/i, /\.pem$/i, /\.key$/i, /(^|\/)id_(rsa|ed25519|ecdsa)/i, /(^|\/)\.ssh(\/|$)/, /(^|\/)\.aws(\/|$)/, /credentials\.json$/i, /(^|\/)\.git\/config$/];
 const RISKY_COMMAND = /\b(git\s+push|git\s+reset\s+--hard|git\s+clean|rm\s+-[a-z]*[rf]|sudo|npm\s+publish|pnpm\s+publish|yarn\s+publish|gh\s+(pr\s+merge|repo\s+delete|release)|docker\s+(rm|rmi|system\s+prune)|kubectl\s+(delete|apply)|terraform\s+(apply|destroy)|vercel\s+(deploy|--prod)|curl[^|]*\|\s*(ba|z)?sh|chmod\s+-R|chown|mkfs|dd\s+if=|shutdown|reboot)\b/i;
+// Commands that never exit on their own: they must go through `spawn` (start_preview).
+const LONG_RUNNING = /(&\s*$)|\b(http\.server|npm\s+(run\s+)?(dev|start)|pnpm\s+(run\s+)?(dev|start)|yarn\s+(dev|start)|next\s+(dev|start)|vite(\s|$)|npx\s+serve|serve\s+-|nodemon|webpack\s+serve|tail\s+-f|watch\b)/i;
+
 const SKIP_DIRS = new Set(['node_modules', '.git', '.next', 'dist', 'build', '.turbo', '.vercel', '.cache', 'coverage', '__pycache__', '.venv']);
 
 function loadConfig() {
@@ -182,6 +185,9 @@ class BridgeClient {
     switch (cmd.command) {
       case 'exec': {
         const cwd = guardPath(p.cwd, workspaces);
+        if (LONG_RUNNING.test(String(p.command))) {
+          return { ok: false, result: 'This command keeps running (server/watch mode). Use start_preview to run it in the background instead of run_command.' };
+        }
         if (RISKY_COMMAND.test(p.command)) {
           const ok = await this.approve('Shazam wants to run a command that changes things outside the editor', `${p.command}\n\nin ${cwd}`);
           if (!ok) return { ok: false, result: 'The user declined this command on their computer.' };
@@ -220,6 +226,38 @@ class BridgeClient {
         const body = await res.text();
         this.log(`local LLM ${new URL(p.url).pathname} → ${res.status}`);
         return { ok: true, result: { status: res.status, contentType: res.headers.get('content-type') || 'application/json', body } };
+      }
+      case 'grep': {
+        const root = guardPath(p.path, workspaces);
+        const pattern = String(p.pattern || '').slice(0, 200);
+        if (!pattern) return { ok: false, result: 'pattern is required' };
+        const isGit = fs.existsSync(path.join(root, '.git'));
+        const cmd = isGit
+          ? `git grep -n -I -i -E ${JSON.stringify(pattern)} -- . ':!*.lock' | head -n 120`
+          : `grep -rnIiE ${JSON.stringify(pattern)} . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=.next --exclude-dir=dist | head -n 120`;
+        const r = await execCommand(cmd, root, 30_000);
+        return { ok: true, result: r.output.trim() || `No matches for /${pattern}/.` };
+      }
+      case 'spawn': {
+        // Start a long-running process (dev server) and return its first output.
+        const cwd = guardPath(p.cwd, workspaces);
+        const shell = process.env.SHELL || '/bin/bash';
+        const child = spawn(shell, ['-lc', p.command], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, FORCE_COLOR: '0' } });
+        let out = '';
+        let exitCode = null;
+        child.stdout.on('data', (d) => (out += d));
+        child.stderr.on('data', (d) => (out += d));
+        child.on('exit', (code) => (exitCode = code ?? 1));
+        child.unref();
+        await new Promise((r) => setTimeout(r, Math.min(20_000, Number(p.waitMs) || 8000)));
+        if (exitCode !== null) {
+          return { ok: false, result: `The process exited immediately (code ${exitCode}), so nothing is running:\n${out.slice(-3000)}` };
+        }
+        // Stop holding the pipes so the server keeps running after we return.
+        child.stdout.destroy();
+        child.stderr.destroy();
+        this.log(`started ${p.command} (pid ${child.pid}) in ${cwd}`);
+        return { ok: true, result: `Running (pid ${child.pid}). Output so far:\n${out.slice(-4000)}` };
       }
       case 'list_files': {
         const root = guardPath(p.path, workspaces);
@@ -298,4 +336,4 @@ class BridgeClient {
   }
 }
 
-module.exports = { probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
+module.exports = { LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
