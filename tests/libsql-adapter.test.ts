@@ -25,4 +25,22 @@ describe('Turso / libSQL persistent database adapter', () => {
     const servers = await repo1.getMcpServers('u1');
     assert.equal(servers[0].tools[0].name, 't');
   });
+
+  it('creates the client lazily (production path) and the adapter module stays synchronous', async () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'shazam-libsql-')), 'db.sqlite');
+    let created = 0;
+    const db = new LibsqlDatabase(async () => {
+      created++;
+      return createClient({ url: `file:${file}`, intMode: 'number' });
+    });
+    assert.equal(created, 0, 'no client before the first query');
+    const repo = new DbRepo(db);
+    await repo.createUser({ id: 'u2', email: 'b@example.com', name: 'B', passwordHash: 'h', role: 'user' });
+    assert.equal((await repo.getUserByEmail('b@example.com'))?.id, 'u2');
+    assert.equal(created, 1, 'client is created once and reused');
+
+    // Guard against the prod crash: the module must not statically import @libsql/client.
+    const src = fs.readFileSync(path.join(process.cwd(), 'src/lib/db/libsql.ts'), 'utf8');
+    assert.doesNotMatch(src, /^import (?!type )[^;]*from '@libsql\/client'/m);
+  });
 });

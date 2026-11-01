@@ -1,4 +1,7 @@
-import { createClient, type Client, type InStatement, type ResultSet } from '@libsql/client';
+// Type-only import: a value import of @libsql/client turns this module into an async (ESM)
+// webpack module, and getDb()'s synchronous require() then receives a Promise and every query
+// crashes with "a is not a function". The client is loaded lazily with import() instead.
+import type { Client, InStatement, ResultSet } from '@libsql/client';
 import type { SqlDatabase, SqlStatement } from './sql';
 import { MIGRATIONS } from './migrations.generated';
 
@@ -56,12 +59,25 @@ class LibsqlStatement implements SqlStatement {
 
 export class LibsqlDatabase implements SqlDatabase {
   private ready: Promise<void> | null = null;
+  private clientPromise: Promise<Client> | null = null;
 
-  constructor(private client: Client) {}
+  /** Accepts a client, or a factory that creates one on first use. */
+  constructor(private client: Client | (() => Promise<Client>)) {}
+
+  private getClient(): Promise<Client> {
+    if (!this.clientPromise) {
+      const c = this.client;
+      this.clientPromise = typeof c === 'function' ? c() : Promise.resolve(c);
+      this.clientPromise.catch(() => {
+        this.clientPromise = null;
+      });
+    }
+    return this.clientPromise;
+  }
 
   private ensureReady(): Promise<void> {
     if (!this.ready) {
-      this.ready = runMigrations(this.client).catch((err) => {
+      this.ready = this.getClient().then(runMigrations).catch((err) => {
         this.ready = null; // retry on next request instead of caching the failure
         throw err;
       });
@@ -71,7 +87,7 @@ export class LibsqlDatabase implements SqlDatabase {
 
   async execute(stmt: InStatement): Promise<ResultSet> {
     await this.ensureReady();
-    return this.client.execute(stmt);
+    return (await this.getClient()).execute(stmt);
   }
 
   prepare(query: string): SqlStatement {
@@ -80,7 +96,7 @@ export class LibsqlDatabase implements SqlDatabase {
 
   async batch(statements: SqlStatement[]): Promise<unknown[]> {
     await this.ensureReady();
-    return this.client.batch(statements.map((s) => (s as LibsqlStatement).toStatement()), 'write');
+    return (await this.getClient()).batch(statements.map((s) => (s as LibsqlStatement).toStatement()), 'write');
   }
 }
 
@@ -100,6 +116,11 @@ export async function runMigrations(client: Client): Promise<void> {
 let instance: LibsqlDatabase | null = null;
 
 export function getLibsqlDatabase(url: string, authToken?: string): LibsqlDatabase {
-  if (!instance) instance = new LibsqlDatabase(createClient({ url, authToken, intMode: 'number' }));
+  if (!instance) {
+    instance = new LibsqlDatabase(async () => {
+      const { createClient } = await import('@libsql/client');
+      return createClient({ url, authToken, intMode: 'number' });
+    });
+  }
   return instance;
 }
