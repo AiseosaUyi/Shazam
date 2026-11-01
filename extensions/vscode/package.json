@@ -74,7 +74,7 @@
         },
         "shazam.cloudUrl": {
           "type": "string",
-          "default": "https://shazam-opal.vercel.app",
+          "default": "https://arcwork-ai.vercel.app",
           "description": "Arcwork production cloud endpoint"
         },
         "shazam.preferredModel": {

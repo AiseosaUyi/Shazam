@@ -3,7 +3,7 @@
  * shazam-bridge — connect this computer to Arcwork so cloud agents can run commands,
  * edit files and use git (with your own credentials) inside folders you allow.
  *
- *   shazam-bridge pair <CODE> [--server https://shazam-opal.vercel.app] [--name "My Mac"]
+ *   shazam-bridge pair <CODE> [--server https://arcwork-ai.vercel.app] [--name "My Mac"]
  *   shazam-bridge allow <folder>          # add a workspace folder
  *   shazam-bridge disallow <folder>
  *   shazam-bridge status

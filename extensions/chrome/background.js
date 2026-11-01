@@ -4,7 +4,7 @@
  * commands queued by their agents, in a single dedicated "Arcwork" tab.
  */
 
-const DEFAULTS = { server: 'https://shazam-opal.vercel.app', token: null, askBeforeActions: true };
+const DEFAULTS = { server: 'https://arcwork-ai.vercel.app', token: null, askBeforeActions: true };
 let polling = false;
 const pendingApprovals = new Map();
 

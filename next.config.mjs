@@ -38,6 +38,18 @@ const nextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
+  // Old address → Arcwork. Pages move; API, OAuth and well-known paths stay on both hosts so
+  // paired desktops, browser extensions and MCP connectors keep working.
+  async redirects() {
+    return [
+      {
+        source: '/:path((?!api/|\\.well-known/|oauth/|connected).*)',
+        has: [{ type: 'host', value: 'shazam-opal.vercel.app' }],
+        destination: 'https://arcwork-ai.vercel.app/:path',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

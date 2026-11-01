@@ -5,6 +5,6 @@
 export const BRAND_NAME = 'Arcwork';
 export const LEGAL_ENTITY = 'Arcwork';
 export const CONTACT_EMAIL = 'aiseosauyiidahor@gmail.com';
-export const PUBLIC_URL = 'https://shazam-opal.vercel.app';
+export const PUBLIC_URL = 'https://arcwork-ai.vercel.app';
 /** Date the current Privacy Policy and Terms took effect. */
 export const LEGAL_EFFECTIVE_DATE = 'November 1, 2026';

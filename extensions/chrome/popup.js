@@ -6,7 +6,7 @@ async function render() {
   $('status').className = 'pill' + (s.status === 'connected' ? ' ok' : '');
   $('pair').style.display = paired ? 'none' : 'block';
   $('paired').style.display = paired ? 'block' : 'none';
-  $('server').value = $('server').value || s.server || 'https://shazam-opal.vercel.app';
+  $('server').value = $('server').value || s.server || 'https://arcwork-ai.vercel.app';
   $('ask').checked = s.askBeforeActions !== false;
   $('activity').textContent = (s.activity || []).slice(-15).join('\n') || '—';
 }

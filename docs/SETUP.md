@@ -27,7 +27,7 @@ signed-up user becomes admin (or set `ADMIN_EMAILS`).
 openssl rand -hex 32 | vercel env add SHAZAM_ENCRYPTION_KEY production --sensitive
 # Vercel Cron sends this as a bearer token to /api/cron/jobs (sends scheduled emails)
 openssl rand -hex 24 | vercel env add CRON_SECRET production --sensitive
-printf "https://shazam-opal.vercel.app" | vercel env add APP_URL production
+printf "https://arcwork-ai.vercel.app" | vercel env add APP_URL production
 printf "aiseosauyiidahor@gmail.com" | vercel env add ADMIN_EMAILS production
 ```
 Repeat for `preview` if you want previews to work fully. Already connected: `BLOB_READ_WRITE_TOKEN`
@@ -42,7 +42,7 @@ Repeat for `preview` if you want previews to work fully. Already connected: `BLO
    (gmail.readonly is a restricted scope: public launch needs Google verification; test
    mode works for up to 100 users.)
 4. Credentials → Create OAuth client ID → Web application → Authorized redirect URI:
-   `https://shazam-opal.vercel.app/api/v1/oauth/google/callback`
+   `https://arcwork-ai.vercel.app/api/v1/oauth/google/callback`
    (add `http://localhost:3000/api/v1/oauth/google/callback` for local dev).
 5. ```bash
    printf "<client id>"     | vercel env add GOOGLE_CLIENT_ID production
@@ -70,12 +70,12 @@ stronger models and higher limits. Override defaults with `SHAZAM_GATEWAY_CODE_M
 Shazam → Connections → **Connect Claude, Codex & Antigravity** → create a token → copy the
 snippet. Claude Code:
 ```bash
-claude mcp add --transport http shazam https://shazam-opal.vercel.app/api/mcp \
+claude mcp add --transport http shazam https://arcwork-ai.vercel.app/api/mcp \
   --header "Authorization: Bearer shz_pat_…" --scope user
 ```
 Then: *"Use Shazam to build X. When it's done, review the files and send feedback until it's right."*
 Claude.ai / Claude Desktop: Settings → Connectors → Add custom connector → URL
-`https://shazam-opal.vercel.app/api/mcp` (OAuth sign-in opens automatically).
+`https://arcwork-ai.vercel.app/api/mcp` (OAuth sign-in opens automatically).
 
 ## 6. Desktop app & browser extension
 

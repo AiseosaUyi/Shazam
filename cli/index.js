@@ -426,7 +426,7 @@ function startServer(port, maxAttempts = 10) {
   server.listen(port, '127.0.0.1', async () => {
     const boundPort = port;
     const isDev = await isDevServerRunning();
-    const webBaseUrl = isDev ? 'http://localhost:3000' : 'https://shazam-opal.vercel.app';
+    const webBaseUrl = isDev ? 'http://localhost:3000' : 'https://arcwork-ai.vercel.app';
     const targetUrl = `${webBaseUrl}/agent?token=${DAEMON_TOKEN}&port=${boundPort}`;
 
     console.log('\n================================================================');

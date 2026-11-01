@@ -14,7 +14,7 @@ const { spawn } = require('child_process');
 const VERSION = '1.0.0';
 const CONFIG_DIR = path.join(os.homedir(), '.shazam');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'bridge.json');
-const DEFAULT_SERVER = process.env.SHAZAM_SERVER || 'https://shazam-opal.vercel.app';
+const DEFAULT_SERVER = process.env.SHAZAM_SERVER || 'https://arcwork-ai.vercel.app';
 
 const SECRET_PATTERNS = [/(^|\/)\.env(\.|$)/i, /\.pem$/i, /\.key$/i, /(^|\/)id_(rsa|ed25519|ecdsa)/i, /(^|\/)\.ssh(\/|$)/, /(^|\/)\.aws(\/|$)/, /credentials\.json$/i, /(^|\/)\.git\/config$/];
 const RISKY_COMMAND = /\b(git\s+push|git\s+reset\s+--hard|git\s+clean|rm\s+-[a-z]*[rf]|sudo|npm\s+publish|pnpm\s+publish|yarn\s+publish|gh\s+(pr\s+merge|repo\s+delete|release)|docker\s+(rm|rmi|system\s+prune)|kubectl\s+(delete|apply)|terraform\s+(apply|destroy)|vercel\s+(deploy|--prod)|curl[^|]*\|\s*(ba|z)?sh|chmod\s+-R|chown|mkfs|dd\s+if=|shutdown|reboot)\b/i;

@@ -22,7 +22,7 @@ import { QuestionsRepo } from '@/lib/agents/ask';
 export const maxDuration = 800;
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] });
-const APP_URL = process.env.APP_URL || 'https://shazam-opal.vercel.app';
+const APP_URL = process.env.APP_URL || 'https://arcwork-ai.vercel.app';
 
 async function userFrom(ctx: any) {
   const userId = ctx?.http?.authInfo?.extra?.userId as string | undefined;
