@@ -47,13 +47,29 @@ export const GATEWAY_FREE_CHAINS: Record<'coding' | 'planning' | 'writing', stri
   writing: (process.env.SHAZAM_GATEWAY_WRITING_MODELS || 'openai/gpt-oss-120b,alibaba/qwen3.7-flash,moonshotai/kimi-k2').split(','),
 };
 
-/** Free-tier BYOK providers the user may have connected, with the best default model for each (vetted list). */
+/**
+ * Free-tier BYOK providers the user may have connected, with the best default model for each
+ * (vetted list), in the order long agent runs should try them. Gemini's free tier has the most
+ * room for agent work (large per-minute token budget, 1M context). Groq is very fast but its free
+ * tier allows only a few thousand tokens/min, which one agent step can exceed, so it is the last
+ * resort for long runs. Quick chat answers still go through the router, where Groq's speed fits.
+ */
 const FREE_BYOK: Record<string, string> = {
   google: 'gemini-3.8-flash',
-  groq: 'qwen/qwen3.8-27b',
   cerebras: 'gpt-oss-120b',
   openrouter: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+  groq: 'qwen/qwen3.8-27b',
 };
+
+/** Providers whose free tier is too tight to lead a long agent run. */
+const TIGHT_FOR_AGENTS = new Set(['groq']);
+
+/** Moves tight-limit providers to the end of the chain, keeping every other entry's order. */
+export function orderAgentChain<T extends { provider: string }>(chain: T[]): T[] {
+  const tight = chain.filter((c) => TIGHT_FOR_AGENTS.has(c.provider));
+  if (!tight.length) return chain;
+  return [...chain.filter((c) => !TIGHT_FOR_AGENTS.has(c.provider)), ...tight];
+}
 
 export interface AgentModel {
   model: import('ai').LanguageModel;
@@ -122,6 +138,8 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
   }
 
   if (chain.length === 0) throw new Error('No model available. Add a free Google AI Studio, Groq or OpenRouter key in Connections.');
+  // A model the user pinned always leads; otherwise keep tight free tiers out of the lead.
+  if (!pinnedModel) chain.splice(0, chain.length, ...orderAgentChain(chain));
   const model = createFallbackModel(chain.map((c) => ({ model: c.model, label: c.label })), onSwitch);
   return { model, label: chain[0].label, provider: chain[0].provider, modelId: chain[0].modelId, chain: chain.map((c) => c.label) };
 }

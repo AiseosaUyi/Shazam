@@ -17,9 +17,30 @@ export function isRetryableModelError(err: unknown): boolean {
     /rate.?limit|quota|RESOURCE_EXHAUSTED|overloaded|temporarily unavailable|capacity|Free tier users do not have access|insufficient|too many requests/i.test(msg);
 }
 
-function retryAfterMs(err: unknown): number {
-  const m = String((err as any)?.message || '').match(/retry after (\d+)\s*s/i);
-  return m ? Number(m[1]) * 1000 : 60_000;
+const strikes = new Map<string, number>();
+const MIN = 60_000;
+
+/**
+ * How long to rest a model after a limit error. Uses the provider's own "try again in" hint,
+ * rests much longer when the request can't fit the model's per-minute budget or a daily quota
+ * is spent (retrying in a minute would just fail again), and backs off further on each repeat
+ * so one tight free tier (Groq's is a few thousand tokens/min) can't stall a long run.
+ */
+export function cooldownMs(err: unknown, strike = 1): number {
+  const e = err as any;
+  const msg = `${e?.message || ''} ${e?.responseBody || ''}`;
+  if (/request too large|tokens per day|requests per day|\bTPD\b|\bRPD\b|per day|daily/i.test(msg) || e?.statusCode === 413) return 30 * MIN;
+  let hinted = 0;
+  const header = Number(e?.responseHeaders?.['retry-after']);
+  if (header > 0) hinted = header * 1000;
+  const after = msg.match(/retry after (\d+(?:\.\d+)?)\s*s/i);
+  if (after) hinted = Number(after[1]) * 1000;
+  const again = msg.match(/try again in (?:(\d+)h)?(?:(\d+)m(?!s))?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?/i);
+  if (again && again[0].length > 'try again in '.length) {
+    hinted = (Number(again[1] || 0) * 3600 + Number(again[2] || 0) * 60 + Number(again[3] || 0)) * 1000 + Number(again[4] || 0);
+  }
+  const backoff = Math.min(15 * MIN, MIN * 2 ** Math.max(0, strike - 1));
+  return Math.max(hinted, backoff);
 }
 
 export interface ChainEntry {
@@ -43,11 +64,15 @@ export function createFallbackModel(chain: ChainEntry[], onSwitch?: (from: strin
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i];
       try {
-        return await run(c.model);
+        const out = await run(c.model);
+        strikes.delete(key(c));
+        return out;
       } catch (err) {
         lastErr = err;
-        if (!isRetryableModelError(err)) throw err;
-        cooldownUntil.set(key(c), Date.now() + retryAfterMs(err));
+        if (!isRetryableModelError(err) && (err as any)?.statusCode !== 413) throw err;
+        const strike = (strikes.get(key(c)) || 0) + 1;
+        strikes.set(key(c), strike);
+        cooldownUntil.set(key(c), Date.now() + cooldownMs(err, strike));
         const next = candidates[i + 1];
         if (next) onSwitch?.(c.label, next.label, String((err as any)?.message || err).slice(0, 160));
       }
