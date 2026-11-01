@@ -128,14 +128,11 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
 }
 
 async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: PlatformRepo, send: EventSink): Promise<TaskResult> {
-  const { BridgeRepo, callDevice } = await import('@/lib/bridge/repo');
-  const device = await new BridgeRepo().onlineDevice(o.user.id, 'desktop');
-  if (!device) throw new Error('Your computer is not connected. Open the Arcwork desktop app (or run shazam-bridge start) to work in a local folder.');
-  const allowed = ((device.capabilities.workspaces as string[]) || []).map((w) => w.replace(/\/$/, ''));
+  const { callDevice } = await import('@/lib/bridge/repo');
+  const { ensureLocalFolder } = await import('@/lib/bridge/folders');
   const root = o.localRoot!.replace(/\/$/, '');
-  if (!allowed.some((w) => root === w || root.startsWith(`${w}/`))) {
-    throw new Error(`"${root}" is not an allowed folder on ${device.name}. Add it in the desktop app first.`);
-  }
+  // Offline → one actionable line; folder not allowed yet → the computer asks the person.
+  const device = await ensureLocalFolder(o.user.id, root, { signal: o.signal });
   send('react_execution', { backend: 'local', device: device.name, root });
 
   const agentModel = await getAgentModel(o.user, repo, o.prompt, 'coding', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }));

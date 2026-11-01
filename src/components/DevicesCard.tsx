@@ -54,7 +54,8 @@ export function DevicesCard() {
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">
-        <button onClick={newCode} className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink text-xs font-semibold">Get pairing code</button>
+        <a href="/connect" className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink text-xs font-semibold">Connect your computer</a>
+        <button onClick={newCode} className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">Use a pairing code</button>
         <a href="https://github.com/AiseosaUyi/Shazam/tree/main/extensions/chrome" target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">Chrome extension</a>
         <a href="/guide#computer" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">How it works</a>
       </div>
