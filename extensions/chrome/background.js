@@ -1,7 +1,7 @@
 /**
- * Shazam Browser Bridge (MV3 service worker).
- * Connects OUT to the user's Shazam server with a device token and executes browser
- * commands queued by their agents, in a single dedicated "Shazam" tab.
+ * Arcwork Browser Bridge (MV3 service worker).
+ * Connects OUT to the user's Arcwork server with a device token and executes browser
+ * commands queued by their agents, in a single dedicated "Arcwork" tab.
  */
 
 const DEFAULTS = { server: 'https://shazam-opal.vercel.app', token: null, askBeforeActions: true };
@@ -40,7 +40,7 @@ async function agentTab(createUrl) {
   const tab = await chrome.tabs.create({ url: createUrl || 'about:blank', active: true });
   try {
     const groupId = await chrome.tabs.group({ tabIds: [tab.id] });
-    await chrome.tabGroups.update(groupId, { title: 'Shazam agent', color: 'orange' });
+    await chrome.tabGroups.update(groupId, { title: 'Arcwork agent', color: 'orange' });
   } catch {
     // grouping is cosmetic
   }
@@ -105,7 +105,7 @@ function pageType(idx, text, submit) {
   const ac = (el.getAttribute('autocomplete') || '').toLowerCase();
   const name = `${el.getAttribute('name') || ''} ${el.id || ''}`.toLowerCase();
   if (type === 'password' || /cc-|card|cvc|cvv|iban/.test(`${ac} ${name}`)) {
-    return { ok: false, error: 'Refused: Shazam never types into password or payment fields. Ask the user to do this step.' };
+    return { ok: false, error: 'Refused: Arcwork never types into password or payment fields. Ask the user to do this step.' };
   }
   el.focus();
   if (el.isContentEditable) {
@@ -187,7 +187,7 @@ async function handle(cmd) {
     }
     case 'click': {
       const tab = await agentTab();
-      if (s.askBeforeActions && !(await askApproval('Shazam wants to click', `${p.reason || 'Click element'} [${p.element}] on ${new URL(tab.url || 'about:blank').host}`))) {
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to click', `${p.reason || 'Click element'} [${p.element}] on ${new URL(tab.url || 'about:blank').host}`))) {
         await log(`denied click [${p.element}]`);
         return { ok: false, result: 'The user denied this click.' };
       }
@@ -199,7 +199,7 @@ async function handle(cmd) {
     }
     case 'type': {
       const tab = await agentTab();
-      if (s.askBeforeActions && !(await askApproval('Shazam wants to type', `${p.reason || 'Type'}: "${String(p.text).slice(0, 120)}"${p.submit ? ' and submit' : ''}`))) {
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to type', `${p.reason || 'Type'}: "${String(p.text).slice(0, 120)}"${p.submit ? ' and submit' : ''}`))) {
         await log(`denied typing into [${p.element}]`);
         return { ok: false, result: 'The user denied typing.' };
       }
@@ -296,7 +296,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return sendResponse({ ok: false, error: data.error || `HTTP ${res.status}` });
       await chrome.storage.local.set({ server: msg.server.replace(/\/$/, ''), token: data.token, deviceName: data.device?.name });
-      await log('paired with Shazam');
+      await log('paired with Arcwork');
       pollLoop();
       sendResponse({ ok: true });
     } else if (msg.type === 'unpair') {

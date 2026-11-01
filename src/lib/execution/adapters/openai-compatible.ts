@@ -7,7 +7,7 @@ export interface ExecuteOptions {
   model: Model;
   route: Route;
   prompt: string;
-  /** Overrides the default Shazam identity prompt (e.g. the coding agent loop). */
+  /** Overrides the default Arcwork identity prompt (e.g. the coding agent loop). */
   systemPrompt?: string;
   history?: ChatMessage[];
   apiKey: string;
@@ -41,7 +41,7 @@ export async function executeOpenAICompatible(options: ExecuteOptions, endpoint:
 
   if (route.providerId === 'openrouter') {
     headers['HTTP-Referer'] = 'https://shazam.ai';
-    headers['X-Title'] = 'Shazam AI';
+    headers['X-Title'] = 'Arcwork';
   }
 
   const liveModelId = resolveLiveProviderModel(route.providerId, model.providerModelId);

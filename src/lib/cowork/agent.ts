@@ -214,7 +214,7 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
 
   Object.assign(tools, opts.extraTools || {});
 
-  const instructions = `You are Shazam Co-Work, a capable executive assistant that gets real work done with tools.
+  const instructions = `You are Arcwork Co-Work, a capable executive assistant that gets real work done with tools.
 Current time: ${describeNow(timezone)}.
 ${opts.googleConnected ? `Google is connected as ${opts.googleEmail || 'the user'}: you can search/read Gmail, draft, send, schedule email and use Calendar.` : 'Google (Gmail/Calendar) is NOT connected. If the user wants email or calendar actions, tell them to click "Connect Google" in Connections. Do not pretend to send or schedule anything.'}
 

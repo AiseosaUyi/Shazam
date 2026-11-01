@@ -144,7 +144,7 @@ export async function createLanguageModel(providerId: string, catalogModelId: st
           name: providerId,
           baseURL: OPENAI_COMPATIBLE_BASES[providerId],
           apiKey,
-          headers: providerId === 'openrouter' ? { 'HTTP-Referer': 'https://shazam-opal.vercel.app', 'X-Title': 'Shazam AI' } : undefined,
+          headers: providerId === 'openrouter' ? { 'HTTP-Referer': 'https://shazam-opal.vercel.app', 'X-Title': 'Arcwork' } : undefined,
         })(modelId),
         modelId,
       };

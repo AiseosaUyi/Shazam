@@ -41,7 +41,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
         <div className="flex items-center gap-3">
           <Bot className="w-5 h-5 text-brand" />
           <div className="min-w-0">
-            <p className="text-xs text-ink-3">{run.agent === 'code' ? 'Code agent' : 'Co-Work'} · started from {run.source === 'mcp' ? 'an assistant (MCP)' : 'Shazam'} · {run.model || 'choosing model…'}</p>
+            <p className="text-xs text-ink-3">{run.agent === 'code' ? 'Code agent' : 'Co-Work'} · started from {run.source === 'mcp' ? 'an assistant (MCP)' : 'Arcwork'} · {run.model || 'choosing model…'}</p>
             <p className="text-sm text-ink font-medium truncate">{run.prompt}</p>
           </div>
           <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded ${live ? 'bg-brand/15 text-brand-soft' : run.status === 'done' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{run.status}</span>

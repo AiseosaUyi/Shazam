@@ -9,14 +9,14 @@ import { KeySetupModal } from '@/components/connections/KeySetupModal';
 import { KEY_PROVIDERS } from '@/lib/providers/key-setup';
 
 /**
- * First run. Shazam works with zero setup on built-in free models; one free Gemini key (about a
- * minute, done without leaving Shazam) gives much better quality and limits. Everything else is
+ * First run. Arcwork works with zero setup on built-in free models; one free Gemini key (about a
+ * minute, done without leaving Arcwork) gives much better quality and limits. Everything else is
  * optional and can be added later in Connections.
  */
 const EXTRAS = [
   { href: '/connections#apps', icon: Mail, title: 'Connect Gmail & Calendar', body: 'So Co-Work can read, send and schedule email.' },
   { href: '/connections#devices', icon: Monitor, title: 'Connect your computer', body: 'Work in your own folders, run code locally, use local models.' },
-  { href: '/connections#assistants', icon: Bot, title: 'Connect Claude, Codex or Antigravity', body: 'Let the plan you already pay for hand heavy work to Shazam.' },
+  { href: '/connections#assistants', icon: Bot, title: 'Connect Claude, Codex or Antigravity', body: 'Let the plan you already pay for hand heavy work to Arcwork.' },
 ];
 
 const GEMINI = KEY_PROVIDERS.find((p) => p.id === 'google')!;
@@ -47,7 +47,7 @@ export default function OnboardingPage() {
           <div className="flex justify-center">
             <LogoMark size={44} />
           </div>
-          <h1 className="mt-5 text-[28px] font-semibold tracking-[-0.025em] text-ink">Welcome to Shazam</h1>
+          <h1 className="mt-5 text-[28px] font-semibold tracking-[-0.025em] text-ink">Welcome to Arcwork</h1>
           <p className="mx-auto mt-2 max-w-md text-[14px] text-ink-2">
             You can start right now on built-in free models. Add a free Gemini key for better answers and higher daily limits. It takes about a minute and you never leave this page.
           </p>
@@ -103,7 +103,7 @@ export default function OnboardingPage() {
 
         <div className="mt-8 text-center">
           <Link href="/" className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-[14px] font-semibold text-brand-ink hover:bg-brand-soft">
-            {anyKey ? 'Start using Shazam' : 'Start with built-in free models'} <ArrowRight className="h-4 w-4" />
+            {anyKey ? 'Start using Arcwork' : 'Start with built-in free models'} <ArrowRight className="h-4 w-4" />
           </Link>
           <p className="mt-2 text-[12px] text-ink-3">You can add or change any of this later in Connections.</p>
           <div className="mt-4 flex justify-center">

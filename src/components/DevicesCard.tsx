@@ -50,7 +50,7 @@ export function DevicesCard() {
       <div>
         <p className="text-sm font-semibold text-ink">Your devices</p>
         <p className="text-xs text-ink-2">
-          Let agents work on your computer (local folders, git push with your credentials, local LLMs) and in your real browser. Devices connect out to Shazam; nothing is exposed to the internet.
+          Let agents work on your computer (local folders, git push with your credentials, local LLMs) and in your real browser. Devices connect out to Arcwork; nothing is exposed to the internet.
         </p>
       </div>
 

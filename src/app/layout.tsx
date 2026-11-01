@@ -4,7 +4,7 @@ import { Navbar } from '@/components/Navbar';
 import { DialogProvider } from '@/components/ui/dialog';
 
 export const metadata: Metadata = {
-  title: 'Shazam',
+  title: 'Arcwork',
   description: 'Free AI agents that code, handle your inbox and make media.',
 };
 

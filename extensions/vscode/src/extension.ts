@@ -1,7 +1,7 @@
 /**
- * Shazam AI VS Code Extension
+ * Arcwork VS Code Extension
  * Provides Cursor/Claude Code grade inline Cmd+K editing, self-healing diagnostic fixes,
- * and direct routing through Shazam's multi-provider and local Ollama engine.
+ * and direct routing through Arcwork's multi-provider and local Ollama engine.
  */
 
 export interface VSCodeSnippet {
@@ -10,7 +10,7 @@ export interface VSCodeSnippet {
 }
 
 export function buildInlinePrompt(instruction: string, selection: string, fileContext: string): string {
-  return `You are Shazam AI, an expert programming assistant executing an inline code edit.
+  return `You are Arcwork, an expert programming assistant executing an inline code edit.
 Instruction: ${instruction}
 
 Target Code to Modify:
@@ -61,7 +61,7 @@ export function activate(context: any) {
     const selectedText = editor.document.getText(selection);
 
     const instruction = await vscode.window.showInputBox({
-      prompt: 'Describe what you want Shazam to build or refactor...',
+      prompt: 'Describe what you want Arcwork to build or refactor...',
       placeHolder: 'e.g. Refactor into async/await, add unit tests, optimize performance...',
     });
 
@@ -70,7 +70,7 @@ export function activate(context: any) {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: '⚡ Shazam AI: Generating inline code...',
+        title: '⚡ Arcwork: Generating inline code...',
         cancellable: false,
       },
       async () => {
@@ -91,15 +91,15 @@ export function activate(context: any) {
           // Apply replacement
           editor.edit((editBuilder: any) => {
             if (selection.isEmpty) {
-              editBuilder.insert(selection.active, `\n// Generated with Shazam AI: ${instruction}\n`);
+              editBuilder.insert(selection.active, `\n// Generated with Arcwork: ${instruction}\n`);
             } else {
               editBuilder.replace(selection, selectedText);
             }
           });
 
-          vscode.window.showInformationMessage('⚡ Shazam AI: Edit applied.');
+          vscode.window.showInformationMessage('⚡ Arcwork: Edit applied.');
         } catch (err: any) {
-          vscode.window.showErrorMessage(`Shazam Error: ${err.message}`);
+          vscode.window.showErrorMessage(`Arcwork Error: ${err.message}`);
         }
       }
     );
@@ -120,7 +120,7 @@ export function activate(context: any) {
     }
 
     const errorMsg = lineDiagnostics.map((d: any) => d.message).join('; ');
-    vscode.window.showInformationMessage(`⚡ Shazam AI: Analyzing fix for: "${errorMsg}"...`);
+    vscode.window.showInformationMessage(`⚡ Arcwork: Analyzing fix for: "${errorMsg}"...`);
   });
 
   // 3. Command: Status & Health Check
@@ -133,14 +133,14 @@ export function activate(context: any) {
       if (res.ok) {
         const data = await res.json();
         vscode.window.showInformationMessage(
-          `🟢 Shazam Daemon Active: ${data.projectName} (port 4040) · Zero-markup router connected`
+          `🟢 Arcwork Daemon Active: ${data.projectName} (port 4040) · Zero-markup router connected`
         );
       } else {
-        vscode.window.showWarningMessage(`⚠️ Shazam Daemon returned status ${res.status}.`);
+        vscode.window.showWarningMessage(`⚠️ Arcwork Daemon returned status ${res.status}.`);
       }
     } catch {
       vscode.window.showWarningMessage(
-        `🔴 Shazam Daemon offline. Run "npx shazam-agent" in your terminal to enable local IDE bridging.`
+        `🔴 Arcwork Daemon offline. Run "npx shazam-agent" in your terminal to enable local IDE bridging.`
       );
     }
   });

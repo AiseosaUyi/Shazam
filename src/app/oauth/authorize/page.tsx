@@ -44,8 +44,8 @@ export default function AuthorizePage() {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-brand/15 border border-brand/30 flex items-center justify-center text-brand"><Zap className="w-5 h-5" /></div>
           <div>
-            <p className="text-sm font-semibold text-ink">Connect to Shazam</p>
-            <p className="text-xs text-ink-2">Authorize an assistant to use your Shazam agents</p>
+            <p className="text-sm font-semibold text-ink">Connect to Arcwork</p>
+            <p className="text-xs text-ink-2">Authorize an assistant to use your Arcwork agents</p>
           </div>
         </div>
         {error ? (
@@ -57,7 +57,7 @@ export default function AuthorizePage() {
             <p className="text-sm text-ink"><strong>{info.clientName}</strong> wants to:</p>
             <ul className="text-xs text-ink-2 space-y-1.5 list-disc pl-5">
               <li>start Code and Co-Work tasks on your behalf and read their results</li>
-              <li>read files in your Shazam projects and generate images</li>
+              <li>read files in your Arcwork projects and generate images</li>
               <li>see and decide actions waiting for your approval</li>
             </ul>
             <p className="text-[11px] text-ink-3 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> It will return to {info.redirectHost}. You can revoke access anytime in Connections.</p>

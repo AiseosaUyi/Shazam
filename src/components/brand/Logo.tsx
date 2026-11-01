@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 
 /**
- * Shazam mark: a geometric bolt cut from a graphite tile, lit in Volt → Ion.
+ * Arcwork mark: a geometric bolt cut from a graphite tile, lit in Volt → Ion.
  * The bolt's two strokes are offset on a 4px grid so it stays crisp at 16px.
  */
 export function LogoMark({ size = 28, className = '' }: { size?: number; className?: string }) {
@@ -24,7 +24,7 @@ export function Logo({ size = 28, className = '' }: { size?: number; className?:
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <LogoMark size={size} />
-      <span className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Shazam</span>
+      <span className="text-[15px] font-semibold tracking-[-0.01em] text-ink">Arcwork</span>
     </span>
   );
 }

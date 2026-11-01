@@ -28,7 +28,7 @@ import { SystemStrip } from '@/components/SystemStrip';
 import { QuestionCard, PlanCard } from '@/components/agent/AgentCards';
 
 /**
- * Shazam Code, Codex / Claude Code style: pick where it works (a cloud project with a real
+ * Arcwork Code, Codex / Claude Code style: pick where it works (a cloud project with a real
  * sandbox, or a folder on your computer through the desktop app), describe the task, and
  * the agent writes the files, runs them and shows a live preview. No mode toggles, no
  * "copy this code" replies, no setup questions.
@@ -228,7 +228,7 @@ export default function CodePage() {
   }, [prompt]);
 
   async function newCloudProject() {
-    const name = await dialog.prompt({ title: 'New cloud project', body: 'Files live in Shazam and run in a private cloud sandbox.', placeholder: 'e.g. Gruve landing page', confirmLabel: 'Create' });
+    const name = await dialog.prompt({ title: 'New cloud project', body: 'Files live in Arcwork and run in a private cloud sandbox.', placeholder: 'e.g. Gruve landing page', confirmLabel: 'Create' });
     if (!name?.trim()) return;
     const r = await fetch('/api/v1/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) }).then((res) => res.json());
     if (r.project) {
@@ -442,7 +442,7 @@ export default function CodePage() {
                     <p className="shz-mono text-[11px] tracking-[0.2em] text-brand/80">Code</p>
                     <h1 className="mt-2 text-[30px] font-semibold tracking-[-0.025em] text-ink">What should we build?</h1>
                     <p className="mx-auto mt-2 max-w-md text-[14px] text-ink-2">
-                      Describe it in plain words. Shazam writes the code {workspace.kind === 'local' ? `in ${workspace.root.split('/').pop()} on your computer` : 'in a cloud project'}, runs it and hands you a live preview.
+                      Describe it in plain words. Arcwork writes the code {workspace.kind === 'local' ? `in ${workspace.root.split('/').pop()} on your computer` : 'in a cloud project'}, runs it and hands you a live preview.
                     </p>
                     <div className="mt-5"><SystemStrip show={['models', 'sandbox', 'desktop']} /></div>
                   </div>

@@ -80,7 +80,7 @@ const DEFAULT_SKILLS: SkillConfig[] = [
       recipient: 'aise@gruve.events',
       deliveryMode: 'gmail_web',
       apiKey: '',
-      senderName: 'Shazam AI Assistant',
+      senderName: 'Arcwork Assistant',
     },
   },
   {
@@ -364,7 +364,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Settings</h1>
           <p className="text-sm text-ink-2 mt-1">
-            How Shazam picks models, what it may spend, and your skills.
+            How Arcwork picks models, what it may spend, and your skills.
           </p>
         </div>
 
@@ -493,7 +493,7 @@ export default function SettingsPage() {
                 onChange={(e) => setPref({ ...pref, monthlyBudgetUSD: parseFloat(e.target.value) || 1.0 })}
                 className="w-full px-3.5 py-2.5 bg-black/40 border border-line/[0.08] rounded-xl text-sm text-ink font-mono focus:outline-none focus:border-brand"
               />
-              <p className="text-[11px] text-ink-3 mt-1">Shazam switches to free models once you reach it.</p>
+              <p className="text-[11px] text-ink-3 mt-1">Arcwork switches to free models once you reach it.</p>
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 appId: com.shazam.ai
-productName: Shazam AI
-copyright: Copyright © 2026 Shazam AI
+productName: Arcwork
+copyright: Copyright © 2026 Arcwork
 
 directories:
   output: dist-desktop
@@ -29,7 +29,7 @@ mac:
   identity: null # build unsigned for direct local macOS installation
 
 dmg:
-  title: Shazam AI Installer
+  title: Arcwork Installer
   contents:
     - x: 130
       y: 220

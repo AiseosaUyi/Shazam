@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.)/.test(host) ||
     host.startsWith('[')
   ) {
-    return NextResponse.json({ error: 'MCP servers must be public https:// URLs. Local servers are reachable only through the Shazam desktop bridge.' }, { status: 400 });
+    return NextResponse.json({ error: 'MCP servers must be public https:// URLs. Local servers are reachable only through the Arcwork desktop bridge.' }, { status: 400 });
   }
 
   // Really connect: initialize a session and list the tools the server exposes.

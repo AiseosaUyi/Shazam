@@ -1,5 +1,5 @@
 /**
- * Shazam AI Codebase Symbol & Outline Indexer
+ * Arcwork Codebase Symbol & Outline Indexer
  * Extracts high-fidelity project outlines (exported functions, classes, interfaces, components, scripts)
  * without naive file truncation so the AI agent understands the entire codebase architecture.
  */

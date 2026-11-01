@@ -78,7 +78,7 @@ describe('Comprehensive End-to-End QA Test Suite', () => {
       user: qaUser,
       prompt: codingPrompt,
       projectId: zoqoProject.id,
-      pinnedModelName: 'Shazam Simulator (Demo)',
+      pinnedModelName: 'Arcwork Simulator (Demo)',
       taskClassOverride: 'coding',
       costPolicy: 'manual_pin',
       repo,
@@ -131,7 +131,7 @@ describe('Comprehensive End-to-End QA Test Suite', () => {
     await runTaskOrchestrator({
       user: qaUser,
       prompt: chatPrompt,
-      pinnedModelName: 'Shazam Simulator (Demo)',
+      pinnedModelName: 'Arcwork Simulator (Demo)',
       taskClassOverride: 'general_chat',
       costPolicy: 'manual_pin',
       repo,
@@ -176,7 +176,7 @@ describe('Comprehensive End-to-End QA Test Suite', () => {
     await runTaskOrchestrator({
       user: qaUser,
       prompt: `[Autonomous Co-Work Mode | Active Skills: gmail, browser, notion]\n${userPrompt}`,
-      pinnedModelName: 'Shazam Simulator (Demo)',
+      pinnedModelName: 'Arcwork Simulator (Demo)',
       taskClassOverride: 'planning',
       costPolicy: 'manual_pin',
       repo,

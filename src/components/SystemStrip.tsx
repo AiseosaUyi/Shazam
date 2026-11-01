@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 /**
- * Shazam's signature: a live, monospace readout of what is actually online for you:
+ * Arcwork's signature: a live, monospace readout of what is actually online for you:
  * free models, cloud sandbox, your computer, your browser, Gmail, MCP servers.
  */
 

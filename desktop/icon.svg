@@ -39,7 +39,7 @@
   <!-- Inner subtle ambient glow -->
   <circle cx="512" cy="480" r="280" fill="#f59e0b" opacity="0.12" filter="blur(60px)" />
 
-  <!-- Luminous Shazam Lightning Bolt -->
+  <!-- Luminous Arcwork Lightning Bolt -->
   <path d="M570 160L290 530H480L420 864L734 450H530L570 160Z" 
         fill="url(#boltGrad)" 
         filter="url(#glow)" 

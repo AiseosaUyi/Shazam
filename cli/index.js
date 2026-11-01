@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Shazam AI Local Companion Daemon (Hardened)
+ * Arcwork Local Companion Daemon (Hardened)
  * Provides secure local execution capabilities (File I/O, Search-Replace Patching, Shell execution, Git operations)
- * to authorized Shazam AI web & desktop interfaces via loopback (localhost:4040).
+ * to authorized Arcwork web & desktop interfaces via loopback (localhost:4040).
  *
  * Security:
- * - Origin validation (Strictly allows Shazam origins and local development; blocks arbitrary websites)
+ * - Origin validation (Strictly allows Arcwork origins and local development; blocks arbitrary websites)
  * - Private Network Access (PNA) preflight support for modern browsers
  * - Mandatory session token authentication on all mutating and executing endpoints
  * - Strict path traversal protections
@@ -338,7 +338,7 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/git/push' && req.method === 'POST') {
     try {
-      const { message = 'chore: update files from Shazam AI agent' } = await parseJsonBody(req);
+      const { message = 'chore: update files from Arcwork agent' } = await parseJsonBody(req);
       execSync('git add -A', { cwd: CWD });
       execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: CWD });
       const pushOutput = execSync('git push', { cwd: CWD, encoding: 'utf8' });
@@ -430,7 +430,7 @@ function startServer(port, maxAttempts = 10) {
     const targetUrl = `${webBaseUrl}/agent?token=${DAEMON_TOKEN}&port=${boundPort}`;
 
     console.log('\n================================================================');
-    console.log('⚡ Shazam AI Local Companion Daemon (Zero-Config Bridge)');
+    console.log('⚡ Arcwork Local Companion Daemon (Zero-Config Bridge)');
     console.log('================================================================');
     console.log(`📂 Local Workspace: ${CWD}`);
     console.log(`🔌 Daemon Port:     http://localhost:${boundPort}`);

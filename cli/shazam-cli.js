@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Shazam AI Native Terminal CLI (Claude Code / Antigravity tier)
+ * Arcwork Native Terminal CLI (Claude Code / Antigravity tier)
  * Runs directly in your terminal with native file access, real PTY streaming,
  * surgical diff patching, and automated test loops without browser constraints.
  */
@@ -23,7 +23,7 @@ const CYAN = '\x1b[38;5;45m';
 const RED = '\x1b[38;5;196m';
 const DIM = '\x1b[2m';
 
-console.log(`${BOLD}${AMBER}⚡ Shazam AI Developer CLI${RESET} ${DIM}(v0.3.0)${RESET}`);
+console.log(`${BOLD}${AMBER}⚡ Arcwork Developer CLI${RESET} ${DIM}(v0.3.0)${RESET}`);
 console.log(`${DIM}Directory: ${CWD}${RESET}\n`);
 
 // Load security token if exists
@@ -141,7 +141,7 @@ async function handlePrompt(userPrompt) {
     if (status) {
       console.log(`${DIM}Staging modified files:\n${status}${RESET}`);
       execSync('git add -A', { cwd: CWD });
-      execSync('git commit -m "chore: updates from Shazam CLI agent"', { cwd: CWD });
+      execSync('git commit -m "chore: updates from Arcwork CLI agent"', { cwd: CWD });
     }
     await runTerminalCommand('git push');
     console.log(`\n${BOLD}${EMERALD}🚀 Git push completed!${RESET}`);

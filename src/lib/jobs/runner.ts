@@ -37,7 +37,7 @@ async function executeJob(job: ScheduledJob, platform: PlatformRepo): Promise<st
     });
     if (job.payload.emailResultTo && google) {
       // The user approved this delivery when they approved the schedule.
-      await sendGmail(job.userId, { to: [job.payload.emailResultTo], subject: `Shazam: ${job.title}`, body: result.text || '(no output)' });
+      await sendGmail(job.userId, { to: [job.payload.emailResultTo], subject: `Arcwork: ${job.title}`, body: result.text || '(no output)' });
     }
     return result.text.slice(0, 6000) || '(no output)';
   }

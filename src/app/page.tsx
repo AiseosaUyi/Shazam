@@ -299,7 +299,7 @@ export default function WorkspacePage() {
   async function handleConnectFolder() {
     setAttachMenuOpen(false);
     if (!('showDirectoryPicker' in window)) {
-      dialog.alert({ title: 'Folder picker not supported', body: 'This browser can’t open local folders. Use the Shazam desktop app, or choose a project instead.' });
+      dialog.alert({ title: 'Folder picker not supported', body: 'This browser can’t open local folders. Use the Arcwork desktop app, or choose a project instead.' });
       return;
     }
 
@@ -1222,7 +1222,7 @@ export default function WorkspacePage() {
                           <Sparkles className="w-3 h-3" />
                         </div>
                         <span className="font-medium text-ink-2">
-                          {msg.routeInfo?.model?.name || 'Shazam AI'}
+                          {msg.routeInfo?.model?.name || 'Arcwork'}
                         </span>
                         {msg.routeInfo?.route?.costClass && (
                           <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-mono border border-emerald-500/20">

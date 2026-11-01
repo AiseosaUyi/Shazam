@@ -1,6 +1,6 @@
 {
   "name": "shazam-vscode",
-  "displayName": "Shazam AI - Multi-Provider Coding Assistant",
+  "displayName": "Arcwork - Multi-Provider Coding Assistant",
   "description": "Transparent zero-markup AI router, Cmd+K inline diffing, self-healing diagnostics fixes, and local Ollama support.",
   "version": "0.1.0",
   "publisher": "shazam-ai",
@@ -30,17 +30,17 @@
     "commands": [
       {
         "command": "shazam.edit",
-        "title": "Shazam: Inline Code Edit (Cmd+K)",
+        "title": "Arcwork: Inline Code Edit (Cmd+K)",
         "icon": "$(sparkle)"
       },
       {
         "command": "shazam.fix",
-        "title": "Shazam: Fix with AI",
+        "title": "Arcwork: Fix with AI",
         "icon": "$(tools)"
       },
       {
         "command": "shazam.status",
-        "title": "Shazam: Check Router & Local Companion Health",
+        "title": "Arcwork: Check Router & Local Companion Health",
         "icon": "$(radio-tower)"
       }
     ],
@@ -65,7 +65,7 @@
       ]
     },
     "configuration": {
-      "title": "Shazam AI",
+      "title": "Arcwork",
       "properties": {
         "shazam.daemonUrl": {
           "type": "string",
@@ -75,7 +75,7 @@
         "shazam.cloudUrl": {
           "type": "string",
           "default": "https://shazam-opal.vercel.app",
-          "description": "Shazam AI production cloud endpoint"
+          "description": "Arcwork production cloud endpoint"
         },
         "shazam.preferredModel": {
           "type": "string",

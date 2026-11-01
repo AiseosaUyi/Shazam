@@ -6,7 +6,7 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods
 export function protectedResourceMetadata(req: NextRequest) {
   const origin = process.env.APP_URL || req.nextUrl.origin;
   return NextResponse.json(
-    { resource: `${origin}/api/mcp`, authorization_servers: [origin], scopes_supported: ['tasks'], bearer_methods_supported: ['header'], resource_name: 'Shazam' },
+    { resource: `${origin}/api/mcp`, authorization_servers: [origin], scopes_supported: ['tasks'], bearer_methods_supported: ['header'], resource_name: 'Arcwork' },
     { headers: { ...CORS, 'Cache-Control': 'public, max-age=3600' } }
   );
 }

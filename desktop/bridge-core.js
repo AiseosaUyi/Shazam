@@ -1,7 +1,7 @@
 /**
- * Shazam Bridge client core (shared by the desktop app and the `shazam-bridge` CLI).
+ * Arcwork Bridge client core (shared by the desktop app and the `shazam-bridge` CLI).
  *
- * The bridge connects OUT to the Shazam server (long-poll), so cloud agents can use this
+ * The bridge connects OUT to the Arcwork server (long-poll), so cloud agents can use this
  * computer without opening any inbound port. It only acts inside folders the user allowed,
  * refuses secret files, and asks before risky commands (push, delete, sudo, publish…).
  */
@@ -78,7 +78,7 @@ function guardPath(p, workspaces) {
     }
   });
   if (!roots.some((r) => real === r || real.startsWith(r + path.sep))) {
-    throw new Error(`"${p}" is outside the folders you allowed (${workspaces.join(', ') || 'none'}). Add the folder in the Shazam desktop app first.`);
+    throw new Error(`"${p}" is outside the folders you allowed (${workspaces.join(', ') || 'none'}). Add the folder in the Arcwork desktop app first.`);
   }
   if (SECRET_PATTERNS.some((rx) => rx.test(real))) throw new Error(`Refusing to touch secret file "${p}".`);
   return real;
@@ -189,7 +189,7 @@ class BridgeClient {
           return { ok: false, result: 'This command keeps running (server/watch mode). Use start_preview to run it in the background instead of run_command.' };
         }
         if (RISKY_COMMAND.test(p.command)) {
-          const ok = await this.approve('Shazam wants to run a command that changes things outside the editor', `${p.command}\n\nin ${cwd}`);
+          const ok = await this.approve('Arcwork wants to run a command that changes things outside the editor', `${p.command}\n\nin ${cwd}`);
           if (!ok) return { ok: false, result: 'The user declined this command on their computer.' };
         }
         this.log(`$ ${p.command}   (${cwd})`);

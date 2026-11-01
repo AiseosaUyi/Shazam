@@ -14,8 +14,8 @@ import { decryptSecret } from '@/lib/crypto/vault';
 import { QuestionsRepo } from '@/lib/agents/ask';
 
 /**
- * Shazam as an MCP server: lets Claude Code / Claude Desktop, Codex, Antigravity, Cursor…
- * hand work to Shazam's free agents, then review and send feedback. Long work is async:
+ * Arcwork as an MCP server: lets Claude Code / Claude Desktop, Codex, Antigravity, Cursor…
+ * hand work to Arcwork's free agents, then review and send feedback. Long work is async:
  * start_task returns immediately; get_task_status polls; send_feedback continues the task.
  */
 
@@ -51,8 +51,8 @@ const handler = createMcpHandler(
     server.registerTool(
       'suggest_agent',
       {
-        title: 'Suggest the best Shazam agent',
-        description: 'Before starting work, ask which Shazam agent fits a request (code, cowork, image, video, chat), which free model it will use, and what connection is missing.',
+        title: 'Suggest the best Arcwork agent',
+        description: 'Before starting work, ask which Arcwork agent fits a request (code, cowork, image, video, chat), which free model it will use, and what connection is missing.',
         inputSchema: z.object({ prompt: z.string() }),
       },
       async ({ prompt }, ctx) => {
@@ -65,14 +65,14 @@ const handler = createMcpHandler(
     server.registerTool(
       'start_task',
       {
-        title: 'Start a Shazam task',
+        title: 'Start a Arcwork task',
         description:
-          'Delegate work to Shazam\'s free-model agents. agent="code" writes/edits code in a project, runs tests in a real sandbox and can push to GitHub; agent="cowork" handles email, calendar, schedules, MCP tools, browser and media. Returns a task_id immediately; then poll get_task_status. Use this to save your own usage: let Shazam do the heavy lifting, then review.',
+          'Delegate work to Arcwork\'s free-model agents. agent="code" writes/edits code in a project, runs tests in a real sandbox and can push to GitHub; agent="cowork" handles email, calendar, schedules, MCP tools, browser and media. Returns a task_id immediately; then poll get_task_status. Use this to save your own usage: let Arcwork do the heavy lifting, then review.',
         inputSchema: z.object({
-          prompt: z.string().describe('Complete, self-contained instructions (Shazam does not see your conversation).'),
+          prompt: z.string().describe('Complete, self-contained instructions (Arcwork does not see your conversation).'),
           agent: z.enum(['auto', 'code', 'cowork']).default('auto'),
-          project_id: z.string().optional().describe('Continue in an existing Shazam project (from a previous task).'),
-          local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer (must be allowed in the Shazam desktop app). The agent edits and runs code there.'),
+          project_id: z.string().optional().describe('Continue in an existing Arcwork project (from a previous task).'),
+          local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer (must be allowed in the Arcwork desktop app). The agent edits and runs code there.'),
         }),
       },
       async ({ prompt, agent, project_id, local_folder }, ctx) => {
@@ -91,7 +91,7 @@ const handler = createMcpHandler(
     server.registerTool(
       'get_task_status',
       {
-        title: 'Get Shazam task status',
+        title: 'Get Arcwork task status',
         description: 'Progress, tool steps and (when done) the result of a task. Pass since_event to only get new progress lines.',
         inputSchema: z.object({ task_id: z.string(), since_event: z.number().int().min(0).optional() }),
       },
@@ -108,8 +108,8 @@ const handler = createMcpHandler(
     server.registerTool(
       'send_feedback',
       {
-        title: 'Send review feedback to a Shazam task',
-        description: 'After reviewing a finished task, send corrections. Shazam continues in the same project/context and returns a new task_id to poll.',
+        title: 'Send review feedback to a Arcwork task',
+        description: 'After reviewing a finished task, send corrections. Arcwork continues in the same project/context and returns a new task_id to poll.',
         inputSchema: z.object({ task_id: z.string(), feedback: z.string() }),
       },
       async ({ task_id, feedback }, ctx) => {
@@ -128,7 +128,7 @@ const handler = createMcpHandler(
     server.registerTool(
       'answer_question',
       {
-        title: 'Answer a question from a Shazam task',
+        title: 'Answer a question from a Arcwork task',
         description: 'When get_task_status shows a QUESTION, answer it here so the task can continue. Pick one of the options or write a short answer.',
         inputSchema: z.object({ question_id: z.string(), answer: z.string() }),
       },
@@ -141,7 +141,7 @@ const handler = createMcpHandler(
 
     server.registerTool(
       'list_tasks',
-      { title: 'List recent Shazam tasks', description: 'Recent tasks with status.', inputSchema: z.object({}) },
+      { title: 'List recent Arcwork tasks', description: 'Recent tasks with status.', inputSchema: z.object({}) },
       async (_args, ctx) => {
         const user = await userFrom(ctx);
         const runs = await new RunsRepo().list(user.id, 20);
@@ -151,7 +151,7 @@ const handler = createMcpHandler(
 
     server.registerTool(
       'list_project_files',
-      { title: 'List files in a Shazam project', description: 'Use to review what a code task produced.', inputSchema: z.object({ project_id: z.string() }) },
+      { title: 'List files in a Arcwork project', description: 'Use to review what a code task produced.', inputSchema: z.object({ project_id: z.string() }) },
       async ({ project_id }, ctx) => {
         const user = await userFrom(ctx);
         const files = await new DbRepo().getProjectFiles(user.id, project_id);
@@ -161,7 +161,7 @@ const handler = createMcpHandler(
 
     server.registerTool(
       'read_project_file',
-      { title: 'Read a file from a Shazam project', description: 'Read code a task wrote, to review it.', inputSchema: z.object({ project_id: z.string(), path: z.string() }) },
+      { title: 'Read a file from a Arcwork project', description: 'Read code a task wrote, to review it.', inputSchema: z.object({ project_id: z.string(), path: z.string() }) },
       async ({ project_id, path }, ctx) => {
         const user = await userFrom(ctx);
         const f = (await new DbRepo().getProjectFiles(user.id, project_id)).find((x) => x.path === path);
@@ -172,7 +172,7 @@ const handler = createMcpHandler(
     server.registerTool(
       'generate_image',
       {
-        title: 'Generate an image with Shazam',
+        title: 'Generate an image with Arcwork',
         description: 'Creates an image on free models (prompt is auto-expanded). Returns a public URL. Takes ~5-15s.',
         inputSchema: z.object({ prompt: z.string(), aspect_ratio: z.enum(['1:1', '16:9', '9:16', '4:3', '3:4']).optional() }),
       },

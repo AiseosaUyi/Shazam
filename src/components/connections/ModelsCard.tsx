@@ -89,7 +89,7 @@ export function ModelsCard() {
             <span key={m} className="shz-mono rounded-full border border-line/10 px-2.5 py-0.5 text-[11px] text-ink-2">{m}</span>
           ))}
         </div>
-        <p className="mt-2 text-[12px] text-ink-3">Shazam picks the best one for each task and switches automatically when a free limit is hit.</p>
+        <p className="mt-2 text-[12px] text-ink-3">Arcwork picks the best one for each task and switches automatically when a free limit is hit.</p>
       </div>
 
       <section>

@@ -1,5 +1,5 @@
 /**
- * Picks the right Shazam agent for a request *before* anything runs, and says what is
+ * Picks the right Arcwork agent for a request *before* anything runs, and says what is
  * missing to do it well. Deterministic and instant (no model call), so it is free and can
  * run on every keystroke-debounce in the UI and for every MCP request.
  */
@@ -83,7 +83,7 @@ export function suggestAgent(prompt: string, ctx: SuggestContext): Suggestion {
   }
   if (agent === 'cowork') {
     if ((tools.has('gmail') || tools.has('calendar')) && !ctx.googleConnected) missing.push({ what: 'Google (Gmail & Calendar)', fix: 'Connect Google in Connections; until then Co-Work can only draft text.' });
-    if (tools.has('browser') && !ctx.browserOnline) missing.push({ what: 'Browser extension', fix: 'Install and pair the Shazam Chrome extension to act in your logged-in browser.' });
+    if (tools.has('browser') && !ctx.browserOnline) missing.push({ what: 'Browser extension', fix: 'Install and pair the Arcwork Chrome extension to act in your logged-in browser.' });
     if (tools.has('schedule') && !/\b(\d{1,2}(:\d{2})?\s?(am|pm)|morning|noon|evening|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(text)) tips.push('Say when (e.g. "Monday 9am") so it can schedule precisely.');
     const mentioned = ctx.mcpServers.filter((s) => text.toLowerCase().includes(s.toLowerCase()));
     mentioned.forEach((s) => tools.add(`mcp:${s}`));

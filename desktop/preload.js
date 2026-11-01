@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 /**
- * Shazam AI Desktop Preload Script
- * Bridges native macOS/desktop system APIs into the Shazam UI securely.
+ * Arcwork Desktop Preload Script
+ * Bridges native macOS/desktop system APIs into the Arcwork UI securely.
  */
 contextBridge.exposeInMainWorld('shazamDesktop', {
   isDesktop: true,
@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('shazamDesktop', {
   // Native folder selection dialog
   selectFolder: () => ipcRenderer.invoke('select-folder'),
 
-  // Open the Shazam Bridge window (pairing + allowed folders)
+  // Open the Arcwork Bridge window (pairing + allowed folders)
   openBridge: () => ipcRenderer.invoke('bridge-get-state'),
 
   // Native window controls

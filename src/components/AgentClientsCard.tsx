@@ -6,7 +6,7 @@ import { Bot, Copy, Check, Trash2, KeyRound } from 'lucide-react';
 
 /**
  * Lets people who already pay for Claude / ChatGPT / Gemini plug those assistants into
- * Shazam over MCP, so the assistant delegates heavy work to Shazam's free agents and
+ * Arcwork over MCP, so the assistant delegates heavy work to Arcwork's free agents and
  * reviews the result, stretching the subscription further.
  */
 
@@ -24,12 +24,12 @@ function snippets(url: string, token: string): Record<Client, { title: string; b
     'claude-code': {
       title: 'Claude Code (your Pro/Max subscription, no API key)',
       body: `claude mcp add --transport http shazam ${url} \\\n  --header "Authorization: Bearer ${token}" --scope user`,
-      note: 'Then ask Claude: "Use Shazam to build X, then review the result and send feedback." Works in the terminal, VS Code and JetBrains.',
+      note: 'Then ask Claude: "Use Arcwork to build X, then review the result and send feedback." Works in the terminal, VS Code and JetBrains.',
     },
     codex: {
       title: 'Codex (your ChatGPT plan) · ~/.codex/config.toml',
       body: `[mcp_servers.shazam]\nurl = "${url}"\nbearer_token_env_var = "SHAZAM_TOKEN"\ntool_timeout_sec = 120\n\n# then in your shell profile:\n# export SHAZAM_TOKEN="${token}"`,
-      note: 'Codex tool calls time out after 60s by default; Shazam tasks are async (start → poll), so 120s is plenty.',
+      note: 'Codex tool calls time out after 60s by default; Arcwork tasks are async (start → poll), so 120s is plenty.',
     },
     antigravity: {
       title: 'Antigravity (your Google account) · ~/.gemini/config/mcp_config.json',
@@ -43,8 +43,8 @@ function snippets(url: string, token: string): Record<Client, { title: string; b
     },
     'claude-ai': {
       title: 'Claude.ai & Claude Desktop (your subscription, custom connector)',
-      body: `Settings → Connectors → Add custom connector\nName: Shazam\nURL: ${url}`,
-      note: 'Claude will open a Shazam sign-in window to authorize the connector (OAuth). No token needed here.',
+      body: `Settings → Connectors → Add custom connector\nName: Arcwork\nURL: ${url}`,
+      note: 'Claude will open a Arcwork sign-in window to authorize the connector (OAuth). No token needed here.',
     },
   };
 }
@@ -75,7 +75,7 @@ export function AgentClientsCard() {
   }
 
   async function revoke(id: string) {
-    if (!(await dialog.confirm({ title: 'Revoke this token?', body: 'Any assistant using it will lose access to Shazam.', confirmLabel: 'Revoke', tone: 'danger' }))) return;
+    if (!(await dialog.confirm({ title: 'Revoke this token?', body: 'Any assistant using it will lose access to Arcwork.', confirmLabel: 'Revoke', tone: 'danger' }))) return;
     await fetch(`/api/v1/access-tokens/${id}`, { method: 'DELETE' });
     load();
   }
@@ -89,7 +89,7 @@ export function AgentClientsCard() {
         <div>
           <p className="text-sm font-semibold text-ink">Connect Claude, Codex & Antigravity</p>
           <p className="text-xs text-ink-2">
-            Use the Claude, ChatGPT (Codex) or Gemini (Antigravity) plan you already pay for. No API key needed: your assistant signs in as usual, hands the heavy work (coding, email, images, video) to Shazam&apos;s free agents, then reviews it, so your plan&apos;s usage lasts much longer.
+            Use the Claude, ChatGPT (Codex) or Gemini (Antigravity) plan you already pay for. No API key needed: your assistant signs in as usual, hands the heavy work (coding, email, images, video) to Arcwork&apos;s free agents, then reviews it, so your plan&apos;s usage lasts much longer.
           </p>
         </div>
       </div>

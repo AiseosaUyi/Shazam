@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * shazam-bridge — connect this computer to Shazam so cloud agents can run commands,
+ * shazam-bridge — connect this computer to Arcwork so cloud agents can run commands,
  * edit files and use git (with your own credentials) inside folders you allow.
  *
  *   shazam-bridge pair <CODE> [--server https://shazam-opal.vercel.app] [--name "My Mac"]
@@ -30,7 +30,7 @@ function ask(question) {
   switch (cmd) {
     case 'pair': {
       const code = rest[0];
-      if (!code) throw new Error('Usage: shazam-bridge pair <CODE>  (get a code in Shazam → Connections → Desktop app)');
+      if (!code) throw new Error('Usage: shazam-bridge pair <CODE>  (get a code in Arcwork → Connections → Desktop app)');
       const device = await pair(flag('--server') || cfg.server || DEFAULT_SERVER, code, flag('--name'));
       console.log(`✓ Paired as "${device.name}". Config saved to ${CONFIG_PATH}`);
       console.log('Next: shazam-bridge allow <project folder>  then  shazam-bridge start');
@@ -63,7 +63,7 @@ function ask(question) {
         onStatus: (s) => console.log(`[bridge] ${s}`),
       });
       process.on('SIGINT', () => { client.stop(); process.exit(0); });
-      console.log(`Shazam bridge → ${cfg.server}  (folders: ${(cfg.workspaces || []).join(', ') || 'none'})`);
+      console.log(`Arcwork bridge → ${cfg.server}  (folders: ${(cfg.workspaces || []).join(', ') || 'none'})`);
       await client.start();
       break;
     }

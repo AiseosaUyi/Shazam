@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" />
-<title>Shazam Bridge</title>
+<title>Arcwork Bridge</title>
 <style>
   :root { color-scheme: dark; --bg:#0a0c10; --card:#11131a; --line:rgba(255,255,255,.08); --text:#e4e4e7; --muted:#a1a1aa; --accent:#f59e0b; }
   * { box-sizing: border-box; }
@@ -23,13 +23,13 @@
 </head>
 <body>
   <div class="row" style="justify-content:space-between">
-    <div><h1>Shazam Bridge</h1><p>Lets Shazam agents work on this computer: run commands, edit files and use git with your own credentials, only in folders you allow.</p></div>
+    <div><h1>Arcwork Bridge</h1><p>Lets Arcwork agents work on this computer: run commands, edit files and use git with your own credentials, only in folders you allow.</p></div>
     <span id="status" class="pill">…</span>
   </div>
 
   <div id="pairCard" class="card">
     <strong>1. Pair this computer</strong>
-    <p style="margin:4px 0 10px">In Shazam open <a href="#" id="openPairing" style="color:var(--accent)">Connections → Devices</a>, click “Pair desktop app” and enter the code here.</p>
+    <p style="margin:4px 0 10px">In Arcwork open <a href="#" id="openPairing" style="color:var(--accent)">Connections → Devices</a>, click “Pair desktop app” and enter the code here.</p>
     <div class="row"><input id="code" placeholder="Pairing code (e.g. 7KQ2M9XA)" maxlength="16" autocomplete="off" /><button id="pairBtn">Pair</button></div>
     <div class="row" style="margin-top:8px"><input id="server" placeholder="Server" /></div>
     <div id="pairErr" class="err"></div>

@@ -174,8 +174,8 @@ export async function callDevice(
   const device = await repo.onlineDevice(userId, kind);
   if (!device) {
     throw new BridgeOfflineError(kind === 'desktop'
-      ? 'The Shazam desktop app is not connected. Open it and sign in to let the agent use your computer.'
-      : 'The Shazam browser extension is not connected. Install it and pair it to let the agent use your browser.');
+      ? 'The Arcwork desktop app is not connected. Open it and sign in to let the agent use your computer.'
+      : 'The Arcwork browser extension is not connected. Install it and pair it to let the agent use your browser.');
   }
   const id = await repo.enqueue(userId, device.id, command, payload);
   const deadline = Date.now() + (opts.timeoutMs ?? 120_000);

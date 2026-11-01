@@ -70,7 +70,7 @@ export default function UsagePage() {
             <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Usage</h1>
           </div>
           <p className="text-sm text-ink-2 mt-1">
-            What Shazam has cost you, and how close you are to your limits. Free models cost $0.
+            What Arcwork has cost you, and how close you are to your limits. Free models cost $0.
           </p>
         </div>
       </div>

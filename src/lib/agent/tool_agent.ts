@@ -81,7 +81,7 @@ export function applyEdit(content: string, oldString: string, newString: string,
 
 function buildInstructions(projectName: string, files: AgentFile[], hasExecution: boolean, extra?: string): string {
   const index = buildProjectIndex(files);
-  return `You are Shazam Code, an autonomous senior software engineer working in the project "${projectName}".
+  return `You are Arcwork Code, an autonomous senior software engineer working in the project "${projectName}".
 You work by calling tools. Do not paste whole files into chat: write them with tools. Never ask the user to copy code.
 Do not ask clarifying questions for normal requests: pick sensible defaults (e.g. Next.js + Tailwind, or plain HTML/CSS for a simple page), build it, and mention the choices in your summary.
 
@@ -106,7 +106,7 @@ ${extra ? `\n${extra}` : ''}`;
 }
 
 function buildLocalInstructions(root: string, deviceName: string, index: string, extra?: string): string {
-  return `You are Shazam Code, an autonomous senior software engineer working directly in the user's folder ${root} on their computer "${deviceName}".
+  return `You are Arcwork Code, an autonomous senior software engineer working directly in the user's folder ${root} on their computer "${deviceName}".
 Work like Claude Code: do the task end to end with tools. Never ask the user to copy code, and never paste whole files into chat.
 Do not ask clarifying questions for normal requests: choose sensible defaults (e.g. Next.js + Tailwind, or plain HTML/CSS for a simple page) and state them in your summary.
 
@@ -266,7 +266,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         if (u.protocol !== 'https:' || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u.hostname)) {
           return 'Error: only public https URLs are allowed.';
         }
-        const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'ShazamAgent/1.0' } });
+        const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'ArcworkAgent/1.0' } });
         const text = (await res.text()).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
         return `HTTP ${res.status}\n${text.slice(0, 12000)}`;
       },

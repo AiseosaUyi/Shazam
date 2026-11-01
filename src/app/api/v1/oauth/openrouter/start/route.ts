@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/session';
 
 /**
  * One-click OpenRouter connect (OAuth PKCE): OpenRouter mints a user-controlled API key for
- * Shazam, so the user never copies a key. The verifier lives in an httpOnly cookie scoped to
+ * Arcwork, so the user never copies a key. The verifier lives in an httpOnly cookie scoped to
  * this route family, which also binds the returned code to this browser.
  */
 const COOKIE = 'shazam_openrouter_pkce';

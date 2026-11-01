@@ -5,7 +5,7 @@ import { Check, ClipboardPaste, ExternalLink, Loader2, Lock, X, Zap } from 'luci
 import { KEY_CHANNEL, detectProviderFromKey, getKeyProvider, looksLikeCompleteKey, openSidePopup, type KeyProvider } from '@/lib/providers/key-setup';
 
 /**
- * Guided "get a key" flow. The provider's key page opens in a small popup over Shazam (key
+ * Guided "get a key" flow. The provider's key page opens in a small popup over Arcwork (key
  * pages refuse iframes), the steps stay visible here, and the key saves itself the moment a
  * complete one is pasted. OpenRouter connects in one click via OAuth.
  */
@@ -118,7 +118,7 @@ export function KeySetupModal({ providerId, onClose, onSaved }: { providerId: st
               <Check className="h-5 w-5" />
             </div>
             <p className="mt-3 text-[15px] font-semibold text-ink">{p.name} connected</p>
-            <p className="mt-1 text-[12px] text-ink-3">Shazam will use it automatically.</p>
+            <p className="mt-1 text-[12px] text-ink-3">Arcwork will use it automatically.</p>
           </div>
         ) : (
           <>

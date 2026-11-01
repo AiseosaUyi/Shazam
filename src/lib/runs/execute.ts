@@ -130,7 +130,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
 async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: PlatformRepo, send: EventSink): Promise<TaskResult> {
   const { BridgeRepo, callDevice } = await import('@/lib/bridge/repo');
   const device = await new BridgeRepo().onlineDevice(o.user.id, 'desktop');
-  if (!device) throw new Error('Your computer is not connected. Open the Shazam desktop app (or run shazam-bridge start) to work in a local folder.');
+  if (!device) throw new Error('Your computer is not connected. Open the Arcwork desktop app (or run shazam-bridge start) to work in a local folder.');
   const allowed = ((device.capabilities.workspaces as string[]) || []).map((w) => w.replace(/\/$/, ''));
   const root = o.localRoot!.replace(/\/$/, '');
   if (!allowed.some((w) => root === w || root.startsWith(`${w}/`))) {
@@ -230,7 +230,7 @@ export function eventRecorder(runId: string, userId: string, runs = new RunsRepo
     if (event === 'react_model') model = d.model;
     else if (event === 'react_step') push('step', `${d.tool} ${JSON.stringify(d.args || {}).slice(0, 200)}`);
     else if (event === 'react_observation') push(d.isError ? 'error' : 'result', d.observation || '');
-    else if (event === 'pending_action') push('approval', `Waiting for approval in Shazam: ${d.summary} (action ${d.id})`);
+    else if (event === 'pending_action') push('approval', `Waiting for approval in Arcwork: ${d.summary} (action ${d.id})`);
     else if (event === 'media_asset') push('media', `${d.kind}: ${d.url}`);
     else if (event === 'model_switch') push('note', `Switched model ${d.from} → ${d.to} (${d.reason})`);
     else if (event === 'preview') push('preview', d.url);

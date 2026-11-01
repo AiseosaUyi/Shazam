@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  /* Shazam design tokens. Channels are space-separated RGB so Tailwind can apply alpha. */
+  /* Arcwork design tokens. Channels are space-separated RGB so Tailwind can apply alpha. */
   --canvas: 10 10 13;          /* app background */
   --sidebar: 13 13 17;         /* side panels */
   --surface: 19 19 24;         /* cards, composer, menus */
@@ -71,7 +71,7 @@ body {
 }
 
 
-/* ---------- Shazam signature ---------- */
+/* ---------- Arcwork signature ---------- */
 
 /* Faint dot grid + Volt glow behind empty states */
 .shz-atmosphere {

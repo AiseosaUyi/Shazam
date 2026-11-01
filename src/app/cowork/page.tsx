@@ -417,7 +417,7 @@ export default function CoWorkPage() {
       {/* Main */}
       <main className="flex-1 h-full min-h-0 min-w-0 flex flex-col bg-canvas overflow-hidden">
         <header className="h-12 border-b border-line/[0.06] px-4 md:px-6 flex items-center justify-between shrink-0">
-          <span className="text-xs font-semibold text-ink">Shazam Co-Work</span>
+          <span className="text-xs font-semibold text-ink">Arcwork Co-Work</span>
           <button onClick={() => setPanelOpen((v) => !v)} className="text-[11px] text-ink-2 hover:text-brand-soft flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-line/[0.03] border border-line/5">
             <CalendarClock className="w-3.5 h-3.5 text-brand" />
             Schedules & connections

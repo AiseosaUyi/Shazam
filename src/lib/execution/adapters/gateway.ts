@@ -27,6 +27,6 @@ export async function executeGateway(options: ExecuteOptions): Promise<AdapterRe
     };
   } catch (err) {
     if (signal?.aborted) throw new Error('Task cancelled');
-    throw normalizeProviderError('Shazam free models', err as any, (err as any)?.statusCode);
+    throw normalizeProviderError('Arcwork free models', err as any, (err as any)?.statusCode);
   }
 }

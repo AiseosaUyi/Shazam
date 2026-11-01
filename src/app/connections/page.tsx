@@ -13,7 +13,7 @@ import { SystemStrip } from '@/components/SystemStrip';
 import { AgentRunsList } from '@/components/AgentRunsList';
 
 /**
- * One place for everything Shazam can use: models, apps, your devices, and the assistants
+ * One place for everything Arcwork can use: models, apps, your devices, and the assistants
  * you already pay for. Replaces the separate Models and API-key pages.
  */
 
@@ -82,7 +82,7 @@ export default function ConnectionsPage() {
         <div className="min-w-0 flex-1 space-y-14">
           <header>
             <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-ink">Connections</h1>
-            <p className="mt-1 text-[13px] text-ink-3">Everything Shazam can use, and what&apos;s live right now.</p>
+            <p className="mt-1 text-[13px] text-ink-3">Everything Arcwork can use, and what&apos;s live right now.</p>
             <div className="mt-4 flex justify-start"><SystemStrip /></div>
           </header>
 
@@ -106,7 +106,7 @@ export default function ConnectionsPage() {
           <section id="assistants" className="scroll-mt-8 space-y-3">
             <h2 className="text-[15px] font-semibold text-ink">Assistants you already pay for</h2>
             <AgentClientsCard />
-            <AgentRunsList source="mcp" title="Recent tasks from your assistants" blurb="Work Claude, Codex or Antigravity handed to Shazam. Open one to watch it live." />
+            <AgentRunsList source="mcp" title="Recent tasks from your assistants" blurb="Work Claude, Codex or Antigravity handed to Arcwork. Open one to watch it live." />
           </section>
         </div>
       </div>

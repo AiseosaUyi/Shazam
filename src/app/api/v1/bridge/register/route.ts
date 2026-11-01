@@ -14,6 +14,6 @@ export async function POST(req: NextRequest) {
   const parsed = Schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid registration request' }, { status: 400 });
   const out = await new BridgeRepo().registerDevice(parsed.data.code, parsed.data.kind, parsed.data.name, parsed.data.capabilities || {});
-  if (!out) return NextResponse.json({ error: 'Pairing code is invalid, expired or already used. Generate a new one in Shazam → Connections.' }, { status: 401 });
+  if (!out) return NextResponse.json({ error: 'Pairing code is invalid, expired or already used. Generate a new one in Arcwork → Connections.' }, { status: 401 });
   return NextResponse.json({ token: out.token, device: { id: out.device.id, kind: out.device.kind, name: out.device.name } });
 }

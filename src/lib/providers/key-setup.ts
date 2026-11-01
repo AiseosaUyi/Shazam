@@ -3,7 +3,7 @@
  *
  * Key pages (Google AI Studio, Groq, Cerebras, OpenRouter) all send X-Frame-Options DENY or
  * SAMEORIGIN, so they cannot be embedded in an iframe. Instead we open them in a small popup
- * window over Shazam, keep the guide on screen and save the key the moment it is pasted.
+ * window over Arcwork, keep the guide on screen and save the key the moment it is pasted.
  * OpenRouter supports OAuth PKCE, so it connects in one click with no copy/paste at all.
  */
 
@@ -45,7 +45,7 @@ export const KEY_PROVIDERS: KeyProvider[] = [
     free: true,
     oneClick: true,
     note: '50 free requests a day, 1,000 with $10 of credit.',
-    steps: ['Sign in or create an account', 'Approve access for Shazam', 'The window closes and you are connected'],
+    steps: ['Sign in or create an account', 'Approve access for Arcwork', 'The window closes and you are connected'],
     prefix: 'sk-or-…',
   },
   {
@@ -55,7 +55,7 @@ export const KEY_PROVIDERS: KeyProvider[] = [
     keyUrl: 'https://console.groq.com/keys',
     free: true,
     note: 'Free, with tight per-minute limits.',
-    steps: ['Sign in (Google or GitHub works)', 'Click “Create API Key” and name it Shazam', 'Copy the key and paste it below'],
+    steps: ['Sign in (Google or GitHub works)', 'Click “Create API Key” and name it Arcwork', 'Copy the key and paste it below'],
     prefix: 'gsk_…',
   },
   {

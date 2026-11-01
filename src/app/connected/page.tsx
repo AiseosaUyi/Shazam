@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Check, AlertTriangle } from 'lucide-react';
 import { KEY_CHANNEL } from '@/lib/providers/key-setup';
 
-/** Landing page for connect popups: tells the Shazam tab what happened, then closes itself. */
+/** Landing page for connect popups: tells the Arcwork tab what happened, then closes itself. */
 function Connected() {
   const params = useSearchParams();
   const provider = params.get('provider') || '';
@@ -34,7 +34,7 @@ function Connected() {
         </div>
         <h1 className="mt-4 text-[18px] font-semibold text-ink">{ok ? 'Connected' : status === 'denied' ? 'Not connected' : 'Something went wrong'}</h1>
         <p className="mt-1.5 text-[13px] text-ink-2">
-          {ok ? 'You can close this window and go back to Shazam.' : status === 'denied' ? 'Access was not approved. Close this window to try again.' : 'We could not finish connecting. Close this window and try again, or paste a key instead.'}
+          {ok ? 'You can close this window and go back to Arcwork.' : status === 'denied' ? 'Access was not approved. Close this window to try again.' : 'We could not finish connecting. Close this window and try again, or paste a key instead.'}
         </p>
         <button onClick={() => window.close()} className="mt-5 rounded-xl px-3.5 py-2 text-[13px] text-ink-2 ring-1 ring-line/10 hover:bg-surface-2 hover:text-ink">
           Close window

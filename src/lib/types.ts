@@ -1,4 +1,4 @@
-/** Shazam AI shared domain types. */
+/** Arcwork shared domain types. */
 
 export type TaskClass =
   | 'general_chat'

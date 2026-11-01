@@ -13,14 +13,14 @@ export async function executeSimulation(options: ExecuteOptions): Promise<Adapte
     const p = userPrompt.toLowerCase().trim();
 
     if (p.includes('hi') || p.includes('hello') || p.includes('hey')) {
-      return `Hello! 👋 Welcome to Shazam AI. I'm ready to assist you with reasoning, coding, drafting, or analyzing complex tasks.\n\nYou're currently chatting via Shazam's instant verified engine. You can also connect your own free Google Gemini API key anytime in **API Keys (Free)** in the top bar for direct access to Google AI Studio clusters!`;
+      return `Hello! 👋 Welcome to Arcwork. I'm ready to assist you with reasoning, coding, drafting, or analyzing complex tasks.\n\nYou're currently chatting via Arcwork's instant verified engine. You can also connect your own free Google Gemini API key anytime in **API Keys (Free)** in the top bar for direct access to Google AI Studio clusters!`;
     }
 
     if (p.includes('llm') || p.includes('large language model')) {
-      return `A **Large Language Model (LLM)** is a deep learning AI model trained on massive text corpora to understand, summarize, generate, and reason with human language.\n\n### Core Architecture:\n- **Transformer Attention**: Computes statistical associations between words across long sequences.\n- **Context Windows**: Allows models like Gemini to digest up to 1,000,000+ tokens of documents and code.\n- **Intelligent Routing**: Shazam AI automatically chooses the fastest, most cost-effective model for each prompt (e.g. Gemini 2.0 Flash vs. GPT-4o).`;
+      return `A **Large Language Model (LLM)** is a deep learning AI model trained on massive text corpora to understand, summarize, generate, and reason with human language.\n\n### Core Architecture:\n- **Transformer Attention**: Computes statistical associations between words across long sequences.\n- **Context Windows**: Allows models like Gemini to digest up to 1,000,000+ tokens of documents and code.\n- **Intelligent Routing**: Arcwork automatically chooses the fastest, most cost-effective model for each prompt (e.g. Gemini 2.0 Flash vs. GPT-4o).`;
     }
 
-    return `Here is a response to your request:\n\n> "${userPrompt}"\n\nShazam AI has processed your prompt with intelligent model routing. To route your prompts directly to Google AI Studio with up to 1,000,000 context tokens at $0.00 cost, simply add your free Google key in **API Keys (Free)**.`;
+    return `Here is a response to your request:\n\n> "${userPrompt}"\n\nArcwork has processed your prompt with intelligent model routing. To route your prompts directly to Google AI Studio with up to 1,000,000 context tokens at $0.00 cost, simply add your free Google key in **API Keys (Free)**.`;
   }
 
   const responseText = generateSimulatedResponse(prompt);

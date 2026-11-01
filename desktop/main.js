@@ -71,7 +71,7 @@ function createWindow() {
     height: 920,
     minWidth: 1000,
     minHeight: 650,
-    title: 'Shazam AI Studio',
+    title: 'Arcwork Studio',
     icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#0a0c10',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -107,7 +107,7 @@ ipcMain.handle('select-folder', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory', 'createDirectory'],
-    title: 'Select Project Directory to Bind with Shazam AI',
+    title: 'Select Project Directory to Bind with Arcwork',
   });
 
   if (result.canceled || result.filePaths.length === 0) return null;
@@ -131,14 +131,14 @@ ipcMain.on('window-close', () => {
 
 
 // ---------------------------------------------------------------------------
-// Shazam Bridge: outbound connection that lets cloud agents act on this computer
+// Arcwork Bridge: outbound connection that lets cloud agents act on this computer
 // ---------------------------------------------------------------------------
 
 function pushBridgeState() {
   const cfg = loadConfig();
   const state = { status: bridgeStatus, server: cfg.server, paired: Boolean(cfg.token), deviceName: cfg.deviceName, workspaces: cfg.workspaces || [], log: bridgeLog.slice(-80) };
   if (bridgeWindow && !bridgeWindow.isDestroyed()) bridgeWindow.webContents.send('bridge-state', state);
-  if (tray) tray.setToolTip(`Shazam Bridge: ${bridgeStatus}`);
+  if (tray) tray.setToolTip(`Arcwork Bridge: ${bridgeStatus}`);
   return state;
 }
 
@@ -155,7 +155,7 @@ async function approveRisky(summary, detail) {
     buttons: ['Deny', 'Allow once'],
     defaultId: 0,
     cancelId: 0,
-    title: 'Shazam wants to run a command',
+    title: 'Arcwork wants to run a command',
     message: summary,
     detail,
   });
@@ -191,7 +191,7 @@ function openBridgeWindow() {
   bridgeWindow = new BrowserWindow({
     width: 560,
     height: 680,
-    title: 'Shazam Bridge',
+    title: 'Arcwork Bridge',
     backgroundColor: '#0a0c10',
     webPreferences: { preload: path.join(__dirname, 'bridge-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
@@ -202,12 +202,12 @@ function openBridgeWindow() {
 ipcMain.handle('bridge-get-state', () => pushBridgeState());
 ipcMain.handle('bridge-pair', async (_e, { code, server, name }) => {
   await pair(server || DEFAULT_SERVER, code, name);
-  logBridge('paired with Shazam');
+  logBridge('paired with Arcwork');
   startBridge();
   return pushBridgeState();
 });
 ipcMain.handle('bridge-add-folder', async () => {
-  const result = await dialog.showOpenDialog(bridgeWindow || mainWindow, { properties: ['openDirectory'], title: 'Allow Shazam to work in this folder' });
+  const result = await dialog.showOpenDialog(bridgeWindow || mainWindow, { properties: ['openDirectory'], title: 'Allow Arcwork to work in this folder' });
   if (result.canceled || !result.filePaths[0]) return pushBridgeState();
   const cfg = loadConfig();
   cfg.workspaces = Array.from(new Set([...(cfg.workspaces || []), result.filePaths[0]]));
@@ -238,7 +238,7 @@ ipcMain.handle('bridge-open-pairing-page', () => shell.openExternal(`${loadConfi
 function buildMenuAndTray() {
   const template = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-    { label: 'Bridge', submenu: [{ label: 'Shazam Bridge…', accelerator: 'CmdOrCtrl+Shift+B', click: openBridgeWindow }] },
+    { label: 'Bridge', submenu: [{ label: 'Arcwork Bridge…', accelerator: 'CmdOrCtrl+Shift+B', click: openBridgeWindow }] },
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
@@ -248,8 +248,8 @@ function buildMenuAndTray() {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 18, height: 18 });
     tray = new Tray(icon);
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Open Shazam', click: () => (mainWindow ? mainWindow.show() : createWindow()) },
-      { label: 'Shazam Bridge…', click: openBridgeWindow },
+      { label: 'Open Arcwork', click: () => (mainWindow ? mainWindow.show() : createWindow()) },
+      { label: 'Arcwork Bridge…', click: openBridgeWindow },
       { type: 'separator' },
       { label: 'Quit', role: 'quit' },
     ]));

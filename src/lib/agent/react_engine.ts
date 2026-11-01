@@ -1,5 +1,5 @@
 /**
- * Shazam AI Autonomous Multi-Step ReAct Engine (Reason + Act)
+ * Arcwork Autonomous Multi-Step ReAct Engine (Reason + Act)
  * Implements Claude Code / Antigravity style autonomous tool-calling loops with
  * surgical diffing, automated compiler/test verification, and self-correction.
  */
@@ -89,7 +89,7 @@ export function buildReActSystemPrompt(projectSummary: string): string {
     (t) => `- ${t.name}(${t.parameters}): ${t.description}`
   ).join('\n');
 
-  return `You are Shazam AI, a elite autonomous software engineer running in a ReAct loop.
+  return `You are Arcwork, a elite autonomous software engineer running in a ReAct loop.
 You have full authority to read files, surgically modify code, run test commands to verify your changes, and self-correct any errors before concluding.
 
 Project Overview:

@@ -95,7 +95,7 @@ export const STATIC_PROVIDERS: Provider[] = [
   },
   {
     id: 'gateway',
-    name: 'Shazam free platform models',
+    name: 'Arcwork free platform models',
     category: 'aggregator',
     docsUrl: 'https://vercel.com/docs/ai-gateway',
     pricingUrl: 'https://vercel.com/docs/ai-gateway/pricing',
@@ -115,11 +115,11 @@ export const STATIC_PROVIDERS: Provider[] = [
     requiresApiKey: false,
     verification: 'verified',
     defaultStatus: 'enabled',
-    notes: 'Free and private: runs on your own Mac/PC. Cloud agents reach it through the Shazam desktop app.',
+    notes: 'Free and private: runs on your own Mac/PC. Cloud agents reach it through the Arcwork desktop app.',
   },
   {
     id: 'simulation',
-    name: 'Shazam Simulator (Demo)',
+    name: 'Arcwork Simulator (Demo)',
     category: 'demo',
     docsUrl: 'https://github.com/shazam-ai',
     pricingUrl: 'https://github.com/shazam-ai',
@@ -422,7 +422,7 @@ export const STATIC_MODELS: Model[] = [
   {
     id: 'model_shazam_sim_demo',
     providerId: 'simulation',
-    name: 'Shazam Simulator (Demo)',
+    name: 'Arcwork Simulator (Demo)',
     providerModelId: 'shazam-sim-demo',
     inputModalities: ['text', 'image', 'document'],
     outputModality: 'text',
@@ -651,7 +651,7 @@ export const STATIC_ROUTES: Route[] = [
     costClass: 'verified_free',
     pricing: { inputPer1M: 0, outputPer1M: 0, note: 'Free platform model, no key needed' },
     quotaConfidence: 'observed',
-    quotaNote: '5 RPM per model; Shazam fails over automatically',
+    quotaNote: '5 RPM per model; Arcwork fails over automatically',
     privacy: { providerMayTrainOnData: false },
     defaultStatus: 'enabled',
     verifiedAt: '2026-10-30',
@@ -749,7 +749,7 @@ export async function getOpenRouterDynamicFreeRoutes(repo: DbRepo): Promise<{ mo
   } else {
     try {
       const res = await fetch('https://openrouter.ai/api/v1/models', {
-        headers: { 'User-Agent': 'Shazam-AI/0.2.0' },
+        headers: { 'User-Agent': 'Arcwork-AI/0.2.0' },
       });
       if (res.ok) {
         const json = await res.json();

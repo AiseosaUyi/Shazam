@@ -1,5 +1,5 @@
 /**
- * Shazam AI Surgical Code Patcher
+ * Arcwork Surgical Code Patcher
  * Supports targeted Search-and-Replace patches (Claude / Antigravity standard)
  * and full-file creations without hallucinating or overwriting entire existing codebases.
  */

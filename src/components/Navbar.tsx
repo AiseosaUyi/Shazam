@@ -98,7 +98,7 @@ export function Navbar() {
     <header className="relative z-50 flex h-12 shrink-0 items-center border-b border-line/[0.06] bg-sidebar">
       {/* Brand column: same width and inset as the page sidebars (w-64, px-3) */}
       <div className="flex h-full items-center px-4 md:w-64 md:shrink-0 md:px-3">
-        <Link href="/" aria-label="Shazam home" className="rounded-lg px-1.5 py-1 hover:bg-surface-2/60">
+        <Link href="/" aria-label="Arcwork home" className="rounded-lg px-1.5 py-1 hover:bg-surface-2/60">
           <Logo size={24} />
         </Link>
       </div>
