@@ -9,9 +9,11 @@ describe('Free Image Generation & FLUX.2 klein Routing Tests', () => {
   const dummyUser: User = {
     id: 'test_user_img',
     email: 'test@example.com',
+    name: 'Test User',
     role: 'user',
+    status: 'active',
+    onboarded: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
   it('classifies "draw a futuristic cyberpunk city" as image_generation with outputModality=image', () => {

@@ -26,7 +26,7 @@ const MENU = [
   { href: '/settings', label: 'Settings', hint: 'Preferences and MCP servers', icon: Settings },
 ];
 
-const HIDE_ON = ['/login', '/signup', '/oauth'];
+const HIDE_ON = ['/login', '/signup', '/oauth', '/connected'];
 
 /** Account pages show "Back to <mode>" instead of the mode switcher. */
 const ACCOUNT_PAGES: Array<{ prefix: string; title: string }> = [

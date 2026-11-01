@@ -16,7 +16,11 @@ export async function DELETE(
   }
 
   await syncVaultFromCookie(req, user.id, repo, user.email);
-  const { id: providerId } = await params;
+  // Accept either a bare provider id ("google") or the credential id ("<userId>:google").
+  const { id: rawId } = await params;
+  const decoded = decodeURIComponent(rawId);
+  const providerId = decoded.startsWith(`${user.id}:`) ? decoded.slice(user.id.length + 1) : decoded;
+  if (providerId.includes(':')) return NextResponse.json({ error: 'Key not found.' }, { status: 404 });
   const deleted = await repo.deleteCredential(user.id, providerId);
 
   await repo.recordAuditEvent({
@@ -28,7 +32,8 @@ export async function DELETE(
     outcome: deleted ? 'success' : 'failure',
   });
 
-  const response = NextResponse.json({ success: true, revoked: deleted });
+  if (!deleted) return NextResponse.json({ error: 'Key not found.' }, { status: 404 });
+  const response = NextResponse.json({ success: true, revoked: true });
   const remaining = await repo.getCredentials(user.id);
   if (remaining.length === 0) {
     response.cookies.delete('shazam_vault');

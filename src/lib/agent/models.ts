@@ -81,13 +81,21 @@ export async function checkProviderKey(providerId: string, apiKey: string): Prom
     google: { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=5', headers: { 'x-goog-api-key': apiKey } },
     anthropic: { url: 'https://api.anthropic.com/v1/models?limit=5', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } },
     ...Object.fromEntries(Object.entries(OPENAI_COMPATIBLE_BASES).map(([k, base]) => [k, { url: `${base}/models`, headers: { Authorization: `Bearer ${apiKey}` } }])),
+    // OpenRouter's /models is public (200 for any key), so validate against /key instead.
+    openrouter: { url: 'https://openrouter.ai/api/v1/key', headers: { Authorization: `Bearer ${apiKey}` } },
     github: { url: 'https://api.github.com/user', headers: { Authorization: `Bearer ${apiKey}`, 'User-Agent': 'shazam-ai' } },
   };
   const target = urls[providerId];
   if (!target) return { ok: true, models: 0 };
   try {
     const res = await fetch(target.url, { headers: target.headers, signal: AbortSignal.timeout(8000) });
-    if (res.status === 401 || res.status === 403) return { ok: false, models: 0, error: 'The provider rejected this key. Check you copied all of it.' };
+    const rejected = { ok: false, models: 0, error: 'The provider rejected this key. Check you copied all of it.' };
+    if (res.status === 401 || res.status === 403) return rejected;
+    if (res.status === 400) {
+      // Google answers an invalid key with 400 API_KEY_INVALID, not 401.
+      const body = await res.text().catch(() => '');
+      if (/API_KEY_INVALID|API key not valid|invalid.{0,10}(api.)?key/i.test(body)) return rejected;
+    }
     if (!res.ok) return { ok: true, models: 0 }; // provider hiccup: don't block saving
     const data: any = await res.json().catch(() => ({}));
     return { ok: true, models: (data.models || data.data || []).length };

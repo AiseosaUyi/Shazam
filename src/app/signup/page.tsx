@@ -43,7 +43,7 @@ export default function SignupPage() {
         throw new Error(data.error || 'Registration failed. Please check your details.');
       }
 
-      router.push('/agent');
+      router.push('/onboarding');
       router.refresh();
     } catch (err: any) {
       setError(err.message);

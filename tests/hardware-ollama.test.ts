@@ -11,9 +11,11 @@ describe('Hardware Detection & Local Ollama Engine Tests', () => {
   const dummyUser: User = {
     id: 'test_user_hw',
     email: 'test@example.com',
+    name: 'Test User',
     role: 'user',
+    status: 'active',
+    onboarded: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
   it('detects system memory and classifies into hardware tiers with recommendations', () => {

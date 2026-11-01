@@ -1,58 +1,29 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Check, ExternalLink, Loader2, Monitor, Sparkles } from 'lucide-react';
+import { Check, Monitor, Sparkles, Zap } from 'lucide-react';
 import { useDialog } from '@/components/ui/dialog';
+import { KeySetupModal } from '@/components/connections/KeySetupModal';
+import { KEY_PROVIDERS, type KeyProvider } from '@/lib/providers/key-setup';
 
 /**
  * Models in plain language: what works with no setup, which free keys add headroom, and
- * which paid keys are optional. Keys are added inline (no modal) and checked before saving.
+ * which paid keys are optional. Keys are added through the guided KeySetupModal (key page
+ * in a popup, auto-save on paste, one-click OAuth for OpenRouter) and checked before saving.
  */
 
-interface Provider {
-  id: string;
-  name: string;
-  unlocks: string;
-  note?: string;
-  keyUrl: string;
-  free: boolean;
-}
-
-const PROVIDERS: Provider[] = [
-  { id: 'google', name: 'Google AI Studio', unlocks: 'Gemini 3.8 Flash, 3.5 Flash Lite, plus Nano Banana images with billing', note: 'Free key. Google may use free-tier requests to improve its models.', keyUrl: 'https://aistudio.google.com/app/apikey', free: true },
-  { id: 'groq', name: 'Groq', unlocks: 'Qwen3.8 27B and gpt-oss at very high speed', note: 'Free key, tight per-minute limits.', keyUrl: 'https://console.groq.com/keys', free: true },
-  { id: 'cerebras', name: 'Cerebras', unlocks: 'gpt-oss-120b, about 1M free tokens a day', keyUrl: 'https://cloud.cerebras.ai', free: true },
-  { id: 'openrouter', name: 'OpenRouter', unlocks: 'Nemotron 3 Ultra and Gemma 4 (free models)', note: '50 free requests a day, 1,000 with $10 of credit.', keyUrl: 'https://openrouter.ai/keys', free: true },
-  { id: 'anthropic', name: 'Anthropic', unlocks: 'Claude Opus, Sonnet and Haiku', keyUrl: 'https://console.anthropic.com/settings/keys', free: false },
-  { id: 'openai', name: 'OpenAI', unlocks: 'GPT models and GPT Image', keyUrl: 'https://platform.openai.com/api-keys', free: false },
-  { id: 'deepseek', name: 'DeepSeek', unlocks: 'DeepSeek chat and reasoning models', keyUrl: 'https://platform.deepseek.com/api_keys', free: false },
-];
+const PROVIDERS: KeyProvider[] = KEY_PROVIDERS;
 
 const INCLUDED = ['Qwen3 Coder', 'Kimi K2', 'GLM 4.6', 'gpt-oss-120b', 'FLUX.2 klein (images)'];
 
-function ProviderRow({ p, connected, hint, onChange }: { p: Provider; connected: boolean; hint?: string; onChange: () => void }) {
+function ProviderRow({ p, connected, hint, onChange }: { p: KeyProvider; connected: boolean; hint?: string; onChange: () => void }) {
   const dialog = useDialog();
   const [open, setOpen] = useState(false);
-  const [key, setKey] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    const r = await fetch('/api/v1/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ providerId: p.id, apiKey: key.trim() }) });
-    const d = await r.json().catch(() => ({}));
-    setBusy(false);
-    if (!r.ok) return setError(d.error || 'Could not save this key.');
-    setKey('');
-    setOpen(false);
-    onChange();
-  }
 
   async function remove() {
     if (!(await dialog.confirm({ title: `Remove your ${p.name} key?`, body: 'Agents will stop using it. You can add it again anytime.', confirmLabel: 'Remove', tone: 'danger' }))) return;
-    const me = await fetch('/api/v1/auth/me').then((r) => r.json());
-    await fetch(`/api/v1/credentials/${encodeURIComponent(`${me.user.id}:${p.id}`)}`, { method: 'DELETE' });
+    const r = await fetch(`/api/v1/credentials/${encodeURIComponent(p.id)}`, { method: 'DELETE' }).catch(() => null);
+    if (!r?.ok) await dialog.alert({ title: `Could not remove your ${p.name} key`, body: 'Please try again.' });
     onChange();
   }
 
@@ -62,6 +33,7 @@ function ProviderRow({ p, connected, hint, onChange }: { p: Provider; connected:
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-medium text-ink">
             {p.name}
+            {p.recommended && !connected && <span className="ml-2 rounded-md bg-brand/10 px-1.5 py-0.5 text-[11px] font-medium text-brand">Recommended</span>}
             {connected && <span className="shz-mono ml-2 text-[11px] font-normal text-ink-3">{hint}</span>}
           </p>
           <p className="truncate text-[12px] text-ink-3">{p.unlocks}</p>
@@ -72,35 +44,20 @@ function ProviderRow({ p, connected, hint, onChange }: { p: Provider; connected:
             <button onClick={remove} className="rounded-lg px-2 py-1 text-[12px] text-ink-3 hover:bg-surface-2 hover:text-ink">Remove</button>
           </div>
         ) : (
-          <button onClick={() => setOpen((v) => !v)} className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-ink-2 ring-1 ring-line/10 hover:bg-surface-2 hover:text-ink">
-            {open ? 'Cancel' : 'Add key'}
+          <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-ink-2 ring-1 ring-line/10 hover:bg-surface-2 hover:text-ink">
+            {p.oneClick ? <><Zap className="h-3.5 w-3.5" /> One click</> : 'Add key'}
           </button>
         )}
       </div>
-      {open && !connected && (
-        <div className="mt-2.5 space-y-2 animate-shz-in">
-          <div className="flex gap-2">
-            <input
-              autoFocus
-              type="password"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && key.trim() && save()}
-              placeholder={`Paste your ${p.name} key`}
-              className="shz-mono min-w-0 flex-1 rounded-xl border border-line/10 bg-canvas px-3 py-2 text-[12px] text-ink placeholder:text-ink-3 focus:border-brand/40 focus:outline-none"
-            />
-            <button disabled={!key.trim() || busy} onClick={save} className="flex items-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-[12px] font-semibold text-brand-ink hover:bg-brand-soft disabled:opacity-40">
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
-            </button>
-          </div>
-          <p className="text-[11px] text-ink-3">
-            <a href={p.keyUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-ink-2 underline-offset-2 hover:underline">
-              Get a {p.free ? 'free ' : ''}key <ExternalLink className="h-3 w-3" />
-            </a>
-            {p.note ? ` · ${p.note}` : ''} We check the key before saving and store it encrypted.
-          </p>
-          {error && <p className="text-[12px] text-red-300">{error}</p>}
-        </div>
+      {open && (
+        <KeySetupModal
+          providerId={p.id}
+          onClose={() => setOpen(false)}
+          onSaved={() => {
+            setOpen(false);
+            onChange();
+          }}
+        />
       )}
     </div>
   );
