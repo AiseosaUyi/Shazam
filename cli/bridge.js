@@ -111,6 +111,7 @@ async function connect(cfg) {
 async function start(cfg) {
   const background = rest.includes('--background');
   const yesRisky = rest.includes('--yes-risky');
+  let lastStatus = '';
   if (background) fs.writeFileSync(PID_PATH, String(process.pid), { mode: 0o600 });
   const cleanup = () => {
     if (background && runningPid() === process.pid) fs.rmSync(PID_PATH, { force: true });
@@ -124,7 +125,8 @@ async function start(cfg) {
         ? nativeConfirm('Arcwork', `Allow Arcwork to work in this folder?\n\n${folder}\n\n${reason}`, 'Allow')
         : ask(`\n? ${reason}\n  Allow Arcwork to work in ${folder}? [y/N] `),
     log: (l) => console.log(`${new Date().toISOString()} ${l}`),
-    onStatus: (s) => console.log(`[bridge] ${s}`),
+    // Print only changes; the long-poll reconnects every ~20s and would repeat "connected".
+    onStatus: (s) => { if (s !== lastStatus) console.log(`[bridge] ${s}`); lastStatus = s; },
   });
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { client.stop(); cleanup(); process.exit(0); });
   console.log(`Arcwork bridge → ${cfg.server}  (folders: ${(cfg.workspaces || []).join(', ') || 'none yet; Arcwork asks when a task needs one'})`);
