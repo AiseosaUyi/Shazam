@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CONFIG_DIR = path.join(os.homedir(), '.shazam');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'bridge.json');
 const DEFAULT_SERVER = process.env.SHAZAM_SERVER || 'https://arcwork-ai.vercel.app';
@@ -59,6 +59,78 @@ async function pair(server, code, deviceName) {
   return data.device;
 }
 
+/**
+ * Browser sign-in (like `gh auth login`): asks Arcwork for a request, calls onCode with the
+ * approval URL and short code (open it in the browser), then polls until the person approves.
+ * Saves the device token like pair() does.
+ */
+async function deviceAuth(server, { name, onCode, signal } = {}) {
+  const base = server.replace(/\/$/, '');
+  const deviceName = name || os.hostname();
+  const res = await fetch(`${base}/api/v1/bridge/device/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: 'desktop', name: deviceName, capabilities: { platform: process.platform, version: VERSION } }),
+    signal,
+  });
+  const start = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(start.error || `Could not reach Arcwork (HTTP ${res.status})`);
+  await onCode?.({ url: start.verification_uri_complete, code: start.user_code, expiresIn: start.expires_in });
+
+  let interval = Math.max(2, Number(start.interval) || 3) * 1000;
+  const deadline = Date.now() + (Number(start.expires_in) || 600) * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval));
+    if (signal?.aborted) throw new Error('Cancelled.');
+    let data = {};
+    let status = 0;
+    try {
+      const r = await fetch(`${base}/api/v1/bridge/device/token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_code: start.device_code }), signal });
+      status = r.status;
+      data = await r.json().catch(() => ({}));
+    } catch (err) {
+      if (signal?.aborted) throw new Error('Cancelled.');
+      continue; // network blip: keep waiting
+    }
+    if (status === 200 && data.token) {
+      const cfg = loadConfig();
+      cfg.server = base;
+      cfg.token = data.token;
+      cfg.deviceName = deviceName;
+      cfg.account = data.account?.email || null;
+      saveConfig(cfg);
+      return { device: data.device, account: cfg.account };
+    }
+    if (data.error === 'slow_down' || status === 429) interval += 2000;
+    else if (data.error === 'access_denied') throw new Error('The connection was declined in the browser.');
+    else if (data.error === 'expired_token') throw new Error('The connection request expired. Try again.');
+  }
+  throw new Error('The connection request expired. Try again.');
+}
+
+/**
+ * Whether a folder may be offered for on-demand consent: it must exist, be a directory and
+ * not be a whole disk, the home folder itself, a system folder or a credentials folder.
+ * Returns the real path, or throws with a reason the agent can relay.
+ */
+function checkConsentFolder(p) {
+  if (typeof p !== 'string' || !path.isAbsolute(p.replace(/^~(?=$|\/)/, os.homedir()))) throw new Error('The folder must be an absolute path.');
+  let real;
+  try {
+    real = fs.realpathSync(path.resolve(p.replace(/^~(?=$|\/)/, os.homedir())));
+  } catch {
+    throw new Error(`"${p}" does not exist on this computer.`);
+  }
+  if (!fs.statSync(real).isDirectory()) throw new Error(`"${p}" is not a folder.`);
+  const home = fs.realpathSync(os.homedir());
+  const tooBroad = [path.parse(real).root, home, path.dirname(home), '/Users', '/home', '/System', '/Library', '/Applications', '/usr', '/bin', '/etc', '/var', '/tmp', '/private', '/private/tmp', '/private/var', '/opt', 'C:\\Windows', 'C:\\Program Files'];
+  if (tooBroad.some((b) => real.toLowerCase() === b.toLowerCase())) throw new Error(`"${real}" is too broad to share. Ask for a project folder instead.`);
+  const system = ['/System/', '/Library/', '/usr/', '/bin/', '/sbin/', '/etc/', '/private/etc/', '/private/var/db/', 'C:\\Windows\\'];
+  if (system.some((b) => real.startsWith(b))) throw new Error(`"${real}" is a system folder; Arcwork can't work there.`);
+  if (SECRET_PATTERNS.some((rx) => rx.test(real + '/')) || /(^|\/)\.(gnupg|config\/gcloud|kube|docker)(\/|$)/.test(real)) throw new Error(`"${real}" holds credentials; Arcwork can't work there.`);
+  return real;
+}
+
 /** Resolves a path and checks it is inside an allowed workspace and not a secret. */
 function guardPath(p, workspaces) {
   if (typeof p !== 'string' || !p) throw new Error('A path is required.');
@@ -89,6 +161,15 @@ function guardPath(p, workspaces) {
   }
   if (SECRET_PATTERNS.some((rx) => rx.test(real))) throw new Error(`Refusing to touch secret file "${p}".`);
   return real;
+}
+
+function guardPathSafe(p, workspaces) {
+  try {
+    guardPath(p, workspaces);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function listFiles(root, max) {
@@ -180,6 +261,9 @@ class BridgeClient {
   constructor(opts) {
     this.cfg = opts.config;
     this.approve = opts.approve || (async () => false);
+    // Asks the person whether Arcwork may work in a folder it isn't allowed in yet.
+    this.approveFolder = opts.approveFolder || (async () => false);
+    this.declined = new Map(); // folder → time declined, so a run can't spam prompts
     this.log = opts.log || ((l) => console.log(l));
     this.onStatus = opts.onStatus || (() => {});
     this.running = false;
@@ -266,6 +350,25 @@ class BridgeClient {
         this.log(`started ${p.command} (pid ${child.pid}) in ${cwd}`);
         return { ok: true, result: `Running (pid ${child.pid}). Output so far:\n${out.slice(-4000)}` };
       }
+      case 'request_folder': {
+        // On-demand consent: a task targets a folder that isn't allowed yet.
+        const real = checkConsentFolder(p.path);
+        if (guardPathSafe(real, workspaces)) return { ok: true, result: { allowed: true, folder: real, workspaces } };
+        const last = this.declined.get(real);
+        if (last && Date.now() - last < 10 * 60_000) return { ok: true, result: { allowed: false, folder: real, reason: 'declined recently' } };
+        const allowed = await this.approveFolder(real, String(p.reason || '').slice(0, 300));
+        if (!allowed) {
+          this.declined.set(real, Date.now());
+          this.log(`declined folder ${real}`);
+          return { ok: true, result: { allowed: false, folder: real } };
+        }
+        const cfg = loadConfig();
+        cfg.workspaces = Array.from(new Set([...(cfg.workspaces || []), real]));
+        saveConfig(cfg);
+        this.cfg.workspaces = cfg.workspaces;
+        this.log(`allowed folder ${real}`);
+        return { ok: true, result: { allowed: true, folder: real, workspaces: cfg.workspaces } };
+      }
       case 'list_files': {
         const root = guardPath(p.path, workspaces);
         const files = listFiles(root, Math.min(2000, Number(p.max) || 500));
@@ -301,6 +404,8 @@ class BridgeClient {
     while (this.running) {
       this.controller = new AbortController();
       try {
+        // Pick up folders allowed or removed elsewhere (desktop window, `allow` in a terminal).
+        if (fs.existsSync(CONFIG_PATH)) this.cfg.workspaces = loadConfig().workspaces || [];
         if (Date.now() - lastProbe > 60_000) {
           localModels = await probeLocalModels();
           lastProbe = Date.now();
@@ -343,7 +448,7 @@ class BridgeClient {
   }
 }
 
-module.exports = { LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
+module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
 
   return module.exports;
 })();
@@ -351,21 +456,28 @@ module.exports = { LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClie
  * node ~/.arcwork-bridge.js — connect this computer to Arcwork so cloud agents can run commands,
  * edit files and use git (with your own credentials) inside folders you allow.
  *
+ *   node ~/.arcwork-bridge.js connect [--folder <dir>] [--foreground]   # browser sign-in + allow this folder + run in the background
+ *   node ~/.arcwork-bridge.js stop                    # stop the background bridge
  *   node ~/.arcwork-bridge.js pair <CODE> [--server https://arcwork-ai.vercel.app] [--name "My Mac"]
  *   node ~/.arcwork-bridge.js allow <folder>          # add a workspace folder
  *   node ~/.arcwork-bridge.js disallow <folder>
  *   node ~/.arcwork-bridge.js status
  *   node ~/.arcwork-bridge.js start [--yes-risky]     # run; risky commands are confirmed in this terminal
  */
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const readline = require('readline');
-const { BridgeClient, loadConfig, saveConfig, pair, CONFIG_PATH, DEFAULT_SERVER } = __core;
+const { spawn, execFile } = require('child_process');
+const { BridgeClient, loadConfig, saveConfig, pair, deviceAuth, checkConsentFolder, CONFIG_PATH, DEFAULT_SERVER } = __core;
 
 const [, , cmd, ...rest] = process.argv;
 const flag = (name) => {
   const i = rest.indexOf(name);
   return i >= 0 ? rest[i + 1] : undefined;
 };
+const PID_PATH = path.join(path.dirname(CONFIG_PATH), 'bridge.pid');
+const LOG_PATH = path.join(path.dirname(CONFIG_PATH), 'bridge.log');
 
 function ask(question) {
   if (!process.stdin.isTTY) return Promise.resolve(false);
@@ -373,12 +485,126 @@ function ask(question) {
   return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(/^y(es)?$/i.test(a.trim())); }));
 }
 
+/** Native yes/no prompt for the background bridge (no terminal to ask in). Denies if none is available. */
+function nativeConfirm(title, message, allowLabel) {
+  return new Promise((resolve) => {
+    if (process.platform === 'darwin') {
+      // Text goes in as argv, never into the script, so it can't inject AppleScript.
+      const script = ['on run argv', `display dialog (item 2 of argv) with title (item 1 of argv) buttons {"Don't allow", (item 3 of argv)} default button "Don't allow" cancel button "Don't allow" with icon caution giving up after 110`, 'end run'];
+      execFile('osascript', [...script.flatMap((l) => ['-e', l]), title, message, allowLabel], (err, stdout) => resolve(!err && String(stdout).includes(`button returned:${allowLabel}`)));
+    } else if (process.platform === 'linux') {
+      execFile('zenity', ['--question', `--title=${title}`, `--text=${message}`, `--ok-label=${allowLabel}`, "--cancel-label=Don't allow", '--timeout=110'], (err) => resolve(!err));
+    } else {
+      resolve(false);
+    }
+  });
+}
+
+function openBrowser(url) {
+  const [bin, args] = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
+  try {
+    spawn(bin, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+  } catch {
+    // The URL is printed too.
+  }
+}
+
+function runningPid() {
+  try {
+    const pid = Number(fs.readFileSync(PID_PATH, 'utf8'));
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+function startBackground() {
+  fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true, mode: 0o700 });
+  const out = fs.openSync(LOG_PATH, 'a', 0o600);
+  const child = spawn(process.execPath, [__filename, 'start', '--background'], { detached: true, stdio: ['ignore', out, out], env: process.env });
+  child.unref();
+  return child.pid;
+}
+
+async function connect(cfg) {
+  if (!cfg.token) {
+    console.log('Connecting this computer to Arcwork…');
+    const { account } = await deviceAuth(flag('--server') || cfg.server || DEFAULT_SERVER, {
+      name: flag('--name'),
+      onCode: ({ url, code }) => {
+        console.log(`\n  Approve it in your browser: ${url}\n  Check the page shows this code: ${code}\n`);
+        openBrowser(url);
+        console.log('Waiting for you to click Approve…');
+      },
+    });
+    console.log(`✓ Connected${account ? ` to ${account}` : ''}.`);
+  } else {
+    console.log(`✓ Already connected${cfg.account ? ` to ${cfg.account}` : ''} as "${cfg.deviceName}".`);
+  }
+
+  const dir = path.resolve(flag('--folder') || process.cwd());
+  try {
+    const real = checkConsentFolder(dir);
+    const fresh = loadConfig();
+    fresh.workspaces = Array.from(new Set([...(fresh.workspaces || []), real]));
+    saveConfig(fresh);
+    console.log(`✓ Arcwork can work in ${real}`);
+  } catch (err) {
+    console.log(`! Didn't allow ${dir}: ${err.message}\n  Run this inside a project folder to allow it. Arcwork will ask before using any other folder.`);
+  }
+
+  if (rest.includes('--foreground')) return start(loadConfig());
+  const pid = runningPid();
+  if (pid) console.log(`✓ Already running in the background (pid ${pid}); it picks up the new folder by itself.`);
+  else console.log(`✓ Running in the background (pid ${startBackground()}). Log: ${LOG_PATH}`);
+  console.log('Stop it any time with: node ~/.arcwork-bridge.js stop');
+}
+
+async function start(cfg) {
+  const background = rest.includes('--background');
+  const yesRisky = rest.includes('--yes-risky');
+  let lastStatus = '';
+  if (background) fs.writeFileSync(PID_PATH, String(process.pid), { mode: 0o600 });
+  const cleanup = () => {
+    if (background && runningPid() === process.pid) fs.rmSync(PID_PATH, { force: true });
+  };
+  const client = new BridgeClient({
+    config: cfg,
+    approve: async (summary, detail) =>
+      yesRisky || (background ? nativeConfirm('Arcwork wants to run a command', `${summary}:\n\n${detail}`, 'Allow once') : ask(`\n⚠ ${summary}:\n  ${detail.replace(/\n/g, '\n  ')}\nAllow? [y/N] `)),
+    approveFolder: async (folder, reason) =>
+      background
+        ? nativeConfirm('Arcwork', `Allow Arcwork to work in this folder?\n\n${folder}\n\n${reason}`, 'Allow')
+        : ask(`\n? ${reason}\n  Allow Arcwork to work in ${folder}? [y/N] `),
+    log: (l) => console.log(`${new Date().toISOString()} ${l}`),
+    // Print only changes; the long-poll reconnects every ~20s and would repeat "connected".
+    onStatus: (s) => { if (s !== lastStatus) console.log(`[bridge] ${s}`); lastStatus = s; },
+  });
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { client.stop(); cleanup(); process.exit(0); });
+  console.log(`Arcwork bridge → ${cfg.server}  (folders: ${(cfg.workspaces || []).join(', ') || 'none yet; Arcwork asks when a task needs one'})`);
+  await client.start();
+  cleanup();
+}
+
 (async () => {
   const cfg = loadConfig();
   switch (cmd) {
+    case 'connect':
+      await connect(cfg);
+      break;
+    case 'stop': {
+      const pid = runningPid();
+      if (!pid) console.log('The background bridge is not running.');
+      else {
+        process.kill(pid, 'SIGTERM');
+        console.log(`✓ Stopped (pid ${pid}).`);
+      }
+      break;
+    }
     case 'pair': {
       const code = rest[0];
-      if (!code) throw new Error('Usage: node ~/.arcwork-bridge.js pair <CODE>  (get a code in Arcwork → Connections → Desktop app)');
+      if (!code) throw new Error('Usage: node ~/.arcwork-bridge.js pair <CODE>  (or just: node ~/.arcwork-bridge.js connect)');
       const device = await pair(flag('--server') || cfg.server || DEFAULT_SERVER, code, flag('--name'));
       console.log(`✓ Paired as "${device.name}". Config saved to ${CONFIG_PATH}`);
       console.log('Next: node ~/.arcwork-bridge.js allow <project folder>  then  node ~/.arcwork-bridge.js start');
@@ -399,26 +625,14 @@ function ask(question) {
       break;
     }
     case 'status':
-      console.log(JSON.stringify({ server: cfg.server, paired: Boolean(cfg.token), device: cfg.deviceName, workspaces: cfg.workspaces }, null, 2));
+      console.log(JSON.stringify({ server: cfg.server, paired: Boolean(cfg.token), account: cfg.account || null, device: cfg.deviceName, running: runningPid(), workspaces: cfg.workspaces }, null, 2));
       break;
-    case 'start': {
-      const yesRisky = rest.includes('--yes-risky');
-      let lastStatus = '';
-      if (!cfg.workspaces?.length) console.warn('! No folders allowed yet. Run: node ~/.arcwork-bridge.js allow <folder>');
-      const client = new BridgeClient({
-        config: cfg,
-        approve: async (summary, detail) => yesRisky || ask(`\n⚠ ${summary}:\n  ${detail.replace(/\n/g, '\n  ')}\nAllow? [y/N] `),
-        log: (l) => console.log(l),
-        // Print only changes; the long-poll reconnects every ~20s and would repeat "connected".
-        onStatus: (s) => { if (s !== lastStatus) console.log(`[bridge] ${s}`); lastStatus = s; },
-      });
-      process.on('SIGINT', () => { client.stop(); process.exit(0); });
-      console.log(`Arcwork bridge → ${cfg.server}  (folders: ${(cfg.workspaces || []).join(', ') || 'none'})`);
-      await client.start();
+    case 'start':
+      if (!cfg.token) throw new Error('Not connected yet. Run: node ~/.arcwork-bridge.js connect');
+      await start(cfg);
       break;
-    }
     default:
-      console.log('Usage: node ~/.arcwork-bridge.js <pair|allow|disallow|status|start>');
+      console.log(`Usage: node ~/.arcwork-bridge.js <connect|stop|status|pair|allow|disallow|start>\n  connect  sign in with your browser, allow this folder (${os.homedir() === process.cwd() ? 'run it in a project folder' : process.cwd()}) and run in the background`);
   }
 })().catch((err) => {
   console.error(`✗ ${err.message}`);

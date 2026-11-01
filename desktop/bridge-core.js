@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CONFIG_DIR = path.join(os.homedir(), '.shazam');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'bridge.json');
 const DEFAULT_SERVER = process.env.SHAZAM_SERVER || 'https://arcwork-ai.vercel.app';
@@ -52,6 +52,78 @@ async function pair(server, code, deviceName) {
   return data.device;
 }
 
+/**
+ * Browser sign-in (like `gh auth login`): asks Arcwork for a request, calls onCode with the
+ * approval URL and short code (open it in the browser), then polls until the person approves.
+ * Saves the device token like pair() does.
+ */
+async function deviceAuth(server, { name, onCode, signal } = {}) {
+  const base = server.replace(/\/$/, '');
+  const deviceName = name || os.hostname();
+  const res = await fetch(`${base}/api/v1/bridge/device/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: 'desktop', name: deviceName, capabilities: { platform: process.platform, version: VERSION } }),
+    signal,
+  });
+  const start = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(start.error || `Could not reach Arcwork (HTTP ${res.status})`);
+  await onCode?.({ url: start.verification_uri_complete, code: start.user_code, expiresIn: start.expires_in });
+
+  let interval = Math.max(2, Number(start.interval) || 3) * 1000;
+  const deadline = Date.now() + (Number(start.expires_in) || 600) * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval));
+    if (signal?.aborted) throw new Error('Cancelled.');
+    let data = {};
+    let status = 0;
+    try {
+      const r = await fetch(`${base}/api/v1/bridge/device/token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_code: start.device_code }), signal });
+      status = r.status;
+      data = await r.json().catch(() => ({}));
+    } catch (err) {
+      if (signal?.aborted) throw new Error('Cancelled.');
+      continue; // network blip: keep waiting
+    }
+    if (status === 200 && data.token) {
+      const cfg = loadConfig();
+      cfg.server = base;
+      cfg.token = data.token;
+      cfg.deviceName = deviceName;
+      cfg.account = data.account?.email || null;
+      saveConfig(cfg);
+      return { device: data.device, account: cfg.account };
+    }
+    if (data.error === 'slow_down' || status === 429) interval += 2000;
+    else if (data.error === 'access_denied') throw new Error('The connection was declined in the browser.');
+    else if (data.error === 'expired_token') throw new Error('The connection request expired. Try again.');
+  }
+  throw new Error('The connection request expired. Try again.');
+}
+
+/**
+ * Whether a folder may be offered for on-demand consent: it must exist, be a directory and
+ * not be a whole disk, the home folder itself, a system folder or a credentials folder.
+ * Returns the real path, or throws with a reason the agent can relay.
+ */
+function checkConsentFolder(p) {
+  if (typeof p !== 'string' || !path.isAbsolute(p.replace(/^~(?=$|\/)/, os.homedir()))) throw new Error('The folder must be an absolute path.');
+  let real;
+  try {
+    real = fs.realpathSync(path.resolve(p.replace(/^~(?=$|\/)/, os.homedir())));
+  } catch {
+    throw new Error(`"${p}" does not exist on this computer.`);
+  }
+  if (!fs.statSync(real).isDirectory()) throw new Error(`"${p}" is not a folder.`);
+  const home = fs.realpathSync(os.homedir());
+  const tooBroad = [path.parse(real).root, home, path.dirname(home), '/Users', '/home', '/System', '/Library', '/Applications', '/usr', '/bin', '/etc', '/var', '/tmp', '/private', '/private/tmp', '/private/var', '/opt', 'C:\\Windows', 'C:\\Program Files'];
+  if (tooBroad.some((b) => real.toLowerCase() === b.toLowerCase())) throw new Error(`"${real}" is too broad to share. Ask for a project folder instead.`);
+  const system = ['/System/', '/Library/', '/usr/', '/bin/', '/sbin/', '/etc/', '/private/etc/', '/private/var/db/', 'C:\\Windows\\'];
+  if (system.some((b) => real.startsWith(b))) throw new Error(`"${real}" is a system folder; Arcwork can't work there.`);
+  if (SECRET_PATTERNS.some((rx) => rx.test(real + '/')) || /(^|\/)\.(gnupg|config\/gcloud|kube|docker)(\/|$)/.test(real)) throw new Error(`"${real}" holds credentials; Arcwork can't work there.`);
+  return real;
+}
+
 /** Resolves a path and checks it is inside an allowed workspace and not a secret. */
 function guardPath(p, workspaces) {
   if (typeof p !== 'string' || !p) throw new Error('A path is required.');
@@ -82,6 +154,15 @@ function guardPath(p, workspaces) {
   }
   if (SECRET_PATTERNS.some((rx) => rx.test(real))) throw new Error(`Refusing to touch secret file "${p}".`);
   return real;
+}
+
+function guardPathSafe(p, workspaces) {
+  try {
+    guardPath(p, workspaces);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function listFiles(root, max) {
@@ -173,6 +254,9 @@ class BridgeClient {
   constructor(opts) {
     this.cfg = opts.config;
     this.approve = opts.approve || (async () => false);
+    // Asks the person whether Arcwork may work in a folder it isn't allowed in yet.
+    this.approveFolder = opts.approveFolder || (async () => false);
+    this.declined = new Map(); // folder → time declined, so a run can't spam prompts
     this.log = opts.log || ((l) => console.log(l));
     this.onStatus = opts.onStatus || (() => {});
     this.running = false;
@@ -259,6 +343,25 @@ class BridgeClient {
         this.log(`started ${p.command} (pid ${child.pid}) in ${cwd}`);
         return { ok: true, result: `Running (pid ${child.pid}). Output so far:\n${out.slice(-4000)}` };
       }
+      case 'request_folder': {
+        // On-demand consent: a task targets a folder that isn't allowed yet.
+        const real = checkConsentFolder(p.path);
+        if (guardPathSafe(real, workspaces)) return { ok: true, result: { allowed: true, folder: real, workspaces } };
+        const last = this.declined.get(real);
+        if (last && Date.now() - last < 10 * 60_000) return { ok: true, result: { allowed: false, folder: real, reason: 'declined recently' } };
+        const allowed = await this.approveFolder(real, String(p.reason || '').slice(0, 300));
+        if (!allowed) {
+          this.declined.set(real, Date.now());
+          this.log(`declined folder ${real}`);
+          return { ok: true, result: { allowed: false, folder: real } };
+        }
+        const cfg = loadConfig();
+        cfg.workspaces = Array.from(new Set([...(cfg.workspaces || []), real]));
+        saveConfig(cfg);
+        this.cfg.workspaces = cfg.workspaces;
+        this.log(`allowed folder ${real}`);
+        return { ok: true, result: { allowed: true, folder: real, workspaces: cfg.workspaces } };
+      }
       case 'list_files': {
         const root = guardPath(p.path, workspaces);
         const files = listFiles(root, Math.min(2000, Number(p.max) || 500));
@@ -294,6 +397,8 @@ class BridgeClient {
     while (this.running) {
       this.controller = new AbortController();
       try {
+        // Pick up folders allowed or removed elsewhere (desktop window, `allow` in a terminal).
+        if (fs.existsSync(CONFIG_PATH)) this.cfg.workspaces = loadConfig().workspaces || [];
         if (Date.now() - lastProbe > 60_000) {
           localModels = await probeLocalModels();
           lastProbe = Date.now();
@@ -336,4 +441,4 @@ class BridgeClient {
   }
 }
 
-module.exports = { LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
+module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
