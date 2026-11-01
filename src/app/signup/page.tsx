@@ -94,8 +94,8 @@ export default function SignupPage() {
             />
           </div>
 
-          <div className="p-3 bg-[#151926] border border-[#202538] rounded-lg flex items-start gap-2 text-ink-2 text-xs">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="p-3 bg-surface-2 border border-line/10 rounded-lg flex items-start gap-2 text-ink-2 text-xs">
+            <ShieldCheck className="w-4 h-4 text-brand shrink-0 mt-0.5" />
             <span>Free to use. Any keys you add are stored encrypted and only used for your requests.</span>
           </div>
 
@@ -108,6 +108,12 @@ export default function SignupPage() {
             {!loading && <ArrowRight className="w-3.5 h-3.5" />}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-[11px] leading-relaxed text-ink-3">
+          By creating an account you agree to the{' '}
+          <Link href="/terms" className="underline underline-offset-2 hover:text-ink-2">Terms</Link> and{' '}
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-ink-2">Privacy Policy</Link>.
+        </p>
 
         <div className="mt-6 text-center text-xs text-ink-2">
           Already have an account?{' '}

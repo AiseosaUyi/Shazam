@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Power, CheckCircle2, AlertCircle, RefreshCw, Lock } from 'lucide-react';
 import type { Provider, CatalogRoute } from '@/lib/types';
+import { AdminWaitlist } from '@/components/AdminWaitlist';
 
 export default function AdminPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -117,6 +118,8 @@ export default function AdminPage() {
           {actionStatus}
         </div>
       )}
+
+      <AdminWaitlist />
 
       {/* Provider Kill Switches */}
       <div className="bg-surface border border-line/10 rounded-xl p-5 space-y-4">

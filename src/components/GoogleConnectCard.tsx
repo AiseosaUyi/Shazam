@@ -8,12 +8,26 @@ const MESSAGES: Record<string, string> = {
   denied: 'Google sign-in was cancelled.',
   invalid_state: 'Google sign-in expired or was tampered with. Please try again.',
   error: 'Google sign-in failed while exchanging tokens. Please try again.',
-  not_configured: 'Google OAuth is not configured on this deployment yet (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).',
+  not_configured: 'Gmail & Calendar are not switched on yet. Please check back soon.',
+  not_approved: 'Gmail & Calendar are in early access. Request access below and we will let you in shortly.',
 };
 
+type Access = 'open' | 'approved' | 'pending' | 'none';
+
 export function GoogleConnectCard() {
-  const [state, setState] = useState<{ configured: boolean; connected: boolean; email: string | null; missingScopes: string[] } | null>(null);
+  const [state, setState] = useState<{ configured: boolean; access: Access; connected: boolean; email: string | null; missingScopes: string[] } | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
+
+  async function requestAccess() {
+    setRequesting(true);
+    const r = await fetch('/api/v1/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: 'google' }) }).catch(() => null);
+    setRequesting(false);
+    if (r?.ok) {
+      setFlash(null);
+      load();
+    }
+  }
 
   async function load() {
     const r = await fetch('/api/v1/oauth/google').then((res) => (res.ok ? res.json() : null)).catch(() => null);
@@ -34,7 +48,7 @@ export function GoogleConnectCard() {
   return (
     <div className="p-5 rounded-2xl bg-surface border border-line/[0.08] space-y-3">
       {flash && (
-        <div className={`text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${flash === 'connected' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+        <div className={`text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${flash === 'connected' ? 'bg-emerald-500/10 text-emerald-300' : flash.startsWith('not_') ? 'bg-surface-2 text-ink-2' : 'bg-red-500/10 text-red-300'}`}>
           {flash === 'connected' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {MESSAGES[flash]}
         </div>
@@ -48,7 +62,11 @@ export function GoogleConnectCard() {
           <p className="text-xs text-ink-2">
             {state?.connected
               ? `Connected as ${state.email || 'your Google account'}. Co-Work can search, draft, send and schedule email (sends always ask you first).`
-              : 'Lets Co-Work read your inbox, send and schedule email, and create calendar events, always with your approval.'}
+              : state && state.configured && (state.access === 'pending' || state.access === 'none')
+                ? state.access === 'pending'
+                  ? 'Gmail & Calendar are in early access. You are on the list and we will turn it on for your account soon.'
+                  : 'Gmail & Calendar are in early access while Google reviews the app. Request access and we will turn it on for you.'
+                : 'Lets Co-Work read your inbox, send and schedule email, and create calendar events, always with your approval.'}
           </p>
         </div>
         {!state ? (
@@ -58,10 +76,16 @@ export function GoogleConnectCard() {
             <a href="/api/v1/oauth/google/start" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">Reconnect</a>
             <button onClick={disconnect} className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-red-500/10 text-xs text-ink-2 hover:text-red-300">Disconnect</button>
           </div>
-        ) : state.configured ? (
+        ) : !state.configured ? (
+          <span className="text-[11px] text-ink-3">Coming soon</span>
+        ) : state.access === 'open' || state.access === 'approved' ? (
           <a href="/api/v1/oauth/google/start" className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-soft text-brand-ink text-xs font-semibold">Connect Google</a>
+        ) : state.access === 'pending' ? (
+          <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] text-ink-2 ring-1 ring-line/10"><CheckCircle2 className="h-3.5 w-3.5 text-brand" /> You&apos;re on the list</span>
         ) : (
-          <span className="text-[11px] text-ink-3">Awaiting admin setup</span>
+          <button onClick={requestAccess} disabled={requesting} className="px-4 py-2 rounded-xl bg-brand hover:bg-brand-soft text-brand-ink text-xs font-semibold disabled:opacity-50">
+            {requesting ? 'Requesting…' : 'Request early access'}
+          </button>
         )}
       </div>
     </div>

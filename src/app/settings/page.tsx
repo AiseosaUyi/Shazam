@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { SkillsManager } from '@/components/SkillsManager';
+import { DeleteAccountCard } from '@/components/DeleteAccountCard';
 import React, { useState, useEffect } from 'react';
 import {
   Sliders,
@@ -543,6 +544,7 @@ export default function SettingsPage() {
           </div>
         </form>
       )}
+      {activeTab === 'preferences' && <DeleteAccountCard />}
 
       {/* Tab 2: Autonomous Skills & Connectors */}
       {activeTab === 'skills' && <SkillsManager />}

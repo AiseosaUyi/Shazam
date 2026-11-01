@@ -50,6 +50,13 @@ Repeat for `preview` if you want previews to work fully. Already connected: `BLO
    ```
 6. Shazam → Connections → **Connect Google**.
 
+**Early access while Google reviews the app.** In testing mode Google only admits listed test users
+(100 max, lifetime). Shazam therefore gates Connect Google: admins are always allowed; everyone else
+clicks *Request early access* (or joins at `/waitlist`). To let someone in: Admin → Early access →
+*Copy waiting emails* → paste them into Google Cloud → Auth → Audience → Test users → back in Admin,
+*Mark invited*. Once Google verifies the app, set `GOOGLE_OAUTH_PUBLIC=true` to open it to everyone.
+Verification needs the public `/privacy` and `/terms` pages (live) and a domain you own.
+
 ## 4. AI Gateway (free platform models)
 
 Works on the free tier today (Qwen3 Coder Next, Kimi K2, GLM 4.6, gpt-oss-120b, FLUX.2 klein,

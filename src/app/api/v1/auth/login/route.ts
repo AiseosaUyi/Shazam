@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/auth/client-ip';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { verifyPassword, hashSessionToken } from '@/lib/crypto/auth';
@@ -18,10 +19,10 @@ export async function POST(req: NextRequest) {
     }
 
     const repo = new DbRepo();
-    const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || '127.0.0.1';
+    const ip = clientIp(req);
 
     // Rate limit: 10 login attempts per minute per IP
-    const allowed = await repo.checkRateLimit(`login:${ip}`, 10, 60);
+    const { allowed } = await repo.checkRateLimit(`login:${ip}`, 60, 10);
     if (!allowed) {
       return NextResponse.json(
         { error: 'Too many login attempts. Please wait a minute and try again.' },

@@ -3,6 +3,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { PlatformRepo } from '@/lib/db/platform-repo';
 import { googleOAuthConfigured, GOOGLE_SCOPES } from '@/lib/google/oauth';
+import { googleAccessFor } from '@/lib/google/access';
 
 export async function GET(req: NextRequest) {
   let user;
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
   const conn = await new PlatformRepo().getOAuth(user.id, 'google');
   return NextResponse.json({
     configured: googleOAuthConfigured(),
+    access: await googleAccessFor(user),
     connected: Boolean(conn),
     email: conn?.accountEmail || null,
     scopes: conn?.scopes.split(' ') || [],

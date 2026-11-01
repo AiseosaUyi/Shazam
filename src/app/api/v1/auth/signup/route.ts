@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { clientIp } from '@/lib/auth/client-ip';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { hashPassword, hashSessionToken } from '@/lib/crypto/auth';
@@ -18,10 +19,10 @@ export async function POST(req: NextRequest) {
     }
 
     const repo = new DbRepo();
-    const ip = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || '127.0.0.1';
+    const ip = clientIp(req);
 
     // Rate limit: 5 signups per minute per IP
-    const allowed = await repo.checkRateLimit(`signup:${ip}`, 5, 60);
+    const { allowed } = await repo.checkRateLimit(`signup:${ip}`, 60, 5);
     if (!allowed) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Please wait a moment and try again.' },

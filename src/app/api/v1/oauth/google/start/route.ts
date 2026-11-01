@@ -2,15 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { buildGoogleAuthUrl, googleOAuthConfigured, googleRedirectUri } from '@/lib/google/oauth';
+import { canConnectGoogle, googleAccessFor } from '@/lib/google/access';
 
 export async function GET(req: NextRequest) {
+  let user;
   try {
-    await requireUser(req, new DbRepo());
+    user = await requireUser(req, new DbRepo());
   } catch {
     return NextResponse.redirect(new URL('/login?next=/connections', req.url));
   }
   if (!googleOAuthConfigured()) {
     return NextResponse.redirect(new URL('/connections?google=not_configured', req.url));
+  }
+
+  // Testing mode: only approved early-access users can pass Google's test-user check.
+  if (!canConnectGoogle(await googleAccessFor(user))) {
+    return NextResponse.redirect(new URL('/connections?google=not_approved#apps', req.url));
   }
 
   const state = crypto.randomUUID();

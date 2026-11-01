@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   await syncVaultFromCookie(req, user.id, repo, user.email);
 
   // Rate limit by user: 20 task dispatches per minute
-  const allowed = await repo.checkRateLimit(`tasks:${user.id}`, 20, 60);
+  const { allowed } = await repo.checkRateLimit(`tasks:${user.id}`, 60, 20);
   if (!allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please wait a moment before sending more requests.' },
