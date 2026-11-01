@@ -96,7 +96,7 @@ export default function SignupPage() {
 
           <div className="p-3 bg-[#151926] border border-[#202538] rounded-lg flex items-start gap-2 text-ink-2 text-xs">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-            <span>Your BYOK provider credentials are encrypted client-to-vault with AES-256-GCM. Free-only requests never incur paid API costs.</span>
+            <span>Free to use. Any keys you add are stored encrypted and only used for your requests.</span>
           </div>
 
           <button
