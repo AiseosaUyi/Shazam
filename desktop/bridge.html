@@ -28,31 +28,48 @@
   </div>
 
   <div id="pairCard" class="card">
-    <strong>1. Pair this computer</strong>
-    <p style="margin:4px 0 10px">In Arcwork open <a href="#" id="openPairing" style="color:var(--accent)">Connections → Devices</a>, click “Pair desktop app” and enter the code here.</p>
-    <div class="row"><input id="code" placeholder="Pairing code (e.g. 7KQ2M9XA)" maxlength="16" autocomplete="off" /><button id="pairBtn">Pair</button></div>
-    <div class="row" style="margin-top:8px"><input id="server" placeholder="Server" /></div>
+    <strong>1. Connect this computer</strong>
+    <p style="margin:4px 0 10px">Opens Arcwork in your browser. Sign in, click Approve, and you're done.</p>
+    <div id="connectIdle" class="row"><button id="connectBtn">Connect with browser</button></div>
+    <div id="connectWaiting" style="display:none">
+      <p>Waiting for you to approve in your browser. Check it shows this code:</p>
+      <p id="connectCode" style="font:600 22px/1.4 ui-monospace, monospace; letter-spacing:.2em; color:var(--text); margin:8px 0">…</p>
+      <div class="row"><button id="reopenBtn" class="ghost">Open the page again</button><button id="cancelBtn" class="ghost">Cancel</button></div>
+    </div>
     <div id="pairErr" class="err"></div>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer; color:var(--muted)">Have a pairing code instead?</summary>
+      <div class="row" style="margin-top:8px"><input id="code" placeholder="Pairing code (e.g. 7KQ2M9XA)" maxlength="16" autocomplete="off" /><button id="pairBtn" class="ghost">Pair</button></div>
+      <div class="row" style="margin-top:8px"><input id="server" placeholder="Server" /></div>
+    </details>
   </div>
 
   <div class="card">
     <div class="row" style="justify-content:space-between"><strong>2. Allowed folders</strong><button id="addFolder" class="ghost">Add folder…</button></div>
     <ul id="folders"></ul>
-    <p id="noFolders" style="margin-top:6px">No folders yet. The agent can't touch anything until you add one.</p>
+    <p id="noFolders" style="margin-top:6px">No folders yet. When a task needs one, Arcwork asks you here first.</p>
   </div>
 
   <div class="card">
     <strong>Activity</strong>
     <p>Risky commands (git push, deletes, sudo, publish…) always ask you first.</p>
     <pre id="log">—</pre>
-    <div class="row" style="margin-top:10px; justify-content:flex-end"><button id="unpair" class="ghost">Unpair this computer</button></div>
+    <div class="row" style="margin-top:10px; justify-content:space-between">
+      <label id="loginRow" style="display:flex; gap:6px; align-items:center; color:var(--muted)"><input id="openAtLogin" type="checkbox" style="flex:none" /> Start at login (stays in the menu bar)</label>
+      <button id="unpair" class="ghost">Unpair this computer</button>
+    </div>
   </div>
 
 <script>
   const $ = (id) => document.getElementById(id);
   function render(s) {
     const st = $('status');
-    st.textContent = s.paired ? s.status : 'not paired';
+    st.textContent = s.paired ? (s.account ? `${s.status} · ${s.account}` : s.status) : (s.connecting ? 'waiting for approval' : 'not paired');
+    $('connectIdle').style.display = s.connecting ? 'none' : 'flex';
+    $('connectWaiting').style.display = s.connecting ? 'block' : 'none';
+    $('connectCode').textContent = (s.connecting && s.connecting.code) || '…';
+    $('openAtLogin').checked = Boolean(s.openAtLogin);
+    $('loginRow').style.display = s.paired ? 'flex' : 'none';
     st.className = 'pill ' + (s.status === 'connected' ? 'ok' : 'warn');
     $('pairCard').style.display = s.paired ? 'none' : 'block';
     $('server').value = $('server').value || s.server || '';
@@ -73,6 +90,15 @@
     try { render(await window.bridge.pair($('code').value.trim(), $('server').value.trim(), undefined)); }
     catch (e) { $('pairErr').textContent = String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
   };
+  const errText = (e) => String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  $('connectBtn').onclick = async () => {
+    $('pairErr').textContent = '';
+    try { render(await window.bridge.connect()); }
+    catch (e) { if (!/Cancelled/.test(errText(e))) $('pairErr').textContent = errText(e); }
+  };
+  $('reopenBtn').onclick = async () => render(await window.bridge.connect());
+  $('cancelBtn').onclick = async () => render(await window.bridge.cancelConnect());
+  $('openAtLogin').onchange = async (e) => render(await window.bridge.setOpenAtLogin(e.target.checked));
   $('addFolder').onclick = async () => render(await window.bridge.addFolder());
   $('unpair').onclick = async () => render(await window.bridge.unpair());
   $('openPairing').onclick = (e) => { e.preventDefault(); window.bridge.openPairingPage(); };

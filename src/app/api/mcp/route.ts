@@ -85,7 +85,7 @@ const handler = createMcpHandler(
           prompt: z.string().describe('Complete, self-contained instructions (Arcwork does not see your conversation).'),
           agent: z.enum(['auto', 'code', 'cowork']).default('auto'),
           project_id: z.string().optional().describe('Continue in an existing Arcwork project (from a previous task).'),
-          local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer (must be allowed in the Arcwork desktop app). The agent edits and runs code there.'),
+          local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer. The agent edits and runs code there; if the folder is new, the user is asked on their computer to allow it.'),
         }),
       },
       async ({ prompt, agent, project_id, local_folder }, ctx) => {
@@ -94,6 +94,11 @@ const handler = createMcpHandler(
         if (chosen === 'auto') {
           const s = suggestAgent(prompt, await loadSuggestContext(user.id));
           chosen = s.agent === 'code' ? 'code' : 'cowork';
+        }
+        if (local_folder) {
+          const { BridgeRepo } = await import('@/lib/bridge/repo');
+          const { offlineMessage } = await import('@/lib/bridge/folders');
+          if (!(await new BridgeRepo().onlineDevice(user.id, 'desktop'))) return text(offlineMessage(local_folder));
         }
         const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: local_folder ? `local:${local_folder}` : project_id, source: 'mcp' });
         after(() => executeRun(user, run));

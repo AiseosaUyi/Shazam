@@ -37,3 +37,9 @@ dmg:
       y: 220
       type: link
       path: /Applications
+
+# arcwork://connect opens the app's browser sign-in (from the /connect page and task messages).
+protocols:
+  - name: Arcwork
+    schemes:
+      - arcwork

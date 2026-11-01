@@ -25,7 +25,7 @@ export async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function randomToken(bytes: number): string {
+export function randomToken(bytes: number): string {
   const arr = crypto.getRandomValues(new Uint8Array(bytes));
   return Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -65,14 +65,19 @@ export class BridgeRepo {
       .bind(now, codeHash, now)
       .first<{ user_id: string }>();
     if (!claimed) return null;
+    return this.issueDevice(claimed.user_id, kind, name, capabilities);
+  }
 
+  /** Creates a device for a user and returns its raw token (shown once, stored hashed). */
+  async issueDevice(userId: string, kind: DeviceKind, name: string, capabilities: Record<string, unknown>): Promise<{ device: BridgeDevice; token: string }> {
+    const now = new Date().toISOString();
     const token = `shz_${kind === 'desktop' ? 'dsk' : 'brw'}_${randomToken(24)}`;
     const id = `dev_${randomToken(10)}`;
     await this.db
       .prepare('INSERT INTO bridge_devices (id, user_id, kind, name, token_hash, capabilities, last_seen_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, claimed.user_id, kind, name.slice(0, 80), await sha256Hex(token), JSON.stringify(capabilities), now, now)
+      .bind(id, userId, kind, name.slice(0, 80), await sha256Hex(token), JSON.stringify(capabilities), now, now)
       .run();
-    const device = (await this.getDevice(claimed.user_id, id))!;
+    const device = (await this.getDevice(userId, id))!;
     return { device, token };
   }
 
