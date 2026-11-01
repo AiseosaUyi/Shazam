@@ -55,12 +55,14 @@ function ask(question) {
       break;
     case 'start': {
       const yesRisky = rest.includes('--yes-risky');
+      let lastStatus = '';
       if (!cfg.workspaces?.length) console.warn('! No folders allowed yet. Run: shazam-bridge allow <folder>');
       const client = new BridgeClient({
         config: cfg,
         approve: async (summary, detail) => yesRisky || ask(`\n⚠ ${summary}:\n  ${detail.replace(/\n/g, '\n  ')}\nAllow? [y/N] `),
         log: (l) => console.log(l),
-        onStatus: (s) => console.log(`[bridge] ${s}`),
+        // Print only changes; the long-poll reconnects every ~20s and would repeat "connected".
+        onStatus: (s) => { if (s !== lastStatus) console.log(`[bridge] ${s}`); lastStatus = s; },
       });
       process.on('SIGINT', () => { client.stop(); process.exit(0); });
       console.log(`Arcwork bridge → ${cfg.server}  (folders: ${(cfg.workspaces || []).join(', ') || 'none'})`);
