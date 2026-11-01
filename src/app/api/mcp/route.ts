@@ -12,6 +12,7 @@ import { generateAndStoreImage } from '@/lib/media/image';
 import { executeApprovedAction } from '@/lib/cowork/actions';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { QuestionsRepo } from '@/lib/agents/ask';
+import { ACTIVE, MAX_WAIT_S, summarizeRun } from '@/lib/runs/mcp-summary';
 
 /**
  * Arcwork as an MCP server: lets Claude Code / Claude Desktop, Codex, Antigravity, Cursor…
@@ -32,19 +33,31 @@ async function userFrom(ctx: any) {
   return user;
 }
 
-function summarizeRun(run: any, sinceEvent = 0) {
-  const events = run.events.slice(sinceEvent).slice(-25).map((e: any, i: number) => `${sinceEvent + i}. [${e.type}] ${e.text}`);
-  return [
-    `task_id: ${run.id}`,
-    `agent: ${run.agent} · status: ${run.status}${run.model ? ` · model: ${run.model}` : ''}`,
-    run.projectId ? `project_id: ${run.projectId}` : null,
-    run.filesChanged?.length ? `files changed: ${run.filesChanged.join(', ')}` : null,
-    events.length ? `progress (next since_event=${run.events.length}):\n${events.join('\n')}` : null,
-    run.status === 'done' ? `\nRESULT:\n${(run.result || '').slice(0, 8000)}` : null,
-    run.status === 'error' ? `\nERROR: ${run.error}` : null,
-    run.status === 'queued' || run.status === 'running' ? '\nStill working. Call get_task_status again in ~20-40 seconds.' : null,
-  ].filter(Boolean).join('\n');
+/** Waits until the task finishes, asks a question or needs an approval, or the time is up. */
+async function waitForNews(userId: string, taskId: string, waitS: number) {
+  const runs = new RunsRepo();
+  const questions = new QuestionsRepo();
+  const deadline = Date.now() + Math.min(Math.max(waitS, 0), MAX_WAIT_S) * 1000;
+  let run = await runs.get(userId, taskId);
+  const startEvents = run?.events.length || 0;
+  for (;;) {
+    if (!run || !ACTIVE.has(run.status)) return { run, q: run ? await questions.pendingForRun(userId, taskId) : null };
+    const q = await questions.pendingForRun(userId, taskId);
+    if (q) return { run, q };
+    if (run.events.slice(startEvents).some((e: any) => e.type === 'approval')) return { run, q: null };
+    if (Date.now() >= deadline) return { run, q: null };
+    await new Promise((r) => setTimeout(r, 2500));
+    run = await runs.get(userId, taskId);
+  }
 }
+
+const INSTRUCTIONS = `Arcwork runs coding, email, calendar, image and video work on free models, so the user saves their own AI plan's usage.
+To save the user's usage:
+- Delegate real work with start_task instead of doing it yourself. Write one complete, self-contained prompt.
+- Then call get_task_status repeatedly; each call waits up to ${MAX_WAIT_S}s on Arcwork's side, so call it again immediately when it says still working.
+- Review the short summary it returns. Only call read_project_file for specific files if something looks wrong, and only use detail="full" if you truly need it.
+- Send corrections with send_feedback rather than fixing the work yourself.
+- Never approve an action (decide_approval) unless the human approved that exact action.`;
 
 const handler = createMcpHandler(
   (server) => {
@@ -65,9 +78,9 @@ const handler = createMcpHandler(
     server.registerTool(
       'start_task',
       {
-        title: 'Start a Arcwork task',
+        title: 'Start an Arcwork task',
         description:
-          'Delegate work to Arcwork\'s free-model agents. agent="code" writes/edits code in a project, runs tests in a real sandbox and can push to GitHub; agent="cowork" handles email, calendar, schedules, MCP tools, browser and media. Returns a task_id immediately; then poll get_task_status. Use this to save your own usage: let Arcwork do the heavy lifting, then review.',
+          'Delegate work to Arcwork\'s free-model agents. agent="code" writes/edits code in a project, runs tests in a real sandbox and can push to GitHub; agent="cowork" handles email, calendar, schedules, MCP tools, browser and media. Returns a task_id immediately; then call get_task_status until done. Use this instead of doing the work yourself: it runs on free models, so it saves the user\'s usage. Review the summary, then send_feedback if needed.',
         inputSchema: z.object({
           prompt: z.string().describe('Complete, self-contained instructions (Arcwork does not see your conversation).'),
           agent: z.enum(['auto', 'code', 'cowork']).default('auto'),
@@ -84,7 +97,7 @@ const handler = createMcpHandler(
         }
         const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: local_folder ? `local:${local_folder}` : project_id, source: 'mcp' });
         after(() => executeRun(user, run));
-        return text(`Started ${chosen} task.\ntask_id: ${run.id}\nPoll get_task_status(task_id) every ~30s. Watch it live: ${APP_URL}/runs/${run.id}`);
+        return text(`Started ${chosen} task.\ntask_id: ${run.id}\nCall get_task_status(task_id) now; it waits for progress on our side, so keep calling it until the task is done. Watch it live: ${APP_URL}/runs/${run.id}`);
       }
     );
 
@@ -92,23 +105,27 @@ const handler = createMcpHandler(
       'get_task_status',
       {
         title: 'Get Arcwork task status',
-        description: 'Progress, tool steps and (when done) the result of a task. Pass since_event to only get new progress lines.',
-        inputSchema: z.object({ task_id: z.string(), since_event: z.number().int().min(0).optional() }),
+        description: `Waits up to ${MAX_WAIT_S}s for the task to finish, ask a question or need an approval, then returns a short summary. Call again right away while it is still working. Pass since_event to skip progress you have seen. detail="full" returns the whole result (uses more of your usage).`,
+        inputSchema: z.object({
+          task_id: z.string(),
+          since_event: z.number().int().min(0).optional(),
+          wait_seconds: z.number().int().min(0).max(MAX_WAIT_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, 0 = answer now).`),
+          detail: z.enum(['summary', 'full']).optional().describe('summary (default) or full.'),
+        }),
       },
-      async ({ task_id, since_event }, ctx) => {
+      async ({ task_id, since_event, wait_seconds, detail }, ctx) => {
         const user = await userFrom(ctx);
-        const run = await new RunsRepo().get(user.id, task_id);
+        const { run, q } = await waitForNews(user.id, task_id, wait_seconds ?? MAX_WAIT_S);
         if (!run) return text(`No task ${task_id}.`);
-        const q = await new QuestionsRepo().pendingForRun(user.id, task_id);
         const ask = q ? `\n\nQUESTION FOR YOU (question_id ${q.id}): ${q.question}\nOptions: ${q.options.join(' | ')}\nAnswer with answer_question (ask your human if you are unsure).` : '';
-        return text(summarizeRun(run, since_event || 0) + ask);
+        return text(summarizeRun(run, since_event || 0, detail || 'summary') + ask);
       }
     );
 
     server.registerTool(
       'send_feedback',
       {
-        title: 'Send review feedback to a Arcwork task',
+        title: 'Send review feedback to an Arcwork task',
         description: 'After reviewing a finished task, send corrections. Arcwork continues in the same project/context and returns a new task_id to poll.',
         inputSchema: z.object({ task_id: z.string(), feedback: z.string() }),
       },
@@ -128,7 +145,7 @@ const handler = createMcpHandler(
     server.registerTool(
       'answer_question',
       {
-        title: 'Answer a question from a Arcwork task',
+        title: 'Answer a question from an Arcwork task',
         description: 'When get_task_status shows a QUESTION, answer it here so the task can continue. Pick one of the options or write a short answer.',
         inputSchema: z.object({ question_id: z.string(), answer: z.string() }),
       },
@@ -151,7 +168,7 @@ const handler = createMcpHandler(
 
     server.registerTool(
       'list_project_files',
-      { title: 'List files in a Arcwork project', description: 'Use to review what a code task produced.', inputSchema: z.object({ project_id: z.string() }) },
+      { title: 'List files in an Arcwork project', description: 'Use to review what a code task produced.', inputSchema: z.object({ project_id: z.string() }) },
       async ({ project_id }, ctx) => {
         const user = await userFrom(ctx);
         const files = await new DbRepo().getProjectFiles(user.id, project_id);
@@ -161,7 +178,7 @@ const handler = createMcpHandler(
 
     server.registerTool(
       'read_project_file',
-      { title: 'Read a file from a Arcwork project', description: 'Read code a task wrote, to review it.', inputSchema: z.object({ project_id: z.string(), path: z.string() }) },
+      { title: 'Read a file from an Arcwork project', description: 'Read code a task wrote, to review it.', inputSchema: z.object({ project_id: z.string(), path: z.string() }) },
       async ({ project_id, path }, ctx) => {
         const user = await userFrom(ctx);
         const f = (await new DbRepo().getProjectFiles(user.id, project_id)).find((x) => x.path === path);
@@ -221,7 +238,7 @@ const handler = createMcpHandler(
       }
     );
   },
-  { serverInfo: { name: 'shazam', version: '1.0.0' } }
+  { serverInfo: { name: 'arcwork', version: '1.1.0' }, instructions: INSTRUCTIONS }
 );
 
 async function verifyToken(_req: Request, bearer?: string): Promise<AuthInfo | undefined> {
