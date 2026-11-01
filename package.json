@@ -25,7 +25,7 @@
     "preview": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "prebuild": "node scripts/gen-migrations.mjs",
+    "prebuild": "node scripts/gen-migrations.mjs && node scripts/gen-bridge.mjs",
     "pretest": "node scripts/gen-migrations.mjs",
     "bridge": "node cli/bridge.js"
   },

@@ -1,8 +1,9 @@
 'use client';
 
 import { useDialog } from '@/components/ui/dialog';
+import { CopyText, Step } from '@/components/guide/Steps';
 import React, { useEffect, useState } from 'react';
-import { Monitor, Chrome, Trash2, Copy, Check } from 'lucide-react';
+import { Monitor, Chrome, Trash2 } from 'lucide-react';
 
 interface Device {
   id: string;
@@ -17,7 +18,6 @@ export function DevicesCard() {
   const dialog = useDialog();
   const [devices, setDevices] = useState<Device[]>([]);
   const [code, setCode] = useState<{ code: string; expiresAt: string; server: string } | null>(null);
-  const [copied, setCopied] = useState(false);
 
   async function load() {
     const d = await fetch('/api/v1/bridge/devices').then((r) => (r.ok ? r.json() : { devices: [] })).catch(() => ({ devices: [] }));
@@ -33,7 +33,6 @@ export function DevicesCard() {
   async function newCode() {
     const r = await fetch('/api/v1/bridge/pair', { method: 'POST' }).then((res) => res.json());
     setCode(r);
-    setCopied(false);
   }
 
   async function revoke(id: string) {
@@ -57,15 +56,20 @@ export function DevicesCard() {
       <div className="flex flex-wrap gap-2 items-center">
         <button onClick={newCode} className="px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink text-xs font-semibold">Get pairing code</button>
         <a href="https://github.com/AiseosaUyi/Shazam/tree/main/extensions/chrome" target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">Chrome extension</a>
-        <a href="https://github.com/AiseosaUyi/Shazam/releases" target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">Desktop app</a>
-        <code className="text-[11px] text-ink-2">npx shazam-bridge pair CODE</code>
+        <a href="/guide#computer" className="px-3 py-1.5 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink">How it works</a>
       </div>
 
       {code && (
-        <div className="rounded-xl border border-brand/30 bg-brand/[0.05] p-3 flex items-center gap-3">
-          <span className="font-mono text-xl tracking-[0.25em] text-brand-soft">{code.code}</span>
-          <button onClick={() => { navigator.clipboard.writeText(code.code); setCopied(true); }} className="p-1.5 rounded-md hover:bg-line/5 text-ink-2">{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}</button>
-          <span className="text-[11px] text-ink-2">Enter it in the desktop app or extension within 10 minutes. Server: {code.server}</span>
+        <div className="rounded-xl border border-brand/30 bg-brand/[0.05] p-3">
+          <p className="text-[12px] text-ink">Your pairing code: <span className="font-mono text-base tracking-[0.2em] text-brand-soft">{code.code}</span> <span className="text-[11px] text-ink-3">(valid 10 minutes)</span></p>
+          <p className="mt-2 text-[12px] text-ink-2">Open a terminal on your computer (in Cursor or VS Code: Terminal → New Terminal) and paste these one at a time:</p>
+          <ol className="mt-1 space-y-2">
+            <Step n={1} title="Download the connector (needs Node 18+)"><CopyText value={`curl -fsSL ${code.server}/arcwork-bridge.js -o ~/.arcwork-bridge.js`} /></Step>
+            <Step n={2} title="Pair this computer"><CopyText value={`node ~/.arcwork-bridge.js pair ${code.code}`} /></Step>
+            <Step n={3} title="Allow your projects folder. Agents can only work inside folders you allow."><CopyText value="node ~/.arcwork-bridge.js allow ~/Projects" /></Step>
+            <Step n={4} title="Start it, and keep this terminal open while agents work"><CopyText value="node ~/.arcwork-bridge.js start" /></Step>
+          </ol>
+          <p className="mt-2 text-[11px] text-ink-3">In step 3, replace ~/Projects with the folder your projects are in (for example ~/Desktop/Development). Run it again to allow more folders. Risky commands always ask you in that terminal first.</p>
         </div>
       )}
 

@@ -16,7 +16,7 @@ import { KEY_PROVIDERS } from '@/lib/providers/key-setup';
 const EXTRAS = [
   { href: '/connections#apps', icon: Mail, title: 'Connect Gmail & Calendar', body: 'So Co-Work can read, send and schedule email.' },
   { href: '/connections#devices', icon: Monitor, title: 'Connect your computer', body: 'Work in your own folders, run code locally, use local models.' },
-  { href: '/connections#assistants', icon: Bot, title: 'Connect Claude, Codex or Antigravity', body: 'Let the plan you already pay for hand heavy work to Arcwork.' },
+  { href: '/guide', icon: Bot, title: 'Connect Claude, Codex or Antigravity', body: 'Let the plan you already pay for hand heavy work to Arcwork.' },
 ];
 
 const GEMINI = KEY_PROVIDERS.find((p) => p.id === 'google')!;

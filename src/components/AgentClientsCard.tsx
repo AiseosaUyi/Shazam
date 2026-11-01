@@ -2,7 +2,8 @@
 
 import { useDialog } from '@/components/ui/dialog';
 import React, { useEffect, useState } from 'react';
-import { Bot, Copy, Check, Trash2, KeyRound, ExternalLink } from 'lucide-react';
+import { Bot, Trash2, KeyRound, ExternalLink } from 'lucide-react';
+import { CopyText, Step } from '@/components/guide/Steps';
 import { BRAND_NAME } from '@/lib/brand';
 
 /**
@@ -30,39 +31,6 @@ const CLIENTS: { id: Client; label: string; hint?: string }[] = [
 ];
 
 const TRY_PROMPT = `Use ${BRAND_NAME} to build a simple landing page for my project, then review what it made and send feedback.`;
-
-function CopyText({ value, label, mono = true }: { value: string; label?: string; mono?: boolean }) {
-  const [done, setDone] = useState(false);
-  return (
-    <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-line/[0.08] bg-canvas px-2.5 py-2">
-      {label && <span className="shrink-0 pt-px text-[11px] text-ink-3">{label}</span>}
-      <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all text-[12px] text-ink ${mono ? 'shz-mono' : ''}`}>{value}</span>
-      <button
-        onClick={() => {
-          navigator.clipboard.writeText(value).catch(() => {});
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        }}
-        aria-label={`Copy ${label || 'text'}`}
-        className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-ink-2 hover:bg-surface-2 hover:text-ink"
-      >
-        {done ? <><Check className="h-3 w-3 text-brand" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
-      </button>
-    </div>
-  );
-}
-
-function Step({ n, title, children }: { n: number; title: React.ReactNode; children?: React.ReactNode }) {
-  return (
-    <li className="flex gap-3">
-      <span className="shz-mono mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-2 text-[11px] text-ink-2">{n}</span>
-      <div className="min-w-0 flex-1 pb-1">
-        <p className="text-[13px] text-ink">{title}</p>
-        {children}
-      </div>
-    </li>
-  );
-}
 
 export function AgentClientsCard() {
   const dialog = useDialog();
@@ -128,7 +96,8 @@ export function AgentClientsCard() {
           <p className="text-sm font-semibold text-ink">Use the AI plan you already pay for</p>
           <p className="mt-0.5 text-[12px] text-ink-2">
             Connect Claude, ChatGPT or Gemini to {BRAND_NAME}. Your assistant hands the heavy work (coding, email, images, video) to {BRAND_NAME}&apos;s free
-            agents and checks the result, so your plan&apos;s limits last much longer. It takes about a minute.
+            agents and checks the result, so your plan&apos;s limits last much longer. It takes about a minute.{' '}
+            <a href="/guide" className="text-ink underline underline-offset-2 hover:text-brand">See the full walkthrough</a>
           </p>
         </div>
       </div>
