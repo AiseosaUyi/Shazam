@@ -61,6 +61,18 @@ export function stripReasoning(options: LanguageModelV4CallOptions): LanguageMod
   return { ...options, prompt };
 }
 
+function isAbort(err: unknown): boolean {
+  const e = err as any;
+  return e?.name === 'AbortError' || /Task cancelled by user|aborted by the user/i.test(String(e?.message || ''));
+}
+
+/** An HTTP 4xx from a model provider: specific to that provider or request, not to the whole chain. */
+export function isProviderRequestError(err: unknown): boolean {
+  const e = err as any;
+  const status = e?.statusCode ?? e?.status ?? e?.cause?.statusCode;
+  return typeof status === 'number' && status >= 400 && status < 500;
+}
+
 export interface ChainEntry {
   model: LanguageModelV4;
   label: string;
@@ -78,6 +90,9 @@ export function createFallbackModel(chain: ChainEntry[], onSwitch?: (from: strin
 
   async function attempt<T>(run: (m: LanguageModelV4) => Promise<T>): Promise<T> {
     let lastErr: unknown;
+    // The first request-specific error, reported if every model fails: it explains the problem
+    // better than whatever the last fallback said.
+    let firstRequestErr: unknown;
     const candidates = ordered();
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i];
@@ -87,15 +102,23 @@ export function createFallbackModel(chain: ChainEntry[], onSwitch?: (from: strin
         return out;
       } catch (err) {
         lastErr = err;
-        if (!isRetryableModelError(err) && (err as any)?.statusCode !== 413) throw err;
-        const strike = (strikes.get(key(c)) || 0) + 1;
-        strikes.set(key(c), strike);
-        cooldownUntil.set(key(c), Date.now() + cooldownMs(err, strike));
+        if (isAbort(err)) throw err;
         const next = candidates[i + 1];
+        if (isRetryableModelError(err) || (err as any)?.statusCode === 413) {
+          const strike = (strikes.get(key(c)) || 0) + 1;
+          strikes.set(key(c), strike);
+          cooldownUntil.set(key(c), Date.now() + cooldownMs(err, strike));
+        } else if (isProviderRequestError(err)) {
+          // A 4xx one provider rejects (tool schema, message format, model gone) often works on
+          // another: try the next model without resting this one.
+          firstRequestErr ??= err;
+        } else {
+          throw firstRequestErr ?? err;
+        }
         if (next) onSwitch?.(c.label, next.label, String((err as any)?.message || err).slice(0, 160));
       }
     }
-    throw lastErr;
+    throw firstRequestErr ?? lastErr;
   }
 
   /** Calls one model; if it rejects earlier models' reasoning in the history, retries it without. */
