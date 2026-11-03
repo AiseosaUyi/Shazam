@@ -49,6 +49,17 @@ export interface ToolAgentResult {
 }
 
 const MAX_READ_LINES = 400;
+/** Smaller default for local runs: every line read is resent on every later step. */
+const LOCAL_READ_LINES = 200;
+
+/** Cuts a line-numbered file listing ("1\tcode") to a range, with a hint when more remains. */
+export function sliceNumbered(path: string, numbered: string, offset: number, limit: number): string {
+  if (/^Error/.test(numbered)) return numbered;
+  const lines = numbered.split('\n');
+  const slice = lines.slice(offset - 1, offset - 1 + limit);
+  const rest = lines.length - (offset - 1 + limit);
+  return `${path} (${lines.length} lines)\n${slice.join('\n')}${rest > 0 ? `\n… ${rest} more lines (read again with offset=${offset + limit}).` : ''}`;
+}
 
 /** A fast syntax check for files that can be checked without a build (null = none). */
 export function syntaxCheckCommand(absPath: string): string | null {
@@ -329,9 +340,9 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         execute: async ({ pattern }) => local.call('grep', { path: local.root, pattern }),
       }),
       read_file: tool({
-        description: 'Read a file (with line numbers) from the user\'s folder.',
-        inputSchema: z.object({ path: z.string() }),
-        execute: async ({ path }) => local.call('read_file', { path: abs(path) }),
+        description: `Read a file (with line numbers) from the user's folder. Reads up to ${LOCAL_READ_LINES} lines; use offset/limit (or grep first) to read only the part you need.`,
+        inputSchema: z.object({ path: z.string(), offset: z.number().int().min(1).optional(), limit: z.number().int().min(1).max(2000).optional() }),
+        execute: async ({ path, offset = 1, limit = LOCAL_READ_LINES }) => sliceNumbered(path, await local.call('read_file', { path: abs(path) }), offset, limit),
       }),
       edit_file: tool({
         description: 'Replace an exact old_string with new_string in a file in the user\'s folder.',

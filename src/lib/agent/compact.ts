@@ -14,6 +14,8 @@ export interface CompactOptions {
   keepRecentResults?: number;
   /** Characters kept from each older tool result. */
   keepHead?: number;
+  /** Total characters of recent tool results kept in full (~10K tokens); the newest is always kept. */
+  keepRecentChars?: number;
 }
 
 const MARK = '…[older output shortened to keep the run fast; read it again if you need it]';
@@ -45,24 +47,27 @@ function shortenInput(input: any, limit = 400): any {
 }
 
 export function compactMessages(messages: ModelMessage[], opts: CompactOptions = {}): ModelMessage[] {
-  const maxChars = opts.maxChars ?? 80_000;
+  const maxChars = opts.maxChars ?? 60_000;
   const keepRecent = opts.keepRecentResults ?? 6;
   const head = opts.keepHead ?? 500;
   if (size(messages) <= maxChars) return messages;
 
-  // Index of the oldest message that stays intact: the one holding the Nth-newest tool result.
+  const keepChars = opts.keepRecentChars ?? 40_000;
+  // Index of the oldest message that stays intact: recent tool results are kept in full until
+  // either the count or the size budget is reached (a few big file reads can fill a context).
   let seen = 0;
+  let kept = 0;
   let cutoff = messages.length;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m: any = messages[i];
-    if (m.role === 'tool' && Array.isArray(m.content)) {
-      seen += m.content.filter((p: any) => p.type === 'tool-result').length;
-      if (seen >= keepRecent) {
-        cutoff = i;
-        break;
-      }
-    }
+    if (m.role !== 'tool' || !Array.isArray(m.content)) continue;
+    const chars = JSON.stringify(m.content).length;
+    if (seen > 0 && (seen >= keepRecent || kept + chars > keepChars)) break;
+    seen += m.content.filter((p: any) => p.type === 'tool-result').length;
+    kept += chars;
+    cutoff = i;
   }
+  // Everything before the oldest kept tool message is compacted.
   if (cutoff === messages.length) return messages;
 
   return messages.map((m: any, i) => {

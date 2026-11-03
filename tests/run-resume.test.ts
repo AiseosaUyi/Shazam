@@ -126,3 +126,17 @@ describe('Computer briefly offline', () => {
     assert.equal(isComputerOffline(new Error('Invalid tool schema')), false);
   });
 });
+
+describe('Resting runs', () => {
+  it('does not resume a paused run before its rest is over', async () => {
+    const db = createTestDatabase();
+    await new DbRepo(db).createUser({ id: 'u1', email: 'a@x.com', name: 'A', passwordHash: 'h', role: 'user' });
+    const runs = new RunsRepo(db);
+    const r = await runs.create('u1', { agent: 'code', prompt: 'p' });
+    await runs.setLease('u1', r.id, new Date(Date.now() + 120_000).toISOString());
+    await runs.update('u1', r.id, { status: 'paused' });
+    assert.equal(await runs.claimResumable(840_000), null);
+    await runs.setLease('u1', r.id, new Date(Date.now() - 1).toISOString());
+    assert.equal((await runs.claimResumable(840_000))?.id, r.id);
+  });
+});

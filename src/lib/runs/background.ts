@@ -3,6 +3,7 @@ import type { User } from '@/lib/types';
 import { RunsRepo, type AgentRun, type RunAgent, type RunOptions } from './repo';
 import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
 import { BridgeOfflineError } from '@/lib/bridge/repo';
+import { isRetryableModelError } from '@/lib/agent/fallback';
 
 /**
  * Background runs outlive one serverless invocation. The function hosting a run is killed
@@ -113,8 +114,32 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       await runs.update(user.id, run.id, { status: 'paused', events: [...rec.events, { at: new Date().toISOString(), type: 'note', text: 'Your computer is not connected right now; will continue when it is back.' }] });
       return;
     }
+    // Every model is busy or at its free limit: rest and retry later instead of failing. The run
+    // keeps its checkpoint; a lease in the future makes the resumer wait until then.
+    if (allModelsBusy(err) && run.segment + 1 < MAX_SEGMENTS) {
+      const restMs = busyRestMs(run.segment);
+      const at = new Date(Date.now() + restMs);
+      // Lease first: a paused run with no lease would be claimed again right away.
+      await runs.setLease(user.id, run.id, at.toISOString());
+      await runs.update(user.id, run.id, {
+        status: 'paused',
+        events: [...rec.events, { at: new Date().toISOString(), type: 'note', text: `All free models are busy or at their limits; resting and retrying at ${at.toISOString().slice(11, 16)} UTC.` }],
+      });
+      return;
+    }
     await runs.update(user.id, run.id, { status: 'error', error: err.message || String(err), events: rec.events });
   }
+}
+
+/** The whole model chain failed on limits, overload or timeouts (not on a real request error). */
+export function allModelsBusy(err: unknown): boolean {
+  const e = err as any;
+  return isRetryableModelError(err) || e?.statusCode === 413 || /request too large|tokens per minute|\bITPM\b|\bTPM\b/i.test(String(e?.message || ''));
+}
+
+/** Rest before retrying a run whose models were all busy: 2, 4, 8… minutes, at most 20. */
+export function busyRestMs(segment: number): number {
+  return Math.min(20, 2 * 2 ** Math.max(0, Math.min(segment, 4))) * 60_000;
 }
 
 /** The paired computer is (briefly) unreachable: worth waiting for rather than failing. */

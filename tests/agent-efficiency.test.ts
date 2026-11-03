@@ -120,3 +120,34 @@ describe('Post-edit syntax checks', () => {
     assert.equal(syntaxCheckCommand('/r/a; rm -rf ~.js'), 'node --check "/r/a; rm -rf ~.js"', 'path is quoted');
   });
 });
+
+describe('Lessons from the failed bridge sprint', () => {
+  it('reads local files in ranges with a hint for the rest', async () => {
+    const { sliceNumbered } = await import('@/lib/agent/tool_agent');
+    const numbered = Array.from({ length: 500 }, (_, i) => `${i + 1}\tline ${i + 1}`).join('\n');
+    const first = sliceNumbered('a.js', numbered, 1, 200);
+    assert.match(first, /^a\.js \(500 lines\)/);
+    assert.match(first, /300 more lines \(read again with offset=201\)/);
+    assert.equal(first.split('\n').length, 202);
+    assert.match(sliceNumbered('a.js', numbered, 401, 200), /500\tline 500$/);
+    assert.equal(sliceNumbered('a.js', 'Error: no such file', 1, 200), 'Error: no such file');
+  });
+
+  it('keeps recent tool output only up to a size budget', () => {
+    // 6 recent reads of ~16K chars each would be ~96K chars: only the newest fit in 40K.
+    const out = compactMessages(longRun(8, 16_000), { keepRecentResults: 6, keepRecentChars: 40_000 });
+    const tools = out.filter((m) => m.role === 'tool') as any[];
+    const full = tools.filter((m) => m.content[0].output.value.length === 16_000).length;
+    assert.ok(full >= 1 && full <= 2, `expected 1-2 full results, got ${full}`);
+    assert.ok(JSON.stringify(out).length < 60_000);
+  });
+
+  it('treats an exhausted model chain as "rest and retry", with growing rests', async () => {
+    const { allModelsBusy, busyRestMs } = await import('@/lib/runs/background');
+    assert.equal(allModelsBusy(new Error('Request too large for model on input tokens per minute (ITPM): Limit 7000')), true);
+    assert.equal(allModelsBusy(Object.assign(new Error('Rate limit exceeded: free-models-per-day'), { statusCode: 429 })), true);
+    assert.equal(allModelsBusy(new Error('local model timed out (qwen3.6)')), true);
+    assert.equal(allModelsBusy(Object.assign(new Error('Invalid tool schema'), { statusCode: 400 })), false);
+    assert.deepEqual([0, 1, 2, 3, 6].map((s) => busyRestMs(s) / 60_000), [2, 4, 8, 16, 20]);
+  });
+});
