@@ -306,7 +306,9 @@ class BridgeClient {
       case 'llm_http': {
         // Tunnel an OpenAI-compatible request to a local LLM server (Ollama / LM Studio) only.
         if (!isAllowedLocalUrl(p.url)) return { ok: false, result: 'Only local LLM endpoints (Ollama/LM Studio /v1/*) can be reached.' };
-        const res = await fetch(p.url, { method: p.method || 'POST', headers: { 'Content-Type': 'application/json' }, body: p.body, signal: AbortSignal.timeout(300_000) });
+        // The server sets a per-step budget; giving up here also stops the model on this computer.
+        const timeoutMs = Math.min(Math.max(Number(p.timeoutMs) || 280_000, 5_000), 280_000);
+        const res = await fetch(p.url, { method: p.method || 'POST', headers: { 'Content-Type': 'application/json' }, body: p.body, signal: AbortSignal.timeout(timeoutMs) });
         const body = await res.text();
         this.log(`local LLM ${new URL(p.url).pathname} → ${res.status}`);
         return { ok: true, result: { status: res.status, contentType: res.headers.get('content-type') || 'application/json', body } };

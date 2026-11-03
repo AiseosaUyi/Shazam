@@ -139,7 +139,7 @@ const handler = createMcpHandler(
         const runs = new RunsRepo();
         const parent = await runs.get(user.id, task_id);
         if (!parent) return text(`No task ${task_id}.`);
-        if (parent.status === 'running' || parent.status === 'queued') return text('That task is still running. Wait for it to finish before sending feedback.');
+        if (ACTIVE.has(parent.status)) return text('That task is still running. Wait for it to finish before sending feedback.');
         const prompt = `Reviewer feedback on your previous work — address every point, verify, then summarize what changed:\n${feedback}`;
         const run = await runs.create(user.id, { agent: parent.agent, prompt, projectId: parent.projectId, parentRunId: parent.id, source: 'mcp' });
         after(() => executeRun(user, run, { history: buildFeedbackHistory(parent) }));

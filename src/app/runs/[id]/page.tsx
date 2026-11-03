@@ -23,7 +23,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
       const d = await r.json().catch(() => ({}));
       if (!r.ok) setError(d.error || 'Not found');
       else setRun(d.run);
-      if (!stop && (!d.run || d.run.status === 'queued' || d.run.status === 'running')) setTimeout(tick, 3000);
+      if (!stop && (!d.run || d.run.status === 'queued' || d.run.status === 'running' || d.run.status === 'paused')) setTimeout(tick, 3000);
     };
     tick();
     return () => {
@@ -33,7 +33,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
 
   if (error) return <div className="p-8 text-sm text-red-300">{error}</div>;
   if (!run) return <div className="p-8"><Loader2 className="w-5 h-5 animate-spin text-ink-3" /></div>;
-  const live = run.status === 'queued' || run.status === 'running';
+  const live = run.status === 'queued' || run.status === 'running' || run.status === 'paused';
 
   return (
     <div className="flex-1 h-full overflow-y-auto bg-canvas">
@@ -44,7 +44,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
             <p className="text-xs text-ink-3">{run.agent === 'code' ? 'Code agent' : 'Co-Work'} · started from {run.source === 'mcp' ? 'an assistant (MCP)' : 'Arcwork'} · {run.model || 'choosing model…'}</p>
             <p className="text-sm text-ink font-medium truncate">{run.prompt}</p>
           </div>
-          <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded ${live ? 'bg-brand/15 text-brand-soft' : run.status === 'done' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{run.status}</span>
+          <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded ${live ? 'bg-brand/15 text-brand-soft' : run.status === 'done' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{run.status === 'paused' ? 'continuing' : run.status}</span>
         </div>
 
         <div className="rounded-xl border border-line/[0.06] bg-line/[0.02] p-3 space-y-1 max-h-[45vh] overflow-y-auto">

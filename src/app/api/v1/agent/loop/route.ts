@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       };
       send('react_start', { prompt });
       try {
-        const out = await runCodeTask({ user, prompt, projectId, history, pinnedModel, localRoot, maxSteps: maxTurns, allowExternalWrites, signal: req.signal, onEvent: send });
+        const out = await runCodeTask({ user, prompt, projectId, history, pinnedModel, localRoot, maxSteps: maxTurns, allowExternalWrites, localStepTimeoutMs: 100_000, signal: req.signal, onEvent: send });
         send('react_done', {
           success: true,
           projectId: out.projectId,

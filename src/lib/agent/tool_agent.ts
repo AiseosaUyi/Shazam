@@ -1,5 +1,5 @@
 import { tool, type LanguageModel, type ModelMessage, type ToolSet } from 'ai';
-import { streamAgent } from './stream';
+import { streamAgent, startMessages, type ResumableRun } from './stream';
 import { z } from 'zod';
 import { validateFilePath } from './policy';
 import { buildProjectIndex } from './indexer';
@@ -19,7 +19,7 @@ export interface AgentFile {
 
 export type CommandRunner = (command: string, signal?: AbortSignal) => Promise<{ exitCode: number; output: string }>;
 
-export interface ToolAgentOptions {
+export interface ToolAgentOptions extends ResumableRun {
   model: LanguageModel;
   prompt: string;
   history?: ModelMessage[];
@@ -44,6 +44,8 @@ export interface ToolAgentResult {
   filesDeleted: string[];
   steps: number;
   commandsRun: Array<{ command: string; exitCode: number }>;
+  /** Stopped at the time limit before finishing; resume from the saved checkpoint. */
+  paused: boolean;
 }
 
 const MAX_READ_LINES = 400;
@@ -361,16 +363,18 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     localIndex = await local.call('list_files', { path: local.root, max: 400 }).catch(() => '');
   }
 
-  const { text, steps } = await streamAgent({
+  const { text, steps, paused } = await streamAgent({
     model,
     instructions: local
       ? buildLocalInstructions(local.root, local.deviceName, localIndex, extraInstructions)
       : buildInstructions(projectName, files, hasExecution, extraInstructions),
-    messages: [...history, { role: 'user', content: prompt }],
+    messages: startMessages(prompt, history, options.resumeMessages),
     tools,
     maxSteps,
     signal,
     onEvent,
+    deadline: options.deadline,
+    onCheckpoint: options.onCheckpoint,
   });
 
   return {
@@ -379,5 +383,6 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     filesDeleted: Array.from(filesDeleted),
     steps,
     commandsRun,
+    paused,
   };
 }

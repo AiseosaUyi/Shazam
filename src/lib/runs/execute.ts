@@ -14,6 +14,7 @@ import { buildMediaTools } from '@/lib/media/tools';
 import { buildBridgeTools } from '@/lib/bridge/tools';
 import { RunsRepo, type RunEvent } from './repo';
 import { buildAskTool, QUESTION_GUIDANCE } from '@/lib/agents/ask';
+import type { ResumableRun } from '@/lib/agent/stream';
 
 /**
  * One implementation of each agent, shared by the web UI (streamed over SSE) and by
@@ -32,7 +33,7 @@ export function projectTitle(prompt: string): string {
   return title ? title.charAt(0).toUpperCase() + title.slice(1) : 'Untitled project';
 }
 
-export interface CodeTaskOptions {
+export interface CodeTaskOptions extends ResumableRun {
   user: User;
   prompt: string;
   projectId?: string | null;
@@ -44,6 +45,8 @@ export interface CodeTaskOptions {
   localRoot?: string | null;
   /** Background run id (lets ask_user questions be answered from the web or MCP). */
   runId?: string | null;
+  /** Per-step budget for a local model (shorter on 300s streaming routes). */
+  localStepTimeoutMs?: number;
   signal?: AbortSignal;
   onEvent?: EventSink;
 }
@@ -56,6 +59,8 @@ export interface TaskResult {
   filesDeleted: string[];
   commandsRun: Array<{ command: string; exitCode: number }>;
   steps: number;
+  /** Stopped at a time limit with a checkpoint saved; the background runner resumes it. */
+  paused?: boolean;
 }
 
 export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
@@ -75,7 +80,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   const project = await repo.getProject(o.user.id, projectId);
   const files = (await repo.getProjectFiles(o.user.id, projectId)).map((f) => ({ path: f.path, content: f.content }));
 
-  const agentModel = await getAgentModel(o.user, repo, o.prompt, 'coding', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }));
+  const agentModel = await getAgentModel(o.user, repo, o.prompt, 'coding', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }), { localStepTimeoutMs: o.localStepTimeoutMs });
   send('react_model', { model: agentModel.label, provider: agentModel.provider, providerModelId: agentModel.modelId, mode: 'native-tools' });
 
   const sandbox = sandboxAvailable() ? new ProjectSandbox(o.user.id, projectId) : null;
@@ -116,6 +121,9 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
     maxSteps: o.maxSteps ?? 40,
     signal: o.signal,
     onEvent: persistingSend,
+    resumeMessages: o.resumeMessages,
+    deadline: o.deadline,
+    onCheckpoint: o.onCheckpoint,
   });
 
   for (const p of out.filesModified) {
@@ -124,7 +132,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   }
   for (const p of out.filesDeleted) await repo.deleteProjectFile(o.user.id, projectId, p);
 
-  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, steps: out.steps };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, steps: out.steps, paused: out.paused };
 }
 
 async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: PlatformRepo, send: EventSink): Promise<TaskResult> {
@@ -135,7 +143,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
   const device = await ensureLocalFolder(o.user.id, root, { signal: o.signal });
   send('react_execution', { backend: 'local', device: device.name, root });
 
-  const agentModel = await getAgentModel(o.user, repo, o.prompt, 'coding', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }));
+  const agentModel = await getAgentModel(o.user, repo, o.prompt, 'coding', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }), { localStepTimeoutMs: o.localStepTimeoutMs });
   send('react_model', { model: agentModel.label, provider: agentModel.provider, providerModelId: agentModel.modelId, mode: 'native-tools' });
 
   const call = async (command: string, payload: Record<string, unknown>, timeoutMs = 120_000) => {
@@ -159,17 +167,21 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     maxSteps: o.maxSteps ?? 40,
     signal: o.signal,
     onEvent: send,
+    resumeMessages: o.resumeMessages,
+    deadline: o.deadline,
+    onCheckpoint: o.onCheckpoint,
   });
-  return { text: out.text || 'Done.', model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, steps: out.steps };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, steps: out.steps, paused: out.paused };
 }
 
-export interface CoworkTaskOptions {
+export interface CoworkTaskOptions extends ResumableRun {
   user: User;
   runId?: string | null;
   prompt: string;
   history?: ModelMessage[];
   timezone?: string;
   pinnedModel?: string | null;
+  localStepTimeoutMs?: number;
   signal?: AbortSignal;
   onEvent?: EventSink;
 }
@@ -178,7 +190,7 @@ export async function runCoworkTask(o: CoworkTaskOptions): Promise<TaskResult> {
   const repo = new DbRepo();
   const platform = new PlatformRepo();
   const send: EventSink = o.onEvent || (() => {});
-  const { model, modelId, label, provider } = await getAgentModel(o.user, repo, o.prompt, 'planning', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }));
+  const { model, modelId, label, provider } = await getAgentModel(o.user, repo, o.prompt, 'planning', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }), { localStepTimeoutMs: o.localStepTimeoutMs });
   send('react_model', { model: label, provider, providerModelId: modelId });
 
   const [google, mcp, skills, media, bridge] = await Promise.all([
@@ -202,13 +214,17 @@ export async function runCoworkTask(o: CoworkTaskOptions): Promise<TaskResult> {
     extraInstructions: [QUESTION_GUIDANCE, mcp.inventory, skills.inventory, media.inventory, bridge.inventory].filter(Boolean).join('\n\n'),
     signal: o.signal,
     onEvent: send,
+    resumeMessages: o.resumeMessages,
+    deadline: o.deadline,
+    onCheckpoint: o.onCheckpoint,
   });
-  return { text: result.text, model: label, projectId: null, filesModified: [], filesDeleted: [], commandsRun: [], steps: result.steps };
+  return { text: result.text, model: label, projectId: null, filesModified: [], filesDeleted: [], commandsRun: [], steps: result.steps, paused: result.paused };
 }
 
 /** Converts streaming agent events into a compact, persisted progress log. */
-export function eventRecorder(runId: string, userId: string, runs = new RunsRepo()) {
-  const events: RunEvent[] = [];
+export function eventRecorder(runId: string, userId: string, runs = new RunsRepo(), previous: RunEvent[] = []) {
+  // A resumed run keeps the progress of its earlier segments.
+  const events: RunEvent[] = [...previous];
   let model: string | null = null;
   let dirty = false;
   let lastFlush = 0;

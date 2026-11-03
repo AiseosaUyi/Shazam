@@ -3,7 +3,17 @@ import type { SqlDatabase } from '@/lib/db/sql';
 import { sha256Hex } from '@/lib/bridge/repo';
 
 export type RunAgent = 'code' | 'cowork';
-export type RunStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
+/** paused = stopped at a serverless time limit with a checkpoint; resumes automatically. */
+export type RunStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'cancelled';
+
+/** Settings a run keeps across resumed segments. */
+export interface RunOptions {
+  pinnedModel?: string | null;
+  timezone?: string;
+  maxSteps?: number;
+  /** Steps already used by earlier segments (the step budget is for the whole run). */
+  stepsUsed?: number;
+}
 
 export interface RunEvent {
   at: string;
@@ -25,6 +35,12 @@ export interface AgentRun {
   result: string | null;
   filesChanged: string[];
   error: string | null;
+  /** Saved conversation (model messages) to resume from; null until the first step ends. */
+  checkpoint: unknown[] | null;
+  /** How many invocations this run has used (0 = first). */
+  segment: number;
+  options: RunOptions;
+  leaseUntil: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +59,10 @@ const toRun = (r: any): AgentRun => ({
   result: r.result,
   filesChanged: JSON.parse(r.files_changed || '[]'),
   error: r.error,
+  checkpoint: r.checkpoint ? JSON.parse(r.checkpoint) : null,
+  segment: Number(r.segment || 0),
+  options: JSON.parse(r.options || '{}'),
+  leaseUntil: r.lease_until ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -93,6 +113,81 @@ export class RunsRepo {
         id
       )
       .run();
+  }
+
+  async saveOptions(userId: string, id: string, options: RunOptions): Promise<void> {
+    await this.db.prepare('UPDATE agent_runs SET options = ? WHERE user_id = ? AND id = ?').bind(JSON.stringify(options), userId, id).run();
+  }
+
+  /** Saves the conversation so far; cheap enough to call after every agent step. */
+  async saveCheckpoint(userId: string, id: string, messages: unknown[]): Promise<void> {
+    await this.db
+      .prepare('UPDATE agent_runs SET checkpoint = ?, updated_at = ? WHERE user_id = ? AND id = ?')
+      .bind(JSON.stringify(messages), new Date().toISOString(), userId, id)
+      .run();
+  }
+
+  /** Marks the run as owned by a live invocation until `leaseUntil`. */
+  async setLease(userId: string, id: string, leaseUntil: string | null): Promise<void> {
+    await this.db.prepare('UPDATE agent_runs SET lease_until = ? WHERE user_id = ? AND id = ?').bind(leaseUntil, userId, id).run();
+  }
+
+  /**
+   * Atomically claims one run that should continue: paused at a time limit, or "running" but
+   * its invocation died (lease expired, or a pre-checkpoint run silent for `staleMs`). Returns
+   * null when nothing is waiting. The claim sets a fresh lease so two resumers never race.
+   */
+  /**
+   * Fails runs nobody owns any more, so recovery never restarts work the person moved on from
+   * (and that could overwrite newer changes): runs with no lease silent for `noLeaseMs` (from
+   * before checkpoints existed, or that crashed before starting), and leased runs whose owner
+   * died more than `abandonedMs` ago.
+   */
+  async expireAbandoned(noLeaseMs = 20 * 60_000, abandonedMs = 2 * 3600_000): Promise<number> {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const r = await this.db
+      .prepare(
+        `UPDATE agent_runs SET status = 'error', error = 'This run stopped unexpectedly before it could save progress. Send feedback to continue it.', lease_until = NULL, updated_at = ?
+          WHERE (status IN ('queued','running') AND lease_until IS NULL AND updated_at < ?)
+             OR (status IN ('running','paused') AND lease_until IS NOT NULL AND lease_until < ?)`
+      )
+      .bind(nowIso, new Date(now - noLeaseMs).toISOString(), new Date(now - abandonedMs).toISOString())
+      .run();
+    return r.meta?.changes ?? 0;
+  }
+
+  /**
+   * Atomically claims one run that should continue: paused at a time limit, or "running" whose
+   * invocation died (lease expired). Returns null when nothing is waiting. The claim sets a
+   * fresh lease so two resumers never race.
+   */
+  async claimResumable(leaseMs: number): Promise<AgentRun | null> {
+    await this.expireAbandoned();
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, user_id FROM agent_runs
+          WHERE (status = 'paused' AND (lease_until IS NULL OR lease_until < ?))
+             OR (status = 'running' AND lease_until IS NOT NULL AND lease_until < ?)
+          ORDER BY updated_at ASC LIMIT 5`
+      )
+      .bind(nowIso, nowIso)
+      .all<any>();
+    const lease = new Date(now.getTime() + leaseMs).toISOString();
+    for (const r of results) {
+      const claimed = await this.db
+        .prepare(
+          `UPDATE agent_runs SET lease_until = ?, status = 'running', segment = segment + 1, updated_at = ?
+            WHERE id = ? AND ((status = 'paused' AND (lease_until IS NULL OR lease_until < ?))
+                           OR (status = 'running' AND lease_until IS NOT NULL AND lease_until < ?))`
+        )
+        .bind(lease, nowIso, r.id, nowIso, nowIso)
+        .run();
+      if ((claimed.meta?.changes ?? 0) > 0) return this.get(r.user_id, r.id);
+    }
+    return null;
   }
 
   // ---------------- Personal access tokens (MCP clients) ----------------

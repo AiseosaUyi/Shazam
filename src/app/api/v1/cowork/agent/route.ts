@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
       try {
         await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId: conversationId!, role: 'user', content: prompt });
-        const result = await runCoworkTask({ user, prompt, history, timezone, pinnedModel, signal: req.signal, onEvent: send });
+        const result = await runCoworkTask({ user, prompt, history, timezone, pinnedModel, localStepTimeoutMs: 100_000, signal: req.signal, onEvent: send });
 
         await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId: conversationId!, role: 'assistant', content: result.text || '(no reply)' });
         await repo.touchConversation(user.id, conversationId!);

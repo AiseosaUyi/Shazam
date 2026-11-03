@@ -1,6 +1,6 @@
 import { tool, type LanguageModel, type ModelMessage, type ToolSet } from 'ai';
 import { z } from 'zod';
-import { streamAgent } from '@/lib/agent/stream';
+import { streamAgent, startMessages, type ResumableRun } from '@/lib/agent/stream';
 import type { PlatformRepo } from '@/lib/db/platform-repo';
 import { searchGmail, readGmail, createGmailDraft, validateRecipients } from '@/lib/google/gmail';
 import { listCalendarEvents } from '@/lib/google/calendar';
@@ -13,7 +13,7 @@ import { describeNow, RECURRENCES } from '@/lib/jobs/recurrence';
  * and only run after the user approves them in the UI.
  */
 
-export interface CoworkAgentOptions {
+export interface CoworkAgentOptions extends ResumableRun {
   model: LanguageModel;
   userId: string;
   prompt: string;
@@ -47,7 +47,7 @@ const googleGuard = async <T>(fn: () => Promise<T>): Promise<T | string> => {
   }
 };
 
-export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: string; steps: number }> {
+export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: string; steps: number; paused: boolean }> {
   const { userId, platform, timezone, onEvent } = opts;
 
   const propose = async (kind: string, summary: string, payload: unknown) => {
@@ -230,10 +230,12 @@ ${opts.extraInstructions ? `\n${opts.extraInstructions}` : ''}`;
   return streamAgent({
     model: opts.model,
     instructions,
-    messages: [...(opts.history || []), { role: 'user', content: opts.prompt }],
+    messages: startMessages(opts.prompt, opts.history, opts.resumeMessages),
     tools,
     maxSteps: 25,
     signal: opts.signal,
     onEvent,
+    deadline: opts.deadline,
+    onCheckpoint: opts.onCheckpoint,
   });
 }

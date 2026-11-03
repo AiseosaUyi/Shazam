@@ -1,6 +1,7 @@
 /** Compact task summaries for MCP callers, so reviewing work costs them little usage. */
 
-export const ACTIVE = new Set(['queued', 'running']);
+/** Still working: paused runs resume on their own after a time limit. */
+export const ACTIVE = new Set(['queued', 'running', 'paused']);
 /** Longest a status check waits on our side. Kept under common MCP client timeouts (~60s). */
 export const MAX_WAIT_S = 45;
 export const SUMMARY_RESULT_CHARS = 1500;

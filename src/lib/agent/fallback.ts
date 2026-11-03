@@ -14,7 +14,7 @@ export function isRetryableModelError(err: unknown): boolean {
   const status = e?.statusCode ?? e?.status ?? e?.cause?.statusCode;
   const msg = `${e?.message || ''} ${e?.responseBody || ''} ${e?.name || ''}`;
   return status === 429 || status === 402 || (typeof status === 'number' && status >= 500) ||
-    /rate.?limit|quota|RESOURCE_EXHAUSTED|overloaded|temporarily unavailable|capacity|Free tier users do not have access|insufficient|too many requests/i.test(msg);
+    /rate.?limit|quota|RESOURCE_EXHAUSTED|overloaded|temporarily unavailable|capacity|high demand|Free tier users do not have access|insufficient|too many requests|timed? ?out|ETIMEDOUT/i.test(msg);
 }
 
 const strikes = new Map<string, number>();

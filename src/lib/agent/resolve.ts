@@ -86,7 +86,17 @@ export interface AgentModel {
  * user's other free-tier keys, then free platform models via AI Gateway. Rate limits and
  * outages on one link fail over to the next per step, so long agent runs survive free quotas.
  */
-export async function getAgentModel(user: User, repo: DbRepo, prompt: string, taskClass: 'coding' | 'planning' | 'writing', pinnedModel?: string | null, onSwitch?: (from: string, to: string, reason: string) => void): Promise<AgentModel> {
+/**
+ * Whether the user's local model goes first. Pinning "local" always leads; pinning another model
+ * keeps local as a fallback; otherwise local leads unless the user turned it off.
+ */
+export function localLeads(pinnedModel: string | null | undefined, settings?: { preferLocalModel?: boolean } | null): boolean {
+  if (/^local/i.test(pinnedModel || '')) return true;
+  if (pinnedModel) return false;
+  return settings?.preferLocalModel !== false;
+}
+
+export async function getAgentModel(user: User, repo: DbRepo, prompt: string, taskClass: 'coding' | 'planning' | 'writing', pinnedModel?: string | null, onSwitch?: (from: string, to: string, reason: string) => void, opts: { localStepTimeoutMs?: number; preferLocalModel?: boolean } = {}): Promise<AgentModel> {
   const { createLanguageModel } = await import('./models');
   const { createFallbackModel } = await import('./fallback');
   const { gateway } = await import('ai');
@@ -118,15 +128,16 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
     }
   }
 
-  // The user's own local model (Ollama / LM Studio) via the desktop bridge: free and private.
+  // The user's own local model (Ollama / LM Studio) via the desktop bridge: free, private and
+  // unlimited, so it leads whenever it is available; the free cloud models back it up.
   try {
     const { BridgeRepo } = await import('@/lib/bridge/repo');
     const { pickLocalModel, createLocalModel } = await import('./local-llm');
     const desktop = await new BridgeRepo().onlineDevice(user.id, 'desktop');
     const local = desktop ? pickLocalModel((desktop.capabilities.localModels as any[]) || []) : null;
     if (desktop && local) {
-      const entry = { model: createLocalModel(user.id, desktop, local), modelId: local.id, provider: 'local', label: `${local.id} · on ${desktop.name}` };
-      if (/^local/i.test(pinnedModel || '')) chain.unshift(entry);
+      const entry = { model: createLocalModel(user.id, desktop, local, { stepTimeoutMs: opts.localStepTimeoutMs }), modelId: local.id, provider: 'local', label: `${local.id} · on ${desktop.name}` };
+      if (localLeads(pinnedModel, opts.preferLocalModel === undefined ? null : { preferLocalModel: opts.preferLocalModel })) chain.unshift(entry);
       else chain.push(entry);
     }
   } catch {

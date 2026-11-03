@@ -255,7 +255,7 @@ export default function CodePage() {
     const r = await fetch('/api/v1/runs').then((res) => (res.ok ? res.json() : { runs: [] })).catch(() => ({ runs: [] }));
     const runs: Run[] = (r.runs || []).filter((x: Run) => x.agent === 'code' && x.projectId === key).reverse();
     setThreads((prev) => ({ ...prev, [workspaceKey(w)]: runs.flatMap(runToTurns) }));
-    const running = runs.find((x) => x.status === 'queued' || x.status === 'running');
+    const running = runs.find((x) => x.status === 'queued' || x.status === 'running' || x.status === 'paused');
     if (running && !busy) follow(running.id, w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
