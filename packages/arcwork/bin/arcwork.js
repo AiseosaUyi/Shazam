@@ -224,6 +224,29 @@ function execCommand(command, cwd, timeoutMs) {
   });
 }
 
+function validModelName(name) {
+  return typeof name === 'string' && /^[a-z0-9][a-z0-9._:\/-]{0,100}$/i.test(name) && !name.includes('..');
+}
+
+async function ollamaGet(pathname) {
+  const res = await fetch(`http://127.0.0.1:11434${pathname}`, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function ollamaPost(pathname, body) {
+  const res = await fetch(`http://127.0.0.1:11434${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+const pulls = new Map();
+
 // Local LLM servers the bridge can tunnel to (OpenAI-compatible endpoints only).
 const LOCAL_LLM_SERVERS = [
   { name: 'ollama', base: process.env.OLLAMA_HOST || 'http://127.0.0.1:11434' },
@@ -376,6 +399,82 @@ class BridgeClient {
         const files = listFiles(root, Math.min(2000, Number(p.max) || 500));
         return { ok: true, result: files.join('\n') || '(empty folder)' };
       }
+      case 'local_status': {
+        try {
+          const v = await ollamaGet('/api/version');
+          const running = true;
+          let version = v?.version ?? '';
+          const modelsRes = await ollamaGet('/api/tags');
+          const models = (modelsRes?.models || []).map((m) => ({
+            name: m.name,
+            sizeGB: +(m.size / 2 ** 30).toFixed(1),
+          }));
+          return {
+            ok: true,
+            result: {
+              ollama: { running, version },
+              models,
+              hardware: { ramGB: Math.round(os.totalmem() / 2 ** 30), platform: process.platform, arch: process.arch },
+            },
+          };
+        } catch {
+          return { ok: true, result: { ollama: { running: false, version: '' }, models: [], hardware: { ramGB: Math.round(os.totalmem() / 2 ** 30), platform: process.platform, arch: process.arch } } };
+        }
+      }
+      case 'local_pull': {
+        const model = p.model;
+        if (!validModelName(model)) return { ok: false, result: 'Invalid model name.' };
+        const existing = pulls.get(model);
+        if (existing && existing.status !== 'success' && !existing.error) return { ok: true, result: { started: false, alreadyRunning: true } };
+        pulls.set(model, { status: 'starting' });
+        (async () => {
+          try {
+            const res = await fetch(`http://127.0.0.1:11434/api/pull`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model, stream: true }),
+            });
+            if (!res.ok && !res.body) throw new Error(`HTTP ${res.status}`);
+            const decoder = new TextDecoder();
+            let buf = '';
+            for await (const chunk of res.body) {
+              buf += decoder.decode(chunk, { stream: true });
+              let nl;
+              while ((nl = buf.indexOf('\n')) >= 0) {
+                const line = buf.slice(0, nl).trim();
+                buf = buf.slice(nl + 1);
+                if (!line) continue;
+                try {
+                  const j = JSON.parse(line);
+                  pulls.set(model, { status: j.status, completed: j.completed, total: j.total, error: j.error });
+                } catch { /* skip */ }
+              }
+            }
+            const last = pulls.get(model);
+            if (last && last.status !== 'success' && !last.error) pulls.set(model, { ...last, status: 'error', error: 'Download stopped before finishing. Try again; it resumes.' });
+          } catch (err) {
+            pulls.set(model, { status: 'error', error: err?.message || String(err) });
+          }
+        })();
+        return { ok: true, result: { started: true } };
+      }
+      case 'local_pull_progress': {
+        return { ok: true, result: pulls.get(p.model) || { status: 'idle' } };
+      }
+      case 'local_create': {
+        const from = p.from;
+        if (!validModelName(from)) return { ok: false, result: 'Invalid model name.' };
+        const name = 'arcwork-' + from.replace(/[:/]/g, '-');
+        await ollamaPost('/api/create', { model: name, from, parameters: { num_ctx: 65536 }, stream: false });
+        return { ok: true, result: { name } };
+      }
+      case 'ollama_start': {
+        if (process.platform === 'darwin') {
+          spawn('open', ['-a', 'Ollama'], { detached: true, stdio: 'ignore' }).unref();
+          return { ok: true, result: { started: true } };
+        }
+        return { ok: false, result: 'Open Ollama from your Start menu.' };
+      }
       default:
         return { ok: false, result: `Unknown command "${cmd.command}".` };
     }
@@ -449,7 +548,7 @@ class BridgeClient {
   }
 }
 
-module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION };
+module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName };
 
   return module.exports;
 })();

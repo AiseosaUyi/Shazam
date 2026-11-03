@@ -7,7 +7,7 @@ import { createTestDatabase } from '@/lib/db/test-sqlite';
 import { DbRepo } from '@/lib/db/repo';
 import { BridgeRepo, callDevice } from '@/lib/bridge/repo';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { guardPath, RISKY_COMMAND } = require('../desktop/bridge-core.js');
+const { guardPath, RISKY_COMMAND, validModelName } = require('../desktop/bridge-core.js');
 
 async function setup() {
   const db = createTestDatabase();
@@ -69,5 +69,16 @@ describe('Device bridge', () => {
     assert.ok(RISKY_COMMAND.test('git push origin main'));
     assert.ok(RISKY_COMMAND.test('rm -rf dist'));
     assert.ok(!RISKY_COMMAND.test('npm test'));
+  });
+
+  it('validModelName rejects dangerous names', () => {
+    assert.ok(validModelName('qwen3.6:35b-a3b'));
+    assert.ok(validModelName('gpt-oss:20b'));
+    assert.ok(validModelName('library/qwen3.5:9b'));
+    assert.ok(!validModelName('x; rm -rf ~'));
+    assert.ok(!validModelName('../etc/passwd'));
+    assert.ok(!validModelName(''));
+    assert.ok(!validModelName('a'.repeat(102)));
+    assert.ok(!validModelName(42));
   });
 });
