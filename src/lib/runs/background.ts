@@ -17,6 +17,8 @@ import { BridgeOfflineError } from '@/lib/bridge/repo';
 export const SEGMENT_MS = Number(process.env.SHAZAM_RUN_SEGMENT_MS || 450_000);
 /** A little longer than a function may live, so an expired lease means the owner is gone. */
 export const LEASE_MS = 840_000;
+/** Steps a background run may take in total (across resumed segments). */
+export const DEFAULT_RUN_STEPS = Number(process.env.SHAZAM_RUN_MAX_STEPS || 120);
 export const MAX_SEGMENTS = Number(process.env.SHAZAM_RUN_MAX_SEGMENTS || 8);
 const APP_URL = process.env.APP_URL || 'https://arcwork-ai.vercel.app';
 
@@ -42,7 +44,8 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
   await runs.update(user.id, run.id, { status: 'running' });
 
   const resumeMessages = run.checkpoint?.length ? (run.checkpoint as ModelMessage[]) : undefined;
-  const totalSteps = options.maxSteps ?? 40;
+  // Runs resume across time segments, so the step budget can fit real multi-file work.
+  const totalSteps = options.maxSteps ?? DEFAULT_RUN_STEPS;
   const stepsLeft = Math.max(1, totalSteps - (options.stepsUsed || 0));
   const resumable = {
     resumeMessages,
@@ -92,9 +95,12 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
 
     await rec.flush();
     // The web UI shows commands as chips; assistants on MCP get them in the text.
+    // Out of steps mid-task: say so plainly instead of returning a half-finished sentence as the result.
+    const ranOut = run.agent === 'code' && out.steps >= stepsLeft;
+    const limitNote = ranOut ? `Stopped at the step limit (${totalSteps} steps) before finishing. Progress is saved; send feedback to continue.\n\nLast message: ` : '';
     const verified = run.source === 'mcp' && out.commandsRun.length ? `\n\nCommands run: ${out.commandsRun.map((c) => `\`${c.command}\` → exit ${c.exitCode}`).join(', ')}` : '';
     await runs.setLease(user.id, run.id, null);
-    await runs.update(user.id, run.id, { status: 'done', result: `${out.text}${verified}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
+    await runs.update(user.id, run.id, { status: 'done', result: `${limitNote}${out.text}${verified}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
     if (out.projectId && out.projectId !== run.projectId) {
       // Link the auto-created project so feedback continues in the same files.
       await runs.setProject(user.id, run.id, out.projectId);

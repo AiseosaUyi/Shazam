@@ -109,3 +109,14 @@ describe('Fallback on provider-specific errors', () => {
     await assert.rejects(generateText({ model, prompt: 'hi', maxRetries: 0 }), /prompt too long for a/);
   });
 });
+
+describe('Post-edit syntax checks', () => {
+  it('checks JS and JSON files, and skips the rest', async () => {
+    const { syntaxCheckCommand } = await import('@/lib/agent/tool_agent');
+    assert.equal(syntaxCheckCommand('/r/desktop/bridge-core.js'), 'node --check "/r/desktop/bridge-core.js"');
+    assert.match(syntaxCheckCommand('/r/a.mjs') || '', /^node --check/);
+    assert.match(syntaxCheckCommand('/r/package.json') || '', /JSON\.parse/);
+    assert.equal(syntaxCheckCommand('/r/page.tsx'), null);
+    assert.equal(syntaxCheckCommand('/r/a; rm -rf ~.js'), 'node --check "/r/a; rm -rf ~.js"', 'path is quoted');
+  });
+});

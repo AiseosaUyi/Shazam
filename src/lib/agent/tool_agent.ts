@@ -50,6 +50,14 @@ export interface ToolAgentResult {
 
 const MAX_READ_LINES = 400;
 
+/** A fast syntax check for files that can be checked without a build (null = none). */
+export function syntaxCheckCommand(absPath: string): string | null {
+  const q = JSON.stringify(absPath);
+  if (/\.(c|m)?js$/i.test(absPath)) return `node --check ${q}`;
+  if (/\.json$/i.test(absPath)) return `node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" ${q}`;
+  return null;
+}
+
 /** Exact match first, then a whitespace-insensitive line match (models often re-indent). */
 export function applyEdit(content: string, oldString: string, newString: string, replaceAll = false): { ok: true; content: string; count: number } | { ok: false; error: string } {
   if (oldString === '') return { ok: false, error: 'old_string is empty. Use write_file to create a file.' };
@@ -301,6 +309,14 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       filesModified.add(p);
       onEvent?.('file_changed', { path: p, action });
     };
+    // Weak models often break syntax; check JS/JSON right after each edit so the model fixes it
+    // in the next step instead of leaving a file that crashes on load.
+    const syntaxNote = async (p: string): Promise<string> => {
+      const cmd = syntaxCheckCommand(abs(p));
+      if (!cmd) return '';
+      const out = await local.call('exec', { cwd: local.root, command: cmd, timeoutMs: 20_000 }, 30_000).catch(() => '');
+      return /exit code: 0\b/.test(out) || !/exit code: \d+/.test(out) ? '' : `\n\nSYNTAX ERROR after this edit — fix it before continuing:\n${out.slice(0, 1500)}`;
+    };
     Object.assign(tools, {
       list_files: tool({
         description: `List files in the user's folder ${local.root} (skips node_modules, .git).`,
@@ -322,8 +338,9 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         inputSchema: z.object({ path: z.string(), old_string: z.string(), new_string: z.string() }),
         execute: async ({ path, old_string, new_string }) => {
           const out = await local.call('edit_file', { path: abs(path), old_string, new_string });
-          if (!/^Error/.test(out)) mark(path, 'edit');
-          return out;
+          if (/^Error/.test(out)) return out;
+          mark(path, 'edit');
+          return out + (await syntaxNote(path));
         },
       }),
       write_file: tool({
@@ -331,8 +348,9 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         inputSchema: z.object({ path: z.string(), content: z.string() }),
         execute: async ({ path, content }) => {
           const out = await local.call('write_file', { path: abs(path), content });
-          if (!/^Error/.test(out)) mark(path, 'write');
-          return out;
+          if (/^Error/.test(out)) return out;
+          mark(path, 'write');
+          return out + (await syntaxNote(path));
         },
       }),
       delete_file: tool({
