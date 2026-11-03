@@ -35,3 +35,38 @@ describe('Free-tier fail-over model chain', () => {
     assert.ok(!isRetryableModelError(Object.assign(new Error('bad'), { statusCode: 400 })));
   });
 });
+
+describe('Switching providers mid-run', () => {
+  it("retries a model without earlier reasoning when it rejects it (Groq 'reasoning_content' 400)", async () => {
+    const { rejectsReasoning, stripReasoning } = await import('../src/lib/agent/fallback');
+    const groqError = Object.assign(new Error("'messages.4' : for 'role:assistant' the following must be satisfied[('messages.4' : property 'reasoning_content' is unsupported)]"), { statusCode: 400 });
+    assert.equal(rejectsReasoning(groqError), true);
+    assert.equal(rejectsReasoning(new Error('Invalid tool schema')), false);
+
+    const seen: number[] = [];
+    const busy = new MockLanguageModelV4({ modelId: 'busy', doStream: async () => { throw rateLimited; } });
+    const strict = new MockLanguageModelV4({
+      modelId: 'strict',
+      doStream: async (opts: any) => {
+        const reasoningParts = opts.prompt.flatMap((m: any) => (Array.isArray(m.content) ? m.content : [])).filter((p: any) => p.type === 'reasoning').length;
+        seen.push(reasoningParts);
+        if (reasoningParts) throw groqError;
+        return ok('done without reasoning') as any;
+      },
+    });
+    const model = createFallbackModel([{ model: busy as any, label: 'busy' }, { model: strict as any, label: 'strict' }]);
+    const r = streamText({
+      model,
+      messages: [
+        { role: 'user', content: 'start' },
+        { role: 'assistant', content: [{ type: 'reasoning', text: 'local model thinking' }, { type: 'text', text: 'step one done' }] },
+        { role: 'user', content: 'continue' },
+      ],
+    });
+    assert.equal(await r.text, 'done without reasoning');
+    assert.deepEqual(seen, [1, 0]);
+
+    const stripped = stripReasoning({ prompt: [{ role: 'assistant', content: [{ type: 'reasoning', text: 'x' }] }, { role: 'user', content: [{ type: 'text', text: 'hi' }] }] } as any);
+    assert.equal(stripped.prompt.length, 1, 'an assistant turn left empty is dropped');
+  });
+});

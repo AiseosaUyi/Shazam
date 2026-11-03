@@ -43,6 +43,24 @@ export function cooldownMs(err: unknown, strike = 1): number {
   return Math.max(hinted, backoff);
 }
 
+/**
+ * A step that moved to another provider carries the previous model's reasoning in its history,
+ * which some providers refuse (Groq: "property 'reasoning_content' is unsupported").
+ */
+export function rejectsReasoning(err: unknown): boolean {
+  const e = err as any;
+  const msg = `${e?.message || ''} ${e?.responseBody || ''}`;
+  return /reasoning_content|reasoning[^.]{0,40}(unsupported|not supported|not allowed|unknown|invalid)|thinking[^.]{0,40}(unsupported|not supported)/i.test(msg);
+}
+
+/** Removes reasoning parts from earlier assistant turns (the answer and tool calls stay). */
+export function stripReasoning(options: LanguageModelV4CallOptions): LanguageModelV4CallOptions {
+  const prompt = options.prompt
+    .map((msg: any) => (msg.role === 'assistant' && Array.isArray(msg.content) ? { ...msg, content: msg.content.filter((p: any) => p.type !== 'reasoning' && p.type !== 'reasoning-file') } : msg))
+    .filter((msg: any) => !(msg.role === 'assistant' && Array.isArray(msg.content) && msg.content.length === 0));
+  return { ...options, prompt };
+}
+
 export interface ChainEntry {
   model: LanguageModelV4;
   label: string;
@@ -80,41 +98,52 @@ export function createFallbackModel(chain: ChainEntry[], onSwitch?: (from: strin
     throw lastErr;
   }
 
+  /** Calls one model; if it rejects earlier models' reasoning in the history, retries it without. */
+  const withReasoningRetry = async <T>(m: LanguageModelV4, options: LanguageModelV4CallOptions, call: (m: LanguageModelV4, o: LanguageModelV4CallOptions) => Promise<T>): Promise<T> => {
+    try {
+      return await call(m, options);
+    } catch (err) {
+      if (!rejectsReasoning(err)) throw err;
+      return call(m, stripReasoning(options));
+    }
+  };
+
+  const streamOnce = async (m: LanguageModelV4, options: LanguageModelV4CallOptions) => {
+    const result = await m.doStream(options);
+    // Some providers report rate limits as the first stream part instead of throwing.
+    const reader = result.stream.getReader();
+    const first = await reader.read();
+    if (!first.done && (first.value as LanguageModelV4StreamPart).type === 'error') {
+      const err = (first.value as any).error;
+      if (isRetryableModelError(err) || rejectsReasoning(err)) {
+        reader.releaseLock();
+        throw err;
+      }
+    }
+    const stream = new ReadableStream<LanguageModelV4StreamPart>({
+      start(controller) {
+        if (!first.done) controller.enqueue(first.value);
+        else controller.close();
+      },
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+      cancel(reason) {
+        return reader.cancel(reason);
+      },
+    });
+    return { ...result, stream };
+  };
+
   const primary = chain[0].model;
   return {
     specificationVersion: 'v4',
     provider: 'shazam-fallback',
     modelId: chain.map((c) => c.model.modelId).join(' → '),
     supportedUrls: primary.supportedUrls,
-    doGenerate: (options: LanguageModelV4CallOptions) => attempt((m) => Promise.resolve(m.doGenerate(options))),
-    doStream: (options: LanguageModelV4CallOptions) =>
-      attempt(async (m) => {
-        const result = await m.doStream(options);
-        // Some providers report rate limits as the first stream part instead of throwing.
-        const reader = result.stream.getReader();
-        const first = await reader.read();
-        if (!first.done && (first.value as LanguageModelV4StreamPart).type === 'error') {
-          const err = (first.value as any).error;
-          if (isRetryableModelError(err)) {
-            reader.releaseLock();
-            throw err;
-          }
-        }
-        const stream = new ReadableStream<LanguageModelV4StreamPart>({
-          start(controller) {
-            if (!first.done) controller.enqueue(first.value);
-            else controller.close();
-          },
-          async pull(controller) {
-            const { done, value } = await reader.read();
-            if (done) controller.close();
-            else controller.enqueue(value);
-          },
-          cancel(reason) {
-            return reader.cancel(reason);
-          },
-        });
-        return { ...result, stream };
-      }),
+    doGenerate: (options: LanguageModelV4CallOptions) => attempt((m) => withReasoningRetry(m, options, (mm, o) => Promise.resolve(mm.doGenerate(o)))),
+    doStream: (options: LanguageModelV4CallOptions) => attempt((m) => withReasoningRetry(m, options, streamOnce)),
   };
 }
