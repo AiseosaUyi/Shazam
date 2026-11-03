@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai';
 import type { User } from '@/lib/types';
 import { RunsRepo, type AgentRun, type RunAgent, type RunOptions } from './repo';
 import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
+import { BridgeOfflineError } from '@/lib/bridge/repo';
 
 /**
  * Background runs outlive one serverless invocation. The function hosting a run is killed
@@ -101,8 +102,18 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
   } catch (err: any) {
     await rec.flush();
     await runs.setLease(user.id, run.id, null);
+    // A resumed run that finds the computer briefly offline waits for the next resume instead of failing.
+    if (resumeMessages && isComputerOffline(err) && run.segment + 1 < MAX_SEGMENTS) {
+      await runs.update(user.id, run.id, { status: 'paused', events: [...rec.events, { at: new Date().toISOString(), type: 'note', text: 'Your computer is not connected right now; will continue when it is back.' }] });
+      return;
+    }
     await runs.update(user.id, run.id, { status: 'error', error: err.message || String(err), events: rec.events });
   }
+}
+
+/** The paired computer is (briefly) unreachable: worth waiting for rather than failing. */
+export function isComputerOffline(err: unknown): boolean {
+  return err instanceof BridgeOfflineError || /desktop app is not connected|computer isn't connected/i.test(String((err as any)?.message || ''));
 }
 
 /** Asks a fresh invocation to continue paused runs now (cron also polls every minute). */

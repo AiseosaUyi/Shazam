@@ -147,9 +147,15 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
   send('react_model', { model: agentModel.label, provider: agentModel.provider, providerModelId: agentModel.modelId, mode: 'native-tools' });
 
   const call = async (command: string, payload: Record<string, unknown>, timeoutMs = 120_000) => {
-    const out = await callDevice(o.user.id, 'desktop', command, payload, { timeoutMs, signal: o.signal });
-    const text = typeof out.result === 'string' ? out.result : JSON.stringify(out.result);
-    return out.ok ? text : `Error: ${text}`;
+    try {
+      const out = await callDevice(o.user.id, 'desktop', command, payload, { timeoutMs, signal: o.signal });
+      const text = typeof out.result === 'string' ? out.result : JSON.stringify(out.result);
+      return out.ok ? text : `Error: ${text}`;
+    } catch (err: any) {
+      if (o.signal?.aborted) throw err;
+      // A brief disconnect must not end the run: tell the model, which can retry the step.
+      return `Error: ${err?.message || err} Wait a moment and retry this step.`;
+    }
   };
   const [mcp, skills] = await Promise.all([
     buildMcpToolset(repo, o.user.id, { allowMutations: o.allowExternalWrites, platform, onPendingAction: (a) => send('pending_action', a) }),

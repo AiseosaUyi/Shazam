@@ -84,7 +84,8 @@ export function createLocalModel(userId: string, device: BridgeDevice, model: Lo
       } catch (err: any) {
         if (signal?.aborted) throw err;
         if (TIMEOUT_RX.test(String(err?.message))) return { timedOut: true as const };
-        throw err;
+        // The computer went offline mid-run: let this step move to a cloud model (503 is retryable).
+        return { timedOut: false as const, out: { ok: false, result: `local model unavailable: ${err?.message || err}`, status: 503 } };
       }
     };
 
@@ -94,7 +95,7 @@ export function createLocalModel(userId: string, device: BridgeDevice, model: Lo
     // Still nothing: a 5xx makes the fallback chain move this step to the next free model.
     if (r.timedOut) return new Response(JSON.stringify({ error: { message: `local model timed out (${model.id})` } }), { status: 504, headers: { 'Content-Type': 'application/json' } });
     const { out } = r;
-    if (!out.ok) return new Response(JSON.stringify({ error: { message: String(out.result) } }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    if (!out.ok) return new Response(JSON.stringify({ error: { message: String(out.result) } }), { status: (out as any).status || 502, headers: { 'Content-Type': 'application/json' } });
     return new Response(out.result.body, { status: out.result.status, headers: { 'Content-Type': out.result.contentType } });
   };
 

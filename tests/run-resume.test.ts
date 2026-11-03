@@ -116,3 +116,13 @@ describe('Long runs pause at a time limit and resume', () => {
     assert.equal(got?.status, 'paused');
   });
 });
+
+describe('Computer briefly offline', () => {
+  it('recognises both offline errors so a resumed run waits instead of failing', async () => {
+    const { isComputerOffline } = await import('@/lib/runs/background');
+    const { BridgeOfflineError } = await import('@/lib/bridge/repo');
+    assert.equal(isComputerOffline(new BridgeOfflineError('x')), true);
+    assert.equal(isComputerOffline(new Error("Your computer isn't connected to Arcwork, so it can't work in /x.")), true);
+    assert.equal(isComputerOffline(new Error('Invalid tool schema')), false);
+  });
+});

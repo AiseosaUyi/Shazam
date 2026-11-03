@@ -419,14 +419,13 @@ class BridgeClient {
         );
         backoff = 1000;
         this.onStatus('connected');
+        // Run commands in the background and keep polling: a local model step can take minutes,
+        // and the server treats a computer that stops polling for ~75s as offline.
         for (const cmd of data.commands || []) {
-          let outcome;
-          try {
-            outcome = await this.handle(cmd);
-          } catch (err) {
-            outcome = { ok: false, result: err.message || String(err) };
-          }
-          await this.post('/api/v1/bridge/result', { id: cmd.id, ok: outcome.ok, result: outcome.result }).catch(() => {});
+          this.handle(cmd)
+            .catch((err) => ({ ok: false, result: err.message || String(err) }))
+            .then((outcome) => this.post('/api/v1/bridge/result', { id: cmd.id, ok: outcome.ok, result: outcome.result }))
+            .catch(() => {});
         }
       } catch (err) {
         if (!this.running) break;
