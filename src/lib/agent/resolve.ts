@@ -137,7 +137,8 @@ export async function getAgentModel(user: User, repo: DbRepo, prompt: string, ta
     const local = desktop ? pickLocalModel((desktop.capabilities.localModels as any[]) || []) : null;
     if (desktop && local) {
       const entry = { model: createLocalModel(user.id, desktop, local, { stepTimeoutMs: opts.localStepTimeoutMs }), modelId: local.id, provider: 'local', label: `${local.id} · on ${desktop.name}` };
-      if (localLeads(pinnedModel, opts.preferLocalModel === undefined ? null : { preferLocalModel: opts.preferLocalModel })) chain.unshift(entry);
+      const preferLocalModel = opts.preferLocalModel ?? (await repo.getUserPreferences(user.id).catch(() => null))?.preferLocalModel;
+      if (localLeads(pinnedModel, preferLocalModel === undefined ? null : { preferLocalModel })) chain.unshift(entry);
       else chain.push(entry);
     }
   } catch {

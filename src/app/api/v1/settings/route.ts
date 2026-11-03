@@ -15,6 +15,7 @@ const UpdateSettingsSchema = z.object({
   preferredRegion: z.string().nullable().optional(),
   autoFallbackEnabled: z.boolean().optional(),
   allowPaidFallback: z.boolean().optional(),
+  preferLocalModel: z.boolean().optional(),
 });
 
 export async function GET(req: NextRequest) {

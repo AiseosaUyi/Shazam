@@ -230,6 +230,7 @@ export interface UserPreferences {
   preferredRegion: string | null;
   autoFallbackEnabled: boolean;
   allowPaidFallback: boolean;
+  preferLocalModel: boolean;
   updatedAt: string;
 }
 
