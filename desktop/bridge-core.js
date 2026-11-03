@@ -541,4 +541,64 @@ class BridgeClient {
   }
 }
 
-module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName };
+function escapeXml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** macOS launchd plist XML — pure text, no side effects. */
+function launchAgentPlist(nodePath, scriptPath, logDir) {
+  const p1 = escapeXml(nodePath);
+  const p2 = escapeXml(scriptPath);
+  const so = escapeXml(path.resolve(logDir, 'bridge.log'));
+  const se = escapeXml(path.resolve(logDir, 'bridge-error.log'));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.arcwork.bridge</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${p1}</string>
+        <string>${p2}</string>
+        <string>start</string>
+        <string>--background</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>${so}</string>
+    <key>StandardErrorPath</key>
+    <string>${se}</string>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>`;
+}
+
+/** Linux systemd user unit string — pure text, no side effects. */
+function systemdUnit(nodePath, scriptPath) {
+  return `[Unit]
+Description=Arcwork bridge
+After=network-online.target
+
+[Service]
+ExecStart="${nodePath}" "${scriptPath}" start --background
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target`;
+}
+
+/** Windows schtasks argument array — pure text, no side effects. */
+function windowsTaskArgs(nodePath, scriptPath) {
+  return ['/Create', '/SC', 'ONLOGON', '/TN', 'ArcworkBridge', '/TR', `"${nodePath}" "${scriptPath}" start --background`, '/F'];
+}
+
+module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName, launchAgentPlist, systemdUnit, windowsTaskArgs };

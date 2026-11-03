@@ -10,13 +10,17 @@
  *   shazam-bridge disallow <folder>
  *   shazam-bridge status
  *   shazam-bridge start [--yes-risky]     # run; risky commands are confirmed in this terminal
+ *   shazam-bridge autostart on|off|status # manage autostart (enabled after first connect)
  */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
-const { spawn, execFile } = require('child_process');
-const { BridgeClient, loadConfig, saveConfig, pair, deviceAuth, checkConsentFolder, CONFIG_PATH, DEFAULT_SERVER } = require('../desktop/bridge-core');
+const { spawn, execFile, execFileSync } = require('child_process');
+const { promisify } = require('util');
+const { BridgeClient, loadConfig, saveConfig, pair, deviceAuth, checkConsentFolder, CONFIG_PATH, DEFAULT_SERVER, launchAgentPlist, systemdUnit, windowsTaskArgs } = require('../desktop/bridge-core');
+
+const execFileP = promisify(execFile);
 
 const [, , cmd, ...rest] = process.argv;
 const flag = (name) => {
@@ -66,12 +70,134 @@ function runningPid() {
   }
 }
 
+/** Start the CLI as a background daemon and return its pid. */
 function startBackground() {
   fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true, mode: 0o700 });
   const out = fs.openSync(LOG_PATH, 'a', 0o600);
   const child = spawn(process.execPath, [__filename, 'start', '--background'], { detached: true, stdio: ['ignore', out, out], env: process.env });
   child.unref();
   return child.pid;
+}
+
+/** Check if autostart is enabled (sync file-based check). */
+function autostartFileExists() {
+  if (process.platform === 'darwin') {
+    return fs.existsSync(path.join(os.homedir(), 'Library', 'LaunchAgents', 'ai.arcwork.bridge.plist'));
+  } else if (process.platform === 'linux') {
+    return fs.existsSync(path.join(os.homedir(), '.config', 'systemd', 'user', 'arcwork-bridge.service'));
+  } else if (process.platform === 'win32') {
+    try {
+      execFileSync('schtasks', ['/Query', '/TN', 'ArcworkBridge'], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** Enable autostart for this bridge. */
+async function enableAutostart() {
+  const nodePath = process.execPath;
+  const scriptPath = path.resolve(__filename);
+  const logDir = path.dirname(LOG_PATH);
+
+  if (process.platform === 'darwin') {
+    try {
+      const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'ai.arcwork.bridge.plist');
+      const plistContent = launchAgentPlist(nodePath, scriptPath, logDir);
+      fs.mkdirSync(path.dirname(plistPath), { recursive: true });
+      fs.writeFileSync(plistPath, plistContent, { mode: 0o644 });
+      // Try bootout (ignore errors — it may not be loaded yet)
+      try {
+        await execFileP('launchctl', ['bootout', 'gui/' + os.userInfo().uid, plistPath]);
+      } catch { /* ignore */ }
+      await execFileP('launchctl', ['bootstrap', 'gui/' + os.userInfo().uid, plistPath]);
+    } catch (err) {
+      console.log(`! Warning: could not enable autostart — ${err.message}`);
+      return false;
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      const servicePath = path.join(os.homedir(), '.config', 'systemd', 'user', 'arcwork-bridge.service');
+      const unitContent = systemdUnit(nodePath, scriptPath);
+      fs.mkdirSync(path.dirname(servicePath), { recursive: true });
+      fs.writeFileSync(servicePath, unitContent, { mode: 0o644 });
+      await execFileP('systemctl', ['--user', 'daemon-reload']);
+      await execFileP('systemctl', ['--user', 'enable', '--now', 'arcwork-bridge.service']);
+    } catch (err) {
+      console.log(`! Warning: could not enable autostart — ${err.message}`);
+      return false;
+    }
+  } else if (process.platform === 'win32') {
+    try {
+      const args = windowsTaskArgs(nodePath, scriptPath);
+      await execFileP('schtasks', args);
+      // Run it now so the bridge starts immediately (ONLOGON alone waits for next login).
+      await execFileP('schtasks', ['/Run', '/TN', 'ArcworkBridge']).catch(() => {});
+    } catch (err) {
+      console.log(`! Warning: could not enable autostart — ${err.message}`);
+      return false;
+    }
+  } else {
+    console.log('! Autostart is not supported on this platform.');
+    return false;
+  }
+  return true;
+}
+
+/** Disable autostart for this bridge. */
+async function disableAutostart() {
+  if (process.platform === 'darwin') {
+    try {
+      const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'ai.arcwork.bridge.plist');
+      try {
+        await execFileP('launchctl', ['bootout', 'gui/' + os.userInfo().uid, plistPath]);
+      } catch { /* ignore */ }
+      fs.rmSync(plistPath, { force: true });
+    } catch (err) {
+      console.log(`! Warning: could not disable autostart — ${err.message}`);
+      return false;
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      const servicePath = path.join(os.homedir(), '.config', 'systemd', 'user', 'arcwork-bridge.service');
+      await execFileP('systemctl', ['--user', 'disable', '--now', 'arcwork-bridge.service']);
+      fs.rmSync(servicePath, { force: true });
+    } catch (err) {
+      console.log(`! Warning: could not disable autostart — ${err.message}`);
+      return false;
+    }
+  } else if (process.platform === 'win32') {
+    try {
+      await execFileP('schtasks', ['/Delete', '/TN', 'ArcworkBridge', '/F']);
+    } catch (err) {
+      console.log(`! Warning: could not disable autostart — ${err.message}`);
+      return false;
+    }
+  } else {
+    console.log('! Autostart is not supported on this platform.');
+    return false;
+  }
+  return true;
+}
+
+/** Show autostart status. */
+function autostartStatus() {
+  if (process.platform === 'darwin') {
+    const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'ai.arcwork.bridge.plist');
+    console.log(fs.existsSync(plistPath) ? 'on' : 'off');
+  } else if (process.platform === 'linux') {
+    execFile('systemctl', ['--user', 'is-enabled', 'arcwork-bridge.service'], { stdio: 'ignore' }, (err) => {
+      console.log(err ? 'off' : 'on');
+    });
+  } else if (process.platform === 'win32') {
+    execFile('schtasks', ['/Query', '/TN', 'ArcworkBridge'], { stdio: 'ignore' }, (err) => {
+      console.log(err ? 'off' : 'on');
+    });
+  } else {
+    console.log('unknown');
+  }
 }
 
 async function connect(cfg) {
@@ -86,6 +212,18 @@ async function connect(cfg) {
       },
     });
     console.log(`✓ Connected${account ? ` to ${account}` : ''}.`);
+
+    // After successful first connect, enable autostart (but do NOT startBackground if a service will start it)
+    try {
+      const enabled = await enableAutostart();
+      if (enabled) {
+        console.log('✓ Arcwork will start automatically when you log in (turn off: autostart off).');
+      } else {
+        console.log('! Autostart could not be enabled, but the bridge is connected.');
+      }
+    } catch (err) {
+      console.log(`! Warning: autostart setup failed — ${err.message}`);
+    }
   } else {
     console.log(`✓ Already connected${cfg.account ? ` to ${cfg.account}` : ''} as "${cfg.deviceName}".`);
   }
@@ -101,10 +239,16 @@ async function connect(cfg) {
     console.log(`! Didn't allow ${dir}: ${err.message}\n  Run this inside a project folder to allow it. Arcwork will ask before using any other folder.`);
   }
 
-  if (rest.includes('--foreground')) return start(loadConfig());
-  const pid = runningPid();
-  if (pid) console.log(`✓ Already running in the background (pid ${pid}); it picks up the new folder by itself.`);
-  else console.log(`✓ Running in the background (pid ${startBackground()}). Log: ${LOG_PATH}`);
+  // If autostart is enabled, let the OS service start the bridge — don't call startBackground.
+  if (autostartFileExists()) {
+    console.log('✓ The OS service will start the bridge automatically.');
+  } else if (rest.includes('--foreground')) {
+    return start(loadConfig());
+  } else {
+    const pid = runningPid();
+    if (pid) console.log(`✓ Already running in the background (pid ${pid}); it picks up the new folder by itself.`);
+    else console.log(`✓ Running in the background (pid ${startBackground()}). Log: ${LOG_PATH}`);
+  }
   console.log('Stop it any time with: shazam-bridge stop');
 }
 
@@ -146,6 +290,10 @@ async function start(cfg) {
       else {
         process.kill(pid, 'SIGTERM');
         console.log(`✓ Stopped (pid ${pid}).`);
+        // If autostart is still on, it will restart — tell the user.
+        if (autostartFileExists()) {
+          console.log('  It will start again at your next login. To turn that off: shazam-bridge autostart off');
+        }
       }
       break;
     }
@@ -174,12 +322,59 @@ async function start(cfg) {
     case 'status':
       console.log(JSON.stringify({ server: cfg.server, paired: Boolean(cfg.token), account: cfg.account || null, device: cfg.deviceName, running: runningPid(), workspaces: cfg.workspaces }, null, 2));
       break;
-    case 'start':
+    case 'start': {
       if (!cfg.token) throw new Error('Not connected yet. Run: shazam-bridge connect');
-      await start(cfg);
+      // Guard: if already running (started by launchd/service), don't start another.
+      const existingPid = runningPid();
+      if (existingPid !== null) {
+        console.log(`Arcwork bridge is already running (pid ${existingPid}).`);
+        process.exit(0);
+      }
+      // If launched via autostart service (--background flag), start directly.
+      if (rest.includes('--background')) {
+        await start(cfg);
+        break;
+      }
+      // Manual launch: if autostart service will manage this, wait for it instead of starting directly.
+      if (autostartFileExists()) {
+        console.log('Waiting for the Arcwork bridge to start via autostart…');
+        let waited = 0;
+        while (waited < 15000) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (runningPid() !== null) break;
+          waited += 500;
+        }
+        if (runningPid()) console.log('✓ Bridge started via autostart.');
+        else await start(cfg); // fallback: start manually after timeout
+      } else {
+        await start(cfg);
+      }
       break;
+    }
+    case 'autostart': {
+      const action = rest[0];
+      if (action === 'on') {
+        try {
+          const enabled = await enableAutostart();
+          if (enabled) console.log('✓ Autostart enabled. The bridge will start when you log in.');
+          else console.log('! Could not enable autostart — check platform support.');
+        } catch (err) {
+          console.log(`✗ ${err.message}`);
+        }
+      } else if (action === 'off') {
+        try {
+          await disableAutostart();
+        } catch { /* ignore */ }
+        console.log('✓ Autostart disabled.');
+      } else if (action === 'status') {
+        autostartStatus();
+      } else {
+        console.log('Usage: shazam-bridge autostart on|off|status');
+      }
+      break;
+    }
     default:
-      console.log(`Usage: shazam-bridge <connect|stop|status|pair|allow|disallow|start>\n  connect  sign in with your browser, allow this folder (${os.homedir() === process.cwd() ? 'run it in a project folder' : process.cwd()}) and run in the background`);
+      console.log(`Usage: shazam-bridge <connect|stop|status|pair|allow|disallow|start|autostart>\n  connect  sign in with your browser, allow this folder (${os.homedir() === process.cwd() ? 'run it in a project folder' : process.cwd()}) and run in the background`);
   }
 })().catch((err) => {
   console.error(`✗ ${err.message}`);

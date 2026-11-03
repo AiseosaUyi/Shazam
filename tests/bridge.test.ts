@@ -81,4 +81,43 @@ describe('Device bridge', () => {
     assert.ok(!validModelName('a'.repeat(102)));
     assert.ok(!validModelName(42));
   });
+
+  describe('Bridge autostart builders', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { launchAgentPlist, systemdUnit, windowsTaskArgs } = require('../desktop/bridge-core.js');
+    
+    it('launchAgentPlist, systemdUnit, and windowsTaskArgs produce correct text output', () => {
+      // macOS — basic paths
+      const plist = launchAgentPlist('/n/node', '/s/b.js', '/l');
+      assert.ok(plist.includes('<string>ai.arcwork.bridge</string>'), 'should contain Label ai.arcwork.bridge');
+      assert.ok(plist.includes('<key>RunAtLoad</key>'), 'should have RunAtLoad key');
+      assert.ok(plist.includes('<key>KeepAlive</key>\n    <dict>'), 'should have KeepAlive as dict');
+      assert.ok(plist.includes('/s/b.js'), 'should contain script path /s/b.js');
+      assert.ok(plist.includes('/l/bridge.log'), 'should contain log dir /l in bridge.log path');
+      // --background must be in ProgramArguments so the service actually runs the bridge
+      assert.ok(plist.includes('--background'), 'plist should include --background argument');
+      // ThrottleInterval to prevent crash loops (may span multiple lines in XML)
+      assert.ok(plist.includes('<key>ThrottleInterval</key>'), 'should have ThrottleInterval key');
+      assert.ok(plist.includes('30</integer>'), 'should have ThrottleInterval value of 30');
+      // SuccessfulExit false means restart only after a crash, not clean exit
+      assert.ok(plist.includes('<key>SuccessfulExit</key>\n        <false/>'), 'plist should have SuccessfulExit false');
+
+      // macOS — escape dangerous chars
+      const plistEscaped = launchAgentPlist('/n&node', '/s<b.js', '/l');
+      assert.ok(plistEscaped.includes('&amp;'), 'should escape & as &amp;');
+      assert.ok(plistEscaped.includes('&lt;'), 'should escape < as &lt;');
+
+      // Linux — systemd
+      const unit = systemdUnit('/n/node', '/s/b.js');
+      assert.ok(unit.includes('Restart=on-failure'), 'should have Restart=on-failure');
+      assert.ok(unit.includes('"/s/b.js" start --background'), 'systemd ExecStart should include --background');
+
+      // Windows — schtasks args array
+      const winArgs = windowsTaskArgs('/n/node', '/s/b.js');
+      assert.ok(Array.isArray(winArgs), 'should return an array');
+      const trIndex = winArgs.indexOf('/TR');
+      assert.notEqual(trIndex, -1, 'should contain /TR flag');
+      assert.equal(winArgs[trIndex + 1], '"/n/node" "/s/b.js" start --background', '/TR value should include --background');
+    });
+  });
 });
