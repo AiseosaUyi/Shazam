@@ -208,6 +208,39 @@ function pageSelect(optionValue, elementIdx) {
   return { ok: true, result: matched.text.trim() };
 }
 
+function pageHover(idx) {
+  var el = document.querySelector('[data-shazam-idx="' + idx + '"]');
+  if (!el) return { ok: false, error: 'No element ' + idx + '. Call browser_read first.' };
+  el.scrollIntoView({ block: 'center', inline: 'center' });
+  var r = el.getBoundingClientRect();
+  var o = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, view: window };
+  ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'pointermove', 'mousemove'].forEach(function (t) {
+    var C = t.indexOf('pointer') === 0 ? PointerEvent : MouseEvent;
+    el.dispatchEvent(new C(t, o));
+  });
+  return { ok: true, label: (el.innerText || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 60) };
+}
+
+function pageDrag(fromIdx, toIdx) {
+  var a = document.querySelector('[data-shazam-idx="' + fromIdx + '"]');
+  var b = document.querySelector('[data-shazam-idx="' + toIdx + '"]');
+  if (!a || !b) return { ok: false, error: 'Element not found. Call browser_read first.' };
+  a.scrollIntoView({ block: 'center' });
+  var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+  var pa = { bubbles: true, cancelable: true, clientX: ra.left + ra.width / 2, clientY: ra.top + ra.height / 2, view: window };
+  var pb = { bubbles: true, cancelable: true, clientX: rb.left + rb.width / 2, clientY: rb.top + rb.height / 2, view: window };
+  var dt = new DataTransfer();
+  a.dispatchEvent(new MouseEvent('mousedown', pa));
+  a.dispatchEvent(new DragEvent('dragstart', Object.assign({ dataTransfer: dt }, pa)));
+  b.dispatchEvent(new DragEvent('dragenter', Object.assign({ dataTransfer: dt }, pb)));
+  b.dispatchEvent(new DragEvent('dragover', Object.assign({ dataTransfer: dt }, pb)));
+  b.dispatchEvent(new MouseEvent('mousemove', pb));
+  b.dispatchEvent(new DragEvent('drop', Object.assign({ dataTransfer: dt }, pb)));
+  a.dispatchEvent(new DragEvent('dragend', Object.assign({ dataTransfer: dt }, pb)));
+  b.dispatchEvent(new MouseEvent('mouseup', pb));
+  return { ok: true };
+}
+
 function waitCheck(text, gone) {
   var hasText = document.body && document.body.innerText ? document.body.innerText.includes(text) : false;
   return gone ? !hasText : hasText;
@@ -470,6 +503,22 @@ async function handle(cmd) {
       const r = await inPage(tab.id, pageSelect, [String(p.value), Number(p.element)]);
       await log(`select [${p.element}] "${p.value}"`);
       return r?.ok ? { ok: true, result: `Selected "${r.result}".` } : { ok: false, result: r?.error || 'Selection failed.' };
+    }
+    case 'hover': {
+      const tab = await agentTab();
+      const r = await inPage(tab.id, pageHover, [Number(p.element)]);
+      await log(`hover [${p.element}]`);
+      return r?.ok ? { ok: true, result: `Hovering "${r.label}". Call browser_read to see what appeared.` } : { ok: false, result: r?.error || 'Hover failed.' };
+    }
+    case 'drag': {
+      const tab = await agentTab();
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to drag', `Drag [${p.from_element}] onto [${p.to_element}] — ${p.reason || ''}`))) {
+        await log(`denied drag`);
+        return { ok: false, result: 'The user denied this drag.' };
+      }
+      const r = await inPage(tab.id, pageDrag, [Number(p.from_element), Number(p.to_element)]);
+      await log(`drag [${p.from_element}] onto [${p.to_element}]`);
+      return r?.ok ? { ok: true, result: 'Dragged.' } : { ok: false, result: r?.error || 'Drag failed.' };
     }
     case 'wait_for': {
       const tab = await agentTab();

@@ -138,6 +138,16 @@ Use local_* tools to work in those folders with the user's own git credentials (
       inputSchema: z.object({ element: z.number().int(), value: z.string(), reason: z.string() }),
       execute: async (input) => run(userId, 'browser', 'select', input, 180_000),
     });
+    tools.browser_hover = tool({
+      description: 'Hover the mouse over an element by its number from browser_read (opens menus/tooltips). Then browser_read again.',
+      inputSchema: z.object({ element: z.number().int().min(0) }),
+      execute: async (input) => run(userId, 'browser', 'hover', input, 30_000),
+    });
+    tools.browser_drag = tool({
+      description: 'Drag one element (by number from browser_read) onto another. Asks the user to approve.',
+      inputSchema: z.object({ from_element: z.number().int().min(0), to_element: z.number().int().min(0), reason: z.string() }),
+      execute: async (input) => run(userId, 'browser', 'drag', input, 180_000),
+    });
     tools.browser_wait_for = tool({
       description: 'Wait for text to appear or disappear in the page body. Polls every 400ms up to timeout_seconds (default 10, max 30).',
       inputSchema: z.object({ text: z.string().optional(), gone: z.boolean().optional(), timeout_seconds: z.number().int().min(1).max(30).optional() }),
