@@ -377,6 +377,44 @@ export default function CoWorkPage() {
     }
   }
 
+  /** Shared prompt builder used by both send and sendInBackground. */
+  function buildFullPrompt(): string {
+    const text = prompt.trim();
+    if (!text && attachments.length === 0) return '';
+    const attachmentText = attachments.map((a) => `\n[Attached ${a.type.startsWith('video') ? 'video' : a.type.startsWith('image') ? 'image' : 'file'}: ${a.name}](${a.url})`).join('');
+    return `${text}${attachmentText}`;
+  }
+
+  /** Send the prompt as a durable background run. Keeps running even if the tab is closed. */
+  async function sendInBackground() {
+    const fullPrompt = buildFullPrompt();
+    if (!fullPrompt || busy) return;
+
+    setPrompt('');
+    setAttachments([]);
+    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: fullPrompt }]);
+
+    try {
+      const res = await fetch('/api/v1/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent: 'cowork', prompt: fullPrompt, timezone }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: '', error: data.error || 'Could not start the background task.' }]);
+      } else {
+        const runId = (data as any)?.run?.id;
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'assistant', content: `Started in the background. It keeps running even if you close this tab. [Watch it live](/runs/${runId})` },
+        ]);
+      }
+    } catch (err: any) {
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: '', error: err?.message || 'Could not start the background task.' }]);
+    }
+  }
+
   async function jobAction(id: string, action: 'pause' | 'resume' | 'cancel') {
     await fetch(`/api/v1/schedules/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
     loadJobs();
@@ -532,15 +570,22 @@ export default function CoWorkPage() {
                 </button>
                 <span className="text-[10px] text-ink-3 hidden sm:inline">{timezone}</span>
               </div>
-              {busy ? (
-                <button onClick={() => abortRef.current?.abort()} className="w-8 h-8 rounded-xl bg-line/10 hover:bg-line/15 flex items-center justify-center" title="Stop">
-                  <Square className="w-3.5 h-3.5 text-ink" />
-                </button>
-              ) : (
-                <button onClick={send} disabled={!prompt.trim() && attachments.length === 0} className="w-8 h-8 rounded-xl bg-brand hover:bg-brand-soft disabled:opacity-30 flex items-center justify-center" title="Send">
-                  <ArrowUp className="w-4 h-4 text-black" />
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {busy ? (
+                  <button onClick={() => abortRef.current?.abort()} className="w-8 h-8 rounded-xl bg-line/10 hover:bg-line/15 flex items-center justify-center" title="Stop">
+                    <Square className="w-3.5 h-3.5 text-ink" />
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={send} disabled={!prompt.trim() && attachments.length === 0} className="w-8 h-8 rounded-xl bg-brand hover:bg-brand-soft disabled:opacity-30 flex items-center justify-center" title="Send">
+                      <ArrowUp className="w-4 h-4 text-black" />
+                    </button>
+                    <button onClick={sendInBackground} disabled={busy || (!prompt.trim() && attachments.length === 0)} title="Run in the background (keeps going if you close this tab)" className="px-2.5 h-8 rounded-xl bg-line/5 hover:bg-line/10 text-[11px] text-ink-2 disabled:opacity-40">
+                      Background
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
