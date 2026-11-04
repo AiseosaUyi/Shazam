@@ -4,9 +4,11 @@ import { DbRepo } from '@/lib/db/repo';
 import { PlatformRepo } from '@/lib/db/platform-repo';
 import { requireUser, verifyCsrfOrigin } from '@/lib/auth/session';
 import { parseSkillMarkdown, slugifySkill } from '@/lib/skills';
+import { fetchSkillMarkdown } from '@/lib/skills/import-url';
 
 const Mode = z.enum(['chat', 'cowork', 'code']);
 const CreateSchema = z.union([
+  z.object({ url: z.string().min(8).max(2000), modes: z.array(Mode).optional() }),
   z.object({ markdown: z.string().min(10).max(100_000), modes: z.array(Mode).optional() }),
   z.object({
     name: z.string().trim().min(1).max(64),
@@ -40,9 +42,11 @@ export async function POST(req: NextRequest) {
 
   let fields;
   try {
-    fields = 'markdown' in parsed.data
-      ? parseSkillMarkdown(parsed.data.markdown)
-      : { ...parsed.data, slug: slugifySkill(parsed.data.name) };
+    fields = 'url' in parsed.data
+      ? parseSkillMarkdown(await fetchSkillMarkdown(parsed.data.url))
+      : 'markdown' in parsed.data
+        ? parseSkillMarkdown(parsed.data.markdown)
+        : { ...parsed.data, slug: slugifySkill(parsed.data.name) };
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 400 });
   }

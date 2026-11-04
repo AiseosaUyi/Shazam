@@ -20,7 +20,7 @@ export function slugifySkill(name: string): string {
 }
 
 export function parseSkillMarkdown(markdown: string): ParsedSkill {
-  const text = markdown.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const text = markdown.replace(/^\u{feff}/u, '').replace(/\r\n/g, '\n');
   const fm = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!fm) throw new Error('SKILL.md must start with YAML frontmatter (--- name: … description: … ---).');
 
@@ -51,24 +51,63 @@ export function toSkillMarkdown(skill: Pick<Skill, 'name' | 'description' | 'ins
   return `---\nname: ${skill.name}\ndescription: ${skill.description.replace(/\n/g, ' ')}\n---\n\n${skill.instructions}\n`;
 }
 
-/** Inventory text + load_skill tool for an agent run in the given mode. */
+const AGENT_MODES = ['chat', 'cowork', 'code'] as const;
+
+/** Inventory text + load_skill and save_skill tools for an agent run in the given mode. */
 export async function buildSkillTools(platform: PlatformRepo, userId: string, mode: AgentMode): Promise<{ tools: ToolSet; inventory: string }> {
   const skills = (await platform.listSkills(userId, mode)).filter((s) => s.enabled);
-  if (skills.length === 0) return { tools: {}, inventory: '' };
 
-  const inventory = `Available skills (call load_skill with the slug BEFORE doing a task a skill covers, then follow it):\n${skills
-    .map((s) => `- ${s.slug}: ${s.description}`)
-    .join('\n')}`;
+  const skillListLines = skills.map((s) => `- ${s.slug}: ${s.description}`).join('\n');
+  const inventory = skillListLines
+    ? `Available skills (call load_skill with the slug BEFORE doing a task a skill covers, then follow it):\n${skillListLines}\nTo create or update a skill, call save_skill.`
+    : 'To create or update a skill, call save_skill.';
 
   const tools: ToolSet = {
-    load_skill: tool({
+    save_skill: tool({
+      description:
+        'Save a reusable skill for this user (create, or update one with the same name). Use it when the user asks you to remember how to do something, or to turn a workflow you just did into a skill. Write instructions as clear numbered steps.',
+      inputSchema: z.object({
+        name: z.string().min(1).max(64),
+        description: z.string().min(1).max(1024),
+        instructions: z.string().min(1).max(20000),
+        modes: z.array(z.enum(AGENT_MODES as unknown as [string, ...string[]])).optional(),
+      }),
+      execute: async ({ name, description, instructions, modes }) => {
+        const trimmedName = name.trim();
+        const trimmedDescription = description.trim();
+        const trimmedInstructions = instructions.trim();
+
+        if (!trimmedName || !trimmedDescription || !trimmedInstructions) {
+          return 'Error: name, description and instructions are required.';
+        }
+
+        try {
+          const s = await platform.upsertSkill(userId, {
+            name: trimmedName,
+            slug: slugifySkill(trimmedName),
+            description: trimmedDescription,
+            instructions: trimmedInstructions,
+            modes: modes as AgentMode[] | undefined ?? [mode],
+            enabled: true,
+          });
+          return `Saved skill "${s.slug}" (version ${s.version}).`;
+        } catch (e) {
+          return `Error: ${(e as Error).message}`;
+        }
+      },
+    }),
+  };
+
+  if (skills.length > 0) {
+    tools.load_skill = tool({
       description: 'Load the full instructions of one of the user\'s skills by slug.',
       inputSchema: z.object({ slug: z.string() }),
       execute: async ({ slug }) => {
         const skill = skills.find((s) => s.slug === slug);
         return skill ? `# Skill: ${skill.name}\n\n${skill.instructions}` : `Error: no enabled skill "${slug}". Available: ${skills.map((s) => s.slug).join(', ')}`;
       },
-    }),
-  };
+    });
+  }
+
   return { tools, inventory };
 }
