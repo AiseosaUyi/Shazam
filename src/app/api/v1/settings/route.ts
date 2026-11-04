@@ -16,6 +16,7 @@ const UpdateSettingsSchema = z.object({
   autoFallbackEnabled: z.boolean().optional(),
   allowPaidFallback: z.boolean().optional(),
   preferLocalModel: z.boolean().optional(),
+  director: z.enum(['auto', 'claude', 'codex', 'cursor', 'antigravity', 'arcwork']).optional(),
 });
 
 export async function GET(req: NextRequest) {

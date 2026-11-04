@@ -2,6 +2,7 @@ import { getDb } from '@/lib/env';
 import type {
   CostPolicy,
   DecisionTrace,
+  Director,
   PrivacyMode,
   ProviderError,
   TaskAttempt,
@@ -165,6 +166,7 @@ export class DbRepo {
         autoFallbackEnabled: true,
         allowPaidFallback: false,
         preferLocalModel: true,
+        director: 'auto',
         updatedAt: now,
       };
     }
@@ -179,6 +181,7 @@ export class DbRepo {
       autoFallbackEnabled: Boolean(row.auto_fallback_enabled),
       allowPaidFallback: Boolean(row.allow_paid_fallback),
       preferLocalModel: row.prefer_local_model === undefined || row.prefer_local_model === null ? true : Boolean(row.prefer_local_model),
+      director: (row.director as Director) || 'auto',
       updatedAt: row.updated_at,
     };
   }
@@ -188,8 +191,8 @@ export class DbRepo {
     const updated = { ...current, ...prefs, updatedAt: new Date().toISOString() };
     await this.db
       .prepare(
-        `INSERT INTO user_preferences (user_id, default_cost_policy, max_cost_per_task_usd, monthly_budget_usd, privacy_mode, retention_days, allowed_providers, preferred_region, auto_fallback_enabled, allow_paid_fallback, prefer_local_model, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO user_preferences (user_id, default_cost_policy, max_cost_per_task_usd, monthly_budget_usd, privacy_mode, retention_days, allowed_providers, preferred_region, auto_fallback_enabled, allow_paid_fallback, prefer_local_model, director, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(user_id) DO UPDATE SET
            default_cost_policy = excluded.default_cost_policy,
            max_cost_per_task_usd = excluded.max_cost_per_task_usd,
@@ -201,6 +204,7 @@ export class DbRepo {
            auto_fallback_enabled = excluded.auto_fallback_enabled,
            allow_paid_fallback = excluded.allow_paid_fallback,
            prefer_local_model = excluded.prefer_local_model,
+           director = excluded.director,
            updated_at = excluded.updated_at`
       )
       .bind(
@@ -215,6 +219,7 @@ export class DbRepo {
         updated.autoFallbackEnabled ? 1 : 0,
         updated.allowPaidFallback ? 1 : 0,
         updated.preferLocalModel === false ? 0 : 1,
+        updated.director || 'auto',
         updated.updatedAt
       )
       .run();

@@ -220,6 +220,8 @@ export interface User {
   createdAt: string;
 }
 
+export type Director = 'auto' | 'claude' | 'codex' | 'cursor' | 'antigravity' | 'arcwork';
+
 export interface UserPreferences {
   defaultCostPolicy: CostPolicy;
   maxCostPerTaskUSD: number;
@@ -231,6 +233,7 @@ export interface UserPreferences {
   autoFallbackEnabled: boolean;
   allowPaidFallback: boolean;
   preferLocalModel: boolean;
+  director: Director;
   updatedAt: string;
 }
 
