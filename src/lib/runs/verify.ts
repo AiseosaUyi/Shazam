@@ -93,13 +93,16 @@ export async function autoVerify(
   }
 
   let testsPassed: boolean | null = null;
+  let testOutput = '';
   try {
     const pkg = JSON.parse(pkgRaw);
     if (typeof pkg.scripts?.test === 'string' && !pkg.scripts.test.includes('no test specified')) {
+      const logFile = 'arcwork-verify-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.log';
       const t = await exec(
-        'npm test --silent > /tmp/arcwork-verify.log 2>&1; code=$?; tail -40 /tmp/arcwork-verify.log; echo "exit code: $code"',
+        'log="${TMPDIR:-/tmp}/' + logFile + '"; npm test --silent > "$log" 2>&1; code=$?; tail -40 "$log"; rm -- "$log"; echo "exit code: $code"',
         300_000,
       );
+      testOutput = t;
       testsPassed = exitCodeOf(t) === 0;
     }
     // else no test script → testsPassed stays null
@@ -119,11 +122,28 @@ export async function autoVerify(
   if (testsPassed === true) {
     lines.push('Tests: passed');
   } else if (testsPassed === false) {
-    lines.push('Tests: FAILED (exit 1)');
+    const exitCode = exitCodeOf(testOutput);
+    lines.push(`Tests: FAILED (exit ${exitCode})`);
+    // Include last 15 non-empty output lines, excluding 'exit code:' lines
+    const allLines = testOutput.split('\n');
+    const nonEmptyExitCodeFree: string[] = [];
+    for (let i = allLines.length - 1; i >= 0 && nonEmptyExitCodeFree.length < 15; i--) {
+      const ln = allLines[i].trim();
+      if (!ln) continue;
+      if (/^exit code:/i.test(ln)) continue;
+      nonEmptyExitCodeFree.unshift(ln);
+    }
+    if (nonEmptyExitCodeFree.length > 0) {
+      lines.push('');
+      lines.push('```');
+      for (const ln of nonEmptyExitCodeFree) {
+        lines.push(ln);
+      }
+      lines.push('```');
+    }
   } else {
     lines.push('Tests: no test script');
   }
-  lines.push('');
 
   // Files changed
   lines.push(`Files changed: ${rows.length}`);

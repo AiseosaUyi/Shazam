@@ -186,4 +186,57 @@ describe('autoVerify', () => {
     // So rows = [] and ok should depend on test pass/fail
     assert.ok(summary.includes('Tests: passed') || summary.includes('FAILED'));
   });
+
+  it('(e) failing tests with exit code 3 → "FAILED (exit 3)" and includes output line from fake exec', async () => {
+    const execCalls: string[] = [];
+    const fakeExec = async (command: string) => {
+      execCalls.push(command);
+      if (command.includes('git diff')) {
+        return '1\t0\tsrc/a.ts\nexit code: 0'; // no test deletions
+      }
+      return 'some fake test error output from exec\nexit code: 3';
+    };
+    const fakeReadFile = makeFakeReadFile('{"scripts":{"test":"jest"}}');
+
+    const { summary, ok } = await autoVerify(fakeExec, fakeReadFile, '/root');
+    assert.ok(!ok, 'should not be ok');
+    assert.ok(summary.includes('FAILED'), 'summary should contain "FAILED"');
+    assert.ok(summary.includes('(exit 3)'), 'summary should include exit code 3');
+    // The output block should contain a line from the fake exec output
+    assert.ok(summary.includes('some fake test error output from exec'), 'summary should include fake output lines');
+  });
+
+  it('(f) exec command contains TMPDIR and does not contain "rm -f"', async () => {
+    const execCalls: string[] = [];
+    const fakeExec = async (command: string) => {
+      execCalls.push(command);
+      if (command.includes('git diff')) {
+        return '1\t0\tsrc/a.ts\nexit code: 0';
+      }
+      return 'exit code: 0';
+    };
+    const fakeReadFile = makeFakeReadFile('{"scripts":{"test":"jest"}}');
+
+    await autoVerify(fakeExec, fakeReadFile, '/root');
+    const testCmd = execCalls.find(c => !c.includes('git diff'));
+    assert.ok(testCmd, 'exec should have been called for npm test');
+    assert.ok(testCmd!.includes('TMPDIR'), 'command should contain TMPDIR');
+    assert.ok(!testCmd!.includes('rm -f'), 'command should not contain "rm -f"');
+  });
+
+  it('(g) failing tests with exit code 3 includes fenced output block', async () => {
+    const fakeExec = async (command: string) => {
+      if (command.includes('git diff')) {
+        return '1\t0\tsrc/a.ts\nexit code: 0';
+      }
+      return 'error line 1\nerror line 2\nexit code: 3';
+    };
+    const fakeReadFile = makeFakeReadFile('{"scripts":{"test":"jest"}}');
+
+    const { summary } = await autoVerify(fakeExec, fakeReadFile, '/root');
+    // Should have a fenced code block with the error lines
+    assert.ok(summary.includes('```\n') && summary.lastIndexOf('```\n') !== 0, 'should include fenced code block');
+    assert.ok(summary.includes('error line 1'));
+    assert.ok(summary.includes('error line 2'));
+  });
 });

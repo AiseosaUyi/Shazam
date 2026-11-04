@@ -23,6 +23,13 @@ const LONG_RUNNING = /(&\s*$)|\b(http\.server|npm\s+(run\s+)?(dev|start)|pnpm\s+
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '.next', 'dist', 'build', '.turbo', '.vercel', '.cache', 'coverage', '__pycache__', '.venv']);
 
+/** Prevent String.replace from interpreting $-sequences ( $$, $&, $`, $', $1 ) in the replacement string. */
+function replaceLiteral(text, oldString, newString) {
+  const i = text.indexOf(oldString);
+  if (i < 0) return text;
+  return text.slice(0, i) + newString + text.slice(i + oldString.length);
+}
+
 function loadConfig() {
   try {
     return { server: DEFAULT_SERVER, workspaces: [], ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) };
@@ -322,7 +329,7 @@ class BridgeClient {
         const text = fs.readFileSync(file, 'utf8');
         const count = text.split(p.old_string).length - 1;
         if (count !== 1) return { ok: false, result: count === 0 ? 'old_string not found; read the file and copy the exact text.' : `old_string matches ${count} places; include more context.` };
-        fs.writeFileSync(file, text.replace(p.old_string, p.new_string));
+        fs.writeFileSync(file, replaceLiteral(text, p.old_string, p.new_string));
         this.log(`edited ${file}`);
         return { ok: true, result: `Edited ${file}.` };
       }
@@ -601,4 +608,4 @@ function windowsTaskArgs(nodePath, scriptPath) {
   return ['/Create', '/SC', 'ONLOGON', '/TN', 'ArcworkBridge', '/TR', `"${nodePath}" "${scriptPath}" start --background`, '/F'];
 }
 
-module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName, launchAgentPlist, systemdUnit, windowsTaskArgs };
+module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName, launchAgentPlist, systemdUnit, windowsTaskArgs, replaceLiteral };
