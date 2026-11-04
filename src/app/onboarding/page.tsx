@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Mail, Monitor, Bot, ArrowRight, Check, Sparkles, Zap } from 'lucide-react';
+import { Mail, Monitor, Bot, ArrowRight, Check, Sparkles, Zap, Cpu } from 'lucide-react';
 import { LogoMark } from '@/components/brand/Logo';
 import { SystemStrip } from '@/components/SystemStrip';
 import { KeySetupModal } from '@/components/connections/KeySetupModal';
@@ -16,6 +16,7 @@ import { KEY_PROVIDERS } from '@/lib/providers/key-setup';
 const EXTRAS = [
   { href: '/connections#apps', icon: Mail, title: 'Connect Gmail & Calendar', body: 'So Co-Work can read, send and schedule email.' },
   { href: '/connections#devices', icon: Monitor, title: 'Connect your computer', body: 'Work in your own folders, run code locally, use local models.' },
+  { href: '/connections#local-ai', icon: Cpu, title: 'Run AI on your computer', body: 'Free, private, no limits. One click once your computer is connected.' },
   { href: '/guide', icon: Bot, title: 'Connect Claude, Codex or Antigravity', body: 'Let the plan you already pay for hand heavy work to Arcwork.' },
 ];
 

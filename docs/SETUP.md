@@ -83,8 +83,7 @@ Claude.ai / Claude Desktop: Settings → Connectors → Add custom connector →
   Open the first time). Rebuild with `npm run desktop:dist`. Pair it with a code from
   Connections → Devices, then **Add folder**. CLI alternative: `npx shazam-bridge pair CODE`,
   `shazam-bridge allow ~/code/my-app`, `shazam-bridge start`.
-- Local models: install Ollama (`ollama pull qwen3.8:27b` on 32 GB, `gpt-oss:20b` on 16 GB) or
-  LM Studio; the desktop app detects them automatically.
+- Local models: open Connections → Devices → Local AI card; click **Start Ollama** or **Install Ollama**, then click Download for the recommended model (one-click). Memory tiers & recommendations: 48 GB+ → `qwen3.6:35b-a3b` (23 GB); 24 GB+ → `qwen2.5-coder:14b` (9 GB); 12 GB+ → `qwen2.5-coder:7b` (4.7 GB); below that → `qwen2.5-coder:3b` (1.9 GB). The model is free, private and unlimited. By default Arcwork uses the local model first; toggle **Use my local model first** on the card to prefer cloud models. API — `GET /api/v1/local-ai` returns status; `POST /api/v1/local-ai` accepts `{ action: "start"|"pull"|"pull-progress"|"create", model?: string }`; `PATCH /api/v1/settings` accepts `{ preferLocalModel: boolean }`. You may also use LM Studio or other local backends if preferred.
 - Chrome: `chrome://extensions` → Developer mode → **Load unpacked** → `extensions/chrome`
   (or `dist-desktop/shazam-browser-bridge.zip`) → click the extension → paste a pairing code.
 

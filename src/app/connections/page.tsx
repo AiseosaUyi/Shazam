@@ -8,6 +8,7 @@ import { McpServersCard } from '@/components/connections/McpServersCard';
 import { GithubCard } from '@/components/connections/GithubCard';
 import { GoogleConnectCard } from '@/components/GoogleConnectCard';
 import { DevicesCard } from '@/components/DevicesCard';
+import { LocalAICard } from '@/components/LocalAICard';
 import { AgentClientsCard } from '@/components/AgentClientsCard';
 import { SystemStrip } from '@/components/SystemStrip';
 import { AgentRunsList } from '@/components/AgentRunsList';
@@ -101,6 +102,7 @@ export default function ConnectionsPage() {
           <section id="devices" className="scroll-mt-8 space-y-3">
             <h2 className="text-[15px] font-semibold text-ink">Devices</h2>
             <DevicesCard />
+            <LocalAICard />
           </section>
 
           <section id="assistants" className="scroll-mt-8 space-y-3">

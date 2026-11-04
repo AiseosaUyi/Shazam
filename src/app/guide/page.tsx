@@ -98,7 +98,25 @@ export default function GuidePage() {
           </Link>
         </Section>
 
-        <Section n={3} title="Tell your assistant to use Arcwork first">
+        <Section id="local-ai" n={3} title="Run a free model on your own computer">
+          <p className="text-[13px] text-ink-2">
+            Run an open model on your own machine, so it&apos;s free, private and has no usage limits. Once your computer is connected, the Local AI card checks for Ollama, recommends a model that fits your computer&apos;s memory, and downloads it in one click.
+          </p>
+          <ol className="mt-3 space-y-3">
+            <Step n={1} title={<>Connect your computer (see the section above).</>} />
+            <Step n={2} title={<>Open Connections → Devices → Local AI; click Install Ollama or Start Ollama if asked.</>} />
+            <Step n={3} title="Click Download for the recommended model and wait for it to finish." />
+            <Step n={4} title={<>Done: Arcwork now uses your local model first. Turn off <b>Use my local model first</b> on the card to prefer cloud models.</>} />
+          </ol>
+          <p className="mt-3 text-[11px] text-ink-3">
+            Memory tiers: 48 GB+ → qwen3.6:35b-a3b (23 GB); 24 GB+ → qwen2.5-coder:14b (9 GB); 12 GB+ → qwen2.5-coder:7b (4.7 GB); below that → qwen2.5-coder:3b (1.9 GB).
+          </p>
+          <Link href="/connections#local-ai" className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-ink ring-1 ring-line/10 hover:bg-surface-2">
+            Set up local AI <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </Section>
+
+        <Section n={4} title="Tell your assistant to use Arcwork first">
           <p className="text-[13px] text-ink-2">
             Paste this rule once. Your assistant will send building work to {BRAND_NAME}, and ask you before spending your plan on heavy work itself.
           </p>
@@ -119,7 +137,7 @@ export default function GuidePage() {
           <p className="mt-2 text-[13px] text-ink">{target.steps}</p>
         </Section>
 
-        <Section n={4} title="Ask for something">
+        <Section n={5} title="Ask for something">
           <p className="text-[13px] text-ink-2">Start a new chat so your assistant picks up {BRAND_NAME}, then ask normally. A few to try:</p>
           {EXAMPLES.map((e) => (
             <CopyText key={e} value={e} mono={false} />
