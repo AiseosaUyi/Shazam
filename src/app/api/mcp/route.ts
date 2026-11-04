@@ -13,6 +13,8 @@ import { executeApprovedAction } from '@/lib/cowork/actions';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { QuestionsRepo } from '@/lib/agents/ask';
 import { ACTIVE, MAX_WAIT_S, summarizeRun } from '@/lib/runs/mcp-summary';
+import { slugifySkill, parseSkillMarkdown } from '@/lib/skills';
+import { fetchSkillMarkdown } from '@/lib/skills/import-url';
 
 /**
  * Arcwork as an MCP server: lets Claude Code / Claude Desktop, Codex, Antigravity, Cursor…
@@ -57,7 +59,8 @@ To save the user's usage:
 - Then call get_task_status repeatedly; each call waits up to ${MAX_WAIT_S}s on Arcwork's side, so call it again immediately when it says still working.
 - Review the short summary it returns. Only call read_project_file for specific files if something looks wrong, and only use detail="full" if you truly need it.
 - Send corrections with send_feedback rather than fixing the work yourself.
-- Never approve an action (decide_approval) unless the human approved that exact action.`;
+- Never approve an action (decide_approval) unless the human approved that exact action.
+- Save reusable procedures with save_skill so Arcwork's agents follow them next time.`;
 
 const handler = createMcpHandler(
   (server) => {
@@ -243,6 +246,41 @@ const handler = createMcpHandler(
         const out = await executeApprovedAction(action, platform);
         await platform.completePendingAction(user.id, action_id, out.ok, out.result);
         return text(`${out.ok ? 'Done' : 'Failed'}: ${out.result}`);
+      }
+    );
+
+    server.registerTool(
+      'list_skills',
+      { title: 'List Arcwork skills', description: "The user's saved skills (reusable instructions Arcwork's agents follow).", inputSchema: z.object({}) },
+      async (_args, ctx) => {
+        const user = await userFrom(ctx);
+        const skills = await new PlatformRepo().listSkills(user.id);
+        return text(skills.length ? skills.map((s) => `- ${s.slug} (v${s.version}${s.enabled ? '' : ', off'}): ${s.description}`).join('\n') : 'No skills yet.');
+      }
+    );
+
+    server.registerTool(
+      'save_skill',
+      { title: 'Save an Arcwork skill', description: 'Create or update a reusable skill (same name = update). Arcwork agents load it when a task matches its description.', inputSchema: z.object({ name: z.string().trim().min(1).max(64), description: z.string().trim().min(1).max(1024), instructions: z.string().trim().min(1).max(100000), modes: z.array(z.enum(['chat', 'cowork', 'code'])).optional() }) },
+      async ({ name, description, instructions, modes }, ctx) => {
+        const user = await userFrom(ctx);
+        const s = await new PlatformRepo().upsertSkill(user.id, { name, slug: slugifySkill(name), description, instructions, modes: modes ?? undefined, enabled: true });
+        return text(`Saved skill "${s.slug}" (version ${s.version}).`);
+      }
+    );
+
+    server.registerTool(
+      'import_skill',
+      { title: 'Import a skill from GitHub', description: 'Import a SKILL.md from a github.com, raw.githubusercontent.com or gist link.', inputSchema: z.object({ url: z.string().min(8).max(2000) }) },
+      async ({ url }, ctx) => {
+        try {
+          const user = await userFrom(ctx);
+          const parsed = parseSkillMarkdown(await fetchSkillMarkdown(url));
+          const s = await new PlatformRepo().upsertSkill(user.id, { ...parsed, enabled: true });
+          return text(`Imported skill "${s.slug}" (version ${s.version}).`);
+        } catch (err) {
+          return text(`Error: ${(err as Error).message}`);
+        }
       }
     );
   },
