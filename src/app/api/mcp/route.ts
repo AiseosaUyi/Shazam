@@ -86,9 +86,11 @@ const handler = createMcpHandler(
           agent: z.enum(['auto', 'code', 'cowork']).default('auto'),
           project_id: z.string().optional().describe('Continue in an existing Arcwork project (from a previous task).'),
           local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer. The agent edits and runs code there; if the folder is new, the user is asked on their computer to allow it.'),
+          model: z.string().max(100).regex(/^[A-Za-z0-9._:\/-]+$/).optional().describe('Optional model to run on: "local" = the model on the user\'s computer, "auto" or omitted = Arcwork picks (local first if the user prefers it, then free cloud models), or a specific model id. The others stay as backup.'),
+          max_steps: z.number().int().min(10).max(300).optional().describe('Optional step budget for the whole task (default 120). Raise it for big multi-file work.'),
         }),
       },
-      async ({ prompt, agent, project_id, local_folder }, ctx) => {
+      async ({ prompt, agent, project_id, local_folder, model, max_steps }, ctx) => {
         const user = await userFrom(ctx);
         let chosen = agent;
         if (chosen === 'auto') {
@@ -101,8 +103,9 @@ const handler = createMcpHandler(
           if (!(await new BridgeRepo().onlineDevice(user.id, 'desktop'))) return text(offlineMessage(local_folder));
         }
         const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: local_folder ? `local:${local_folder}` : project_id, source: 'mcp' });
-        after(() => executeRun(user, run));
-        return text(`Started ${chosen} task.\ntask_id: ${run.id}\nCall get_task_status(task_id) now; it waits for progress on our side, so keep calling it until the task is done. Watch it live: ${APP_URL}/runs/${run.id}`);
+        const pinnedModel = model && model.toLowerCase() !== 'auto' ? model : undefined;
+        after(() => executeRun(user, run, { ...(pinnedModel ? { pinnedModel } : {}), ...(max_steps ? { maxSteps: max_steps } : {}) }));
+        return text(`Started ${chosen} task (model: ${pinnedModel || 'auto'}).\ntask_id: ${run.id}\nCall get_task_status(task_id) now; it waits for progress on our side, so keep calling it until the task is done. Watch it live: ${APP_URL}/runs/${run.id}`);
       }
     );
 
