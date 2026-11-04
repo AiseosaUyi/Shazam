@@ -148,6 +148,11 @@ Use local_* tools to work in those folders with the user's own git credentials (
       inputSchema: z.object({ code: z.string().max(400), reason: z.string() }),
       execute: async (input) => run(userId, 'browser', 'eval', input, 180_000),
     });
+    tools.browser_upload = tool({
+      description: 'Attach a file (downloaded from an https URL, max 8 MB) to a file input by its number from browser_read. ALWAYS asks the user to approve. Use it for CVs/resumes the user provided. Never upload anything the user did not ask you to.',
+      inputSchema: z.object({ element: z.number().int().min(0), url: z.string().url(), filename: z.string().optional(), reason: z.string() }),
+      execute: async (input) => run(userId, 'browser', 'upload', input, 180_000),
+    });
     tools.browser_drag = tool({
       description: 'Drag one element (by number from browser_read) onto another. Asks the user to approve.',
       inputSchema: z.object({ from_element: z.number().int().min(0), to_element: z.number().int().min(0), reason: z.string() }),

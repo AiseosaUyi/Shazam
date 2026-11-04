@@ -73,6 +73,7 @@ async function inPage(tabId, func, args = []) {
 function pageSnapshot(maxChars) {
   const sel = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[role=menuitem],[contenteditable=true],summary';
   const els = Array.from(document.querySelectorAll(sel)).filter((el) => {
+    if (el.matches('input[type=file]')) return true;
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
@@ -264,6 +265,21 @@ async function evalInMain(tabId, code) {
     },
   });
   return res?.result;
+}
+
+function pageAttach(idx, b64, name, mime) {
+  var el = document.querySelector('[data-shazam-idx="' + idx + '"]');
+  if (!el || el.tagName.toLowerCase() !== 'input' || el.type !== 'file') {
+    return { ok: false, error: 'Element is not a file input. Call browser_read first (file inputs show as input "file").' };
+  }
+  var bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  var dt = new DataTransfer();
+  dt.items.add(new File([bytes], name, { type: mime || 'application/octet-stream' }));
+  el.files = dt.files;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true, name: name, size: bytes.length };
 }
 
 // ---------------------------------------------------------------- approvals
@@ -550,6 +566,28 @@ async function handle(cmd) {
       const r = await evalInMain(tab.id, p.code);
       await log('eval ran');
       return r?.ok ? { ok: true, result: r.value } : { ok: false, result: 'Script error (some sites block eval with CSP): ' + (r?.error || 'unknown') };
+    }
+    case 'upload': {
+      if (!p.url) return { ok: false, result: 'Missing url parameter.' };
+      let url;
+      try { url = new URL(p.url); } catch { return { ok: false, result: 'Invalid URL.' }; }
+      if (url.protocol !== 'https:') return { ok:false, result:'Only https file URLs are allowed.' };
+      const name = String(p.filename || decodeURIComponent(url.pathname.split('/').pop() || 'file')).slice(0, 120);
+      const tab = await agentTab();
+      if (!(await askApproval('Arcwork wants to upload a file', `Attach "${name}" from ${url.host} to [${p.element}] on the page — ${p.reason || ''}`, '', true))) {
+        await log('denied upload');
+        return { ok:false, result:'The user denied this upload.' };
+      }
+      const res = await fetch(url.toString());
+      if (!res.ok) return { ok:false, result:'Could not download the file: HTTP ' + res.status };
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 8*1024*1024) return { ok:false, result:'File too large (max 8 MB).' };
+      let bin=''; const u8=new Uint8Array(buf);
+      for (let i=0;i<u8.length;i+=0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i,i+0x8000));
+      const b64 = btoa(bin);
+      const r = await inPage(tab.id, pageAttach, [Number(p.element), b64, name, res.headers.get('content-type') || '']);
+      await log(`upload ${r?.ok ? 'ok' : 'fail'}`);
+      return r?.ok ? { ok:true, result:`Attached "${r.name}" (${r.size} bytes). Call browser_read to confirm the page shows it.` } : { ok:false, result: r?.error || 'Upload failed.' };
     }
     case 'wait_for': {
       const tab = await agentTab();
