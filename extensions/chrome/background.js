@@ -282,6 +282,61 @@ function pageAttach(idx, b64, name, mime) {
   return { ok: true, name: name, size: bytes.length };
 }
 
+// ---- debugger-backed console + network capture (attached lazily on first use)
+const dbg = new Map(); // tabId -> { console: [], net: new Map() }
+const DBG_VERSION = '1.3';
+function maskUrl(u) {
+  try {
+    const x = new URL(u);
+    const keys = Array.from(x.searchParams.keys());
+    return x.origin + x.pathname.slice(0, 120) + (keys.length ? '?' + keys.map((k) => k + '…').join('&') : '');
+  } catch { return String(u).slice(0, 120); }
+}
+const dbgPending = new Map();
+async function ensureDebugger(tabId) {
+  if (dbg.has(tabId)) return dbg.get(tabId);
+  if (dbgPending.has(tabId)) return dbgPending.get(tabId);
+  const p = (async () => {
+    const state = { console: [], net: new Map() };
+    try {
+      await chrome.debugger.attach({ tabId }, DBG_VERSION);
+    } catch (e) {
+      if (!/already attached/i.test(String((e && e.message) || e))) throw e;
+    }
+    await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
+    await chrome.debugger.sendCommand({ tabId }, 'Log.enable');
+    await chrome.debugger.sendCommand({ tabId }, 'Network.enable');
+    dbg.set(tabId, state);
+    return state;
+  })();
+  dbgPending.set(tabId, p);
+  try { return await p; } finally { dbgPending.delete(tabId); }
+}
+chrome.debugger.onEvent.addListener((src, method, params) => {
+  const st = dbg.get(src.tabId);
+  if (!st) return;
+  if (method === 'Runtime.consoleAPICalled') {
+    const text = (params.args || []).map((a) => (a.value !== undefined ? String(a.value) : a.description || a.type)).join(' ');
+    st.console.push(`[${params.type}] ${text}`.slice(0, 300));
+  } else if (method === 'Runtime.exceptionThrown') {
+    st.console.push(`[exception] ${params.exceptionDetails?.exception?.description || params.exceptionDetails?.text || 'error'}`.slice(0, 300));
+  } else if (method === 'Log.entryAdded') {
+    st.console.push(`[${params.entry.level}] ${params.entry.text}`.slice(0, 300));
+  } else if (method === 'Network.requestWillBeSent') {
+    st.net.set(params.requestId, { method: params.request.method, url: maskUrl(params.request.url), type: params.type || '', status: '' });
+  } else if (method === 'Network.responseReceived') {
+    const e = st.net.get(params.requestId);
+    if (e) e.status = params.response.status;
+  } else if (method === 'Network.loadingFailed') {
+    const e = st.net.get(params.requestId);
+    if (e) e.status = 'failed: ' + (params.errorText || '');
+  }
+  if (st.console.length > 300) st.console.splice(0, st.console.length - 300);
+  if (st.net.size > 500) { const k = st.net.keys().next().value; st.net.delete(k); }
+});
+chrome.debugger.onDetach.addListener((src) => { dbg.delete(src.tabId); });
+chrome.tabs.onRemoved.addListener((tabId) => { dbg.delete(tabId); });
+
 // ---------------------------------------------------------------- approvals
 
 function askApprovalNotification(title, message) {
@@ -588,6 +643,26 @@ async function handle(cmd) {
       const r = await inPage(tab.id, pageAttach, [Number(p.element), b64, name, res.headers.get('content-type') || '']);
       await log(`upload ${r?.ok ? 'ok' : 'fail'}`);
       return r?.ok ? { ok:true, result:`Attached "${r.name}" (${r.size} bytes). Call browser_read to confirm the page shows it.` } : { ok:false, result: r?.error || 'Upload failed.' };
+    }
+    case 'console': {
+      const tab = await agentTab();
+      let st;
+      try { st = await ensureDebugger(tab.id); } catch (e) { return { ok:false, result:'Could not attach the debugger: ' + (e.message||e) + ' (close DevTools on that tab and retry).' }; }
+      let lines = st.console;
+      if (p.pattern) { let rx; try { rx = new RegExp(p.pattern, 'i'); } catch { return { ok:false, result:'Bad pattern.' }; } lines = lines.filter((l) => rx.test(l)); }
+      lines = lines.slice(-(Number(p.limit) || 50));
+      if (p.clear) st.console.length = 0;
+      return { ok:true, result: lines.length ? lines.join('\n') : 'No console messages recorded yet. Recording started or continues now; reload or interact, then call browser_console again.' };
+    }
+    case 'network': {
+      const tab = await agentTab();
+      let st;
+      try { st = await ensureDebugger(tab.id); } catch (e) { return { ok:false, result:'Could not attach the debugger: ' + (e.message||e) + ' (close DevTools on that tab and retry).' }; }
+      let rows = Array.from(st.net.values());
+      if (p.pattern) { let rx; try { rx = new RegExp(p.pattern, 'i'); } catch { return { ok:false, result:'Bad pattern.' }; } rows = rows.filter((r) => rx.test(`${r.method} ${r.url} ${r.status}`)); }
+      rows = rows.slice(-(Number(p.limit) || 50));
+      if (p.clear) st.net.clear();
+      return { ok:true, result: rows.length ? rows.map((r) => `${r.method} ${r.status || ''} ${r.type || ''} ${r.url}`).join('\n') : 'No requests recorded yet. Recording starts at the first call; reload or navigate, then call browser_network again.' };
     }
     case 'wait_for': {
       const tab = await agentTab();

@@ -153,6 +153,16 @@ Use local_* tools to work in those folders with the user's own git credentials (
       inputSchema: z.object({ element: z.number().int().min(0), url: z.string().url(), filename: z.string().optional(), reason: z.string() }),
       execute: async (input) => run(userId, 'browser', 'upload', input, 180_000),
     });
+    tools.browser_console = tool({
+      description: 'Read the agent tab console (logs, errors, exceptions). Recording starts at the first call (Chrome shows a "debugging this browser" banner), so call it early, then reload or interact, then call again. Optional regex pattern, limit (default 50), clear.',
+      inputSchema: z.object({ pattern: z.string().optional(), limit: z.number().int().min(1).max(300).optional(), clear: z.boolean().optional() }),
+      execute: async (input) => run(userId, 'browser', 'console', input, 60_000),
+    });
+    tools.browser_network = tool({
+      description: 'List network requests made by the agent tab (method, status, type, URL with query values masked; no bodies or headers). Recording starts at the first call. Optional regex pattern, limit (default 50), clear.',
+      inputSchema: z.object({ pattern: z.string().optional(), limit: z.number().int().min(1).max(500).optional(), clear: z.boolean().optional() }),
+      execute: async (input) => run(userId, 'browser', 'network', input, 60_000),
+    });
     tools.browser_drag = tool({
       description: 'Drag one element (by number from browser_read) onto another. Asks the user to approve.',
       inputSchema: z.object({ from_element: z.number().int().min(0), to_element: z.number().int().min(0), reason: z.string() }),
