@@ -98,6 +98,12 @@ function pageClick(idx) {
   return { ok: true, label: (el.innerText || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 80) };
 }
 
+function pageLabel(idx) {
+  const el = document.querySelector(`[data-shazam-idx="${idx}"]`);
+  if (!el) return '';
+  return (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 80);
+}
+
 function pageType(idx, text, submit) {
   const el = document.querySelector(`[data-shazam-idx="${idx}"]`);
   if (!el) return { ok: false, error: 'Element not found. Call browser_read again.' };
@@ -123,9 +129,93 @@ function pageType(idx, text, submit) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- in-page helpers (key, select, wait)
+
+function pageKey(keyName, elementIdx) {
+  var el;
+  if (elementIdx != null) {
+    el = document.querySelector('[data-shazam-idx="' + elementIdx + '"]');
+  } else {
+    el = document.activeElement;
+  }
+  if (!el) return { ok: false, error: 'No focusable element. Call browser_read first.' };
+
+  var keyMap = {
+    'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
+    'Tab':   { key: 'Tab',   code: 'Tab',   keyCode: 9 },
+    'Escape':{ key: 'Escape',code: 'Escape',keyCode: 27 },
+    'ArrowDown': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+    'ArrowUp':     { key: 'ArrowUp',   code: 'ArrowUp',   keyCode: 38 },
+    'ArrowLeft':  { key: 'ArrowLeft',  code: 'ArrowLeft',  keyCode: 37 },
+    'ArrowRight': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+    'Backspace': { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+    'Space':     { key: ' ',        code: 'Space',     keyCode: 32 }
+  };
+  var km = keyMap[keyName];
+  if (!km) return { ok: false, error: 'Unknown key: ' + keyName + '.' };
+
+  el.focus();
+
+  // Tab moves focus to next focusable element
+  if (keyName === 'Tab') {
+    var sel = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[contenteditable=true]';
+    var allEls = Array.from(document.querySelectorAll(sel));
+    var idx = allEls.indexOf(el);
+    var nextIdx = (idx + 1) % allEls.length;
+    allEls[nextIdx].focus();
+    return { ok: true };
+  }
+
+  // Dispatch keydown, keypress, keyup
+  var types = ['keydown', 'keypress', 'keyup'];
+  for (var i = 0; i < types.length; i++) {
+    el.dispatchEvent(new KeyboardEvent(types[i], Object.assign({ bubbles: true }, km)));
+  }
+
+  // Enter on form field triggers submit
+  if (keyName === 'Enter' && el.form) {
+    el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit();
+  }
+
+  return { ok: true };
+}
+
+function pageSelect(optionValue, elementIdx) {
+  var sel = document.querySelector('[data-shazam-idx="' + elementIdx + '"]');
+  if (!sel || sel.tagName.toLowerCase() !== 'select') {
+    return { ok: false, error: 'Element is not a <select>. Call browser_read first.' };
+  }
+
+  var options = Array.from(sel.options);
+  var matched = null;
+  for (var i = 0; i < options.length; i++) {
+    var opt = options[i];
+    if (opt.value.toLowerCase() === optionValue.toLowerCase() ||
+        opt.text.trim().toLowerCase() === optionValue.toLowerCase()) {
+      matched = opt;
+      break;
+    }
+  }
+
+  if (!matched) {
+    return { ok: false, error: 'Not found. Available options: ' +
+      options.map(function(o) { return '"' + o.text.trim() + '" (' + o.value + ')'; }).join(', ') };
+  }
+
+  sel.value = matched.value;
+  sel.dispatchEvent(new Event('input', { bubbles: true }));
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return { ok: true, result: matched.text.trim() };
+}
+
+function waitCheck(text, gone) {
+  var hasText = document.body && document.body.innerText ? document.body.innerText.includes(text) : false;
+  return gone ? !hasText : hasText;
+}
+
 // ---------------------------------------------------------------- approvals
 
-function askApproval(title, message) {
+function askApprovalNotification(title, message) {
   return new Promise((resolve) => {
     const id = `shazam-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     pendingApprovals.set(id, resolve);
@@ -164,6 +254,97 @@ chrome.notifications.onClosed.addListener((id) => {
   }
 });
 
+// In-page approval bar shown inside the agent tab
+function showApprovalBar(title, message, sensitive) {
+  return new Promise((resolve) => {
+    // Remove any existing bar
+    const existing = document.getElementById('arcwork-approval');
+    if (existing) existing.remove();
+
+    // Create shadow host
+    const host = document.createElement('div');
+    host.id = 'arcwork-approval';
+    document.documentElement.appendChild(host);
+    const shadow = host.attachShadow({ mode: 'closed' });
+
+    // Styles
+    const style = document.createElement('style');
+    style.textContent = `
+      :host { position: fixed; top: 0; left: 0; right: 0; z-index: 2147483647; }
+      .bar { background: #111; color: #fff; font: 14px system-ui, -apple-system, sans-serif; padding: 10px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .msg { flex: 1; min-width: 200px; }
+      .msg strong { color: #f59e0b; }
+      button { background: #f59e0b; color: #111; border: none; padding: 6px 14px; border-radius: 4px; font: 600 13px system-ui; cursor: pointer; }
+      button.secondary { background: #374151; color: #fff; }
+      button.danger { background: #ef4444; color: #fff; }
+      button:hover { filter: brightness(1.1); }
+      .sensitive-badge { background: #ef4444; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 3px; margin-left: 8px; }
+    `;
+    shadow.appendChild(style);
+
+    // Bar content
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.innerHTML = `
+      <div class="msg"><strong>${title}</strong> ${message}${sensitive ? '<span class="sensitive-badge">SENSITIVE</span>' : ''}</div>
+      <button data-choice="once">Allow once</button>
+      ${!sensitive ? '<button data-choice="site" class="secondary">Allow for this site</button>' : ''}
+      <button data-choice="deny" class="danger">Deny</button>
+    `;
+    shadow.appendChild(bar);
+
+    const timer = setTimeout(() => {
+      host.remove();
+      resolve('deny');
+    }, 120000);
+
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      clearTimeout(timer);
+      const choice = btn.dataset.choice;
+      host.remove();
+      resolve(choice);
+    });
+  });
+}
+
+async function askApproval(title, message, label = '') {
+  const tab = await agentTab();
+  const host = (() => { try { return new URL(tab.url).host; } catch { return ''; } })();
+
+  const sensitive = /\b(submit|apply|pay|purchase|buy|place order|checkout|confirm|delete|remove|send|publish|post|transfer|withdraw|subscribe)\b/i.test(title + ' ' + message + ' ' + label);
+
+  // Check allowedHosts in session storage
+  const { allowedHosts = [] } = await chrome.storage.session.get('allowedHosts');
+  if (!sensitive && host && allowedHosts.includes(host)) {
+    await log(`auto-approved on ${host}`);
+    return true;
+  }
+
+  // Show in-page approval bar
+  try {
+    await chrome.tabs.update(tab.id, { active: true });
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: showApprovalBar,
+      args: [title, message, sensitive],
+    });
+    const choice = res?.result;
+
+    if (choice === 'site') {
+      allowedHosts.push(host);
+      await chrome.storage.session.set({ allowedHosts });
+      return true;
+    }
+    if (choice === 'once') return true;
+    return false;
+  } catch {
+    // Fallback to notification for chrome:// pages etc.
+    return askApprovalNotification(title, message);
+  }
+}
+
 // ---------------------------------------------------------------- commands
 
 async function handle(cmd) {
@@ -187,7 +368,9 @@ async function handle(cmd) {
     }
     case 'click': {
       const tab = await agentTab();
-      if (s.askBeforeActions && !(await askApproval('Arcwork wants to click', `${p.reason || 'Click element'} [${p.element}] on ${new URL(tab.url || 'about:blank').host}`))) {
+      const labelRes = await inPage(tab.id, pageLabel, [Number(p.element)]);
+      const label = labelRes?.label || '';
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to click', `${p.reason || 'Click element'} [${p.element}] on ${new URL(tab.url || 'about:blank').host}`, label))) {
         await log(`denied click [${p.element}]`);
         return { ok: false, result: 'The user denied this click.' };
       }
@@ -224,6 +407,90 @@ async function handle(cmd) {
       await chrome.tabs.update(tab.id, { active: true });
       const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 55 });
       return { ok: true, result: { note: 'Screenshot captured', bytes: Math.round((dataUrl.length * 3) / 4), dataUrl } };
+    }
+    case 'tabs': {
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      const { agentTabId } = await chrome.storage.session.get('agentTabId');
+      const lines = tabs.map(t => `[${t.id}] ${t.title || '(blank)'} (${t.url || 'about:blank'})`).join('\n');
+      return { ok: true, result: `Tabs in this window:\n${lines}${agentTabId ? '\n(Agent tab: ' + agentTabId + ')' : ''}` };
+    }
+    case 'switch_tab': {
+      const tabId = Number(p.tab_id);
+      let tab;
+      try {
+        tab = await chrome.tabs.get(tabId);
+      } catch {
+        return { ok: false, result: `No tab with id ${tabId}.` };
+      }
+      if (!tab.windowId) return { ok: false, result: `Tab ${tabId} not found.` };
+      const newAgentTabId = await chrome.storage.session.set({ agentTabId: tabId });
+      await chrome.tabs.update(tabId, { active: true });
+      await log(`switched to [${tabId}]`);
+      return { ok: true, result: `Switched to "${tab.title || ''}" (${tab.url || 'about:blank'}).` };
+    }
+    case 'close_tab': {
+      const tabId = Number(p.tab_id);
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      if (tabs.length <= 1) return { ok: false, result: 'Cannot close the only tab in a window.' };
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to close tab', `Close tab [${tabId}]?`))) {
+        await log(`denied close [${tabId}]`);
+        return { ok: false, result: 'The user denied closing this tab.' };
+      }
+      const { agentTabId } = await chrome.storage.session.get('agentTabId');
+      if (tabId === Number(agentTabId)) {
+        await chrome.storage.session.remove('agentTabId');
+      }
+      await chrome.tabs.remove(tabId);
+      await log(`closed [${tabId}]`);
+      return { ok: true, result: `Closed tab [${tabId}].` };
+    }
+    case 'key': {
+      const tab = await agentTab();
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to type a key', `${p.key} on ${p.element ? '['+p.element+']' : 'active element'}: ${p.reason || ''}`))) {
+        await log(`denied key [${p.key}]`);
+        return { ok: false, result: 'The user denied this keypress.' };
+      }
+      const r = await inPage(tab.id, pageKey, [String(p.key), p.element != null ? Number(p.element) : null]);
+      await log(`key ${p.key}${p.element != null ? ' on ['+p.element+']' : ''}`);
+      return r?.ok ? { ok: true, result: `Pressed ${p.key}.` } : { ok: false, result: r?.error || 'Key press failed.' };
+    }
+    case 'select': {
+      const tab = await agentTab();
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to select', `Select in [${p.element}]: "${p.value}" — ${p.reason || ''}`))) {
+        await log(`denied select [${p.element}] "${p.value}"`);
+        return { ok: false, result: 'The user denied this selection.' };
+      }
+      const r = await inPage(tab.id, pageSelect, [String(p.value), Number(p.element)]);
+      await log(`select [${p.element}] "${p.value}"`);
+      return r?.ok ? { ok: true, result: `Selected "${r.result}".` } : { ok: false, result: r?.error || 'Selection failed.' };
+    }
+    case 'wait_for': {
+      const tab = await agentTab();
+      const text = p.text || '';
+      const gone = Boolean(p.gone);
+      const timeoutMs = Math.min((p.timeout_seconds || 10) * 1000, 30000);
+      if (!text) {
+        await waitForLoad(tab.id, 30000);
+        await new Promise(res => setTimeout(res, 500));
+        return { ok: true, result: 'Waited for page load.' };
+      }
+      const start = Date.now();
+      let found = false;
+      while (Date.now() - start < timeoutMs) {
+        const ok = await inPage(tab.id, waitCheck, [text, gone]);
+        if (ok) { found = true; break; }
+        await new Promise(res => setTimeout(res, 400));
+      }
+      return { ok: true, result: found ? `Found "${text}".` : 'Timed out.' };
+    }
+    case 'find': {
+      const tab = await agentTab();
+      const snap = await inPage(tab.id, pageSnapshot, [Number(p.maxChars) || 15000]);
+      if (!snap) return { ok: false, result: 'Could not read this page.' };
+      const allElements = (snap.elements || '').split('\n').filter(l => l.trim());
+      const matches = allElements.filter(line => line.toLowerCase().includes(String(p.query).toLowerCase())).slice(0, 20);
+      if (matches.length === 0) return { ok: true, result: 'No match; call browser_read.' };
+      return { ok: true, result: matches.join('\n') };
     }
     default:
       return { ok: false, result: `Unknown browser command "${cmd.command}".` };
@@ -296,11 +563,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return sendResponse({ ok: false, error: data.error || `HTTP ${res.status}` });
       await chrome.storage.local.set({ server: msg.server.replace(/\/$/, ''), token: data.token, deviceName: data.device?.name });
+      await setStatus('connecting');
       await log('paired with Arcwork');
       pollLoop();
       sendResponse({ ok: true });
     } else if (msg.type === 'unpair') {
       await chrome.storage.local.remove('token');
+      await chrome.storage.session.remove('allowedHosts');
       await setStatus('not paired');
       sendResponse({ ok: true });
     }

@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 async function render() {
   const s = await chrome.storage.local.get(['server', 'token', 'status', 'askBeforeActions', 'activity']);
   const paired = Boolean(s.token);
-  $('status').textContent = paired ? s.status || 'connecting' : 'not paired';
+  $('status').textContent = paired ? (s.status && s.status !== 'not paired' ? s.status : 'connecting') : 'not paired';
   $('status').className = 'pill' + (s.status === 'connected' ? ' ok' : '');
   $('pair').style.display = paired ? 'none' : 'block';
   $('paired').style.display = paired ? 'block' : 'none';

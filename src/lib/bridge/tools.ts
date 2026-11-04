@@ -113,6 +113,41 @@ Use local_* tools to work in those folders with the user's own git credentials (
       inputSchema: z.object({}),
       execute: async () => run(userId, 'browser', 'back', {}, 30_000),
     });
+    tools.browser_tabs = tool({
+      description: 'List all tabs in the current Chrome window with their IDs. Use browser_switch_tab to switch.',
+      inputSchema: z.object({}),
+      execute: async () => run(userId, 'browser', 'tabs', {}, 30_000),
+    });
+    tools.browser_switch_tab = tool({
+      description: 'Switch to a different tab by ID (from browser_tabs). Changes the active agent tab.',
+      inputSchema: z.object({ tab_id: z.number().int() }),
+      execute: async ({ tab_id }) => run(userId, 'browser', 'switch_tab', { tab_id }, 30_000),
+    });
+    tools.browser_close_tab = tool({
+      description: 'Close a tab by ID. Cannot close the only tab; asks user approval if enabled.',
+      inputSchema: z.object({ tab_id: z.number().int() }),
+      execute: async ({ tab_id }) => run(userId, 'browser', 'close_tab', { tab_id }, 30_000),
+    });
+    tools.browser_key = tool({
+      description: 'Press a key (Enter, Tab, Escape, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Backspace, Space). Optionally target a numbered element.',
+      inputSchema: z.object({ key: z.enum(['Enter', 'Tab', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Space']), element: z.number().int().min(0).optional(), reason: z.string() }),
+      execute: async (input) => run(userId, 'browser', 'key', input, 30_000),
+    });
+    tools.browser_select = tool({
+      description: 'Select an option in a <select> dropdown by value or matching text. Element must be a select from browser_read.',
+      inputSchema: z.object({ element: z.number().int(), value: z.string(), reason: z.string() }),
+      execute: async (input) => run(userId, 'browser', 'select', input, 30_000),
+    });
+    tools.browser_wait_for = tool({
+      description: 'Wait for text to appear or disappear in the page body. Polls every 400ms up to timeout_seconds (default 10, max 30).',
+      inputSchema: z.object({ text: z.string().optional(), gone: z.boolean().optional(), timeout_seconds: z.number().int().min(1).max(30).optional() }),
+      execute: async (input) => run(userId, 'browser', 'wait_for', input, 45_000),
+    });
+    tools.browser_find = tool({
+      description: 'Search interactive elements on the current page (from browser_read output). Returns up to 20 matching lines case-insensitive.',
+      inputSchema: z.object({ query: z.string() }),
+      execute: async ({ query }) => run(userId, 'browser', 'find', { query }, 60_000),
+    });
   }
 
   if (!desktop && !browser) {
