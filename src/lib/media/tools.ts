@@ -6,6 +6,7 @@ import { decryptSecret } from '@/lib/crypto/vault';
 import { sandboxAvailable } from '@/lib/agent/sandbox';
 import { generateAndStoreImage, gatewayAvailable } from './image';
 import { VideoEditor, buildSrt } from './video';
+import { videoReviewNotes } from './review';
 
 async function userKey(repo: DbRepo, userId: string, provider: string): Promise<string | null> {
   const cred = await repo.getCredential(userId, provider);
@@ -68,7 +69,7 @@ export async function buildMediaTools(
         try {
           const r = await new VideoEditor(userId).edit(source_url, operations as any, platform, title || 'Edited video');
           opts.onAsset?.({ id: r.asset.id, kind: 'video', url: r.asset.url, prompt: title, model: r.asset.model });
-          return `Video rendered (${r.durationSeconds.toFixed(1)}s).\nSteps:\n- ${r.log.join('\n- ')}\nURL: ${r.asset.url}`;
+          return `Video rendered (${r.durationSeconds.toFixed(1)}s).\nSteps:\n- ${r.log.join('\n- ')}\nURL: ${r.asset.url}\n\n${videoReviewNotes(r.durationSeconds, operations as any)}`;
         } catch (err: any) {
           return `Error: video edit failed: ${err.message}`;
         }
