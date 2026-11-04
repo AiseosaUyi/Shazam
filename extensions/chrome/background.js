@@ -4,12 +4,12 @@
  * commands queued by their agents, in a single dedicated "Arcwork" tab.
  */
 
-const DEFAULTS = { server: 'https://arcwork-ai.vercel.app', token: null, askBeforeActions: true };
+const DEFAULTS = { server: 'https://arcwork-ai.vercel.app', token: null, askBeforeActions: true, autoApproveHosts: [] };
 let polling = false;
 const pendingApprovals = new Map();
 
 async function settings() {
-  return { ...DEFAULTS, ...(await chrome.storage.local.get(['server', 'token', 'askBeforeActions', 'deviceName'])) };
+  return { ...DEFAULTS, ...(await chrome.storage.local.get(['server', 'token', 'askBeforeActions', 'deviceName', 'autoApproveHosts'])) };
 }
 
 async function log(line) {
@@ -319,6 +319,13 @@ async function askApproval(title, message, label = '') {
   const { allowedHosts = [] } = await chrome.storage.session.get('allowedHosts');
   if (!sensitive && host && allowedHosts.includes(host)) {
     await log(`auto-approved on ${host}`);
+    return true;
+  }
+
+  // Check autoApproveHosts in local storage (preset)
+  const s = await settings();
+  if (!sensitive && host && (s.autoApproveHosts || []).some(h => host === h || host.endsWith('.' + h))) {
+    await log(`auto-approved (preset) on ${host}`);
     return true;
   }
 

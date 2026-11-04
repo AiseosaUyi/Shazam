@@ -126,17 +126,17 @@ Use local_* tools to work in those folders with the user's own git credentials (
     tools.browser_close_tab = tool({
       description: 'Close a tab by ID. Cannot close the only tab; asks user approval if enabled.',
       inputSchema: z.object({ tab_id: z.number().int() }),
-      execute: async ({ tab_id }) => run(userId, 'browser', 'close_tab', { tab_id }, 30_000),
+      execute: async ({ tab_id }) => run(userId, 'browser', 'close_tab', { tab_id }, 180_000),
     });
     tools.browser_key = tool({
       description: 'Press a key (Enter, Tab, Escape, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Backspace, Space). Optionally target a numbered element.',
       inputSchema: z.object({ key: z.enum(['Enter', 'Tab', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Space']), element: z.number().int().min(0).optional(), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'key', input, 30_000),
+      execute: async (input) => run(userId, 'browser', 'key', input, 180_000),
     });
     tools.browser_select = tool({
       description: 'Select an option in a <select> dropdown by value or matching text. Element must be a select from browser_read.',
       inputSchema: z.object({ element: z.number().int(), value: z.string(), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'select', input, 30_000),
+      execute: async (input) => run(userId, 'browser', 'select', input, 180_000),
     });
     tools.browser_wait_for = tool({
       description: 'Wait for text to appear or disappear in the page body. Polls every 400ms up to timeout_seconds (default 10, max 30).',

@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 async function render() {
-  const s = await chrome.storage.local.get(['server', 'token', 'status', 'askBeforeActions', 'activity']);
+  const s = await chrome.storage.local.get(['server', 'token', 'status', 'askBeforeActions', 'activity', 'autoApproveHosts']);
   const paired = Boolean(s.token);
   $('status').textContent = paired ? (s.status && s.status !== 'not paired' ? s.status : 'connecting') : 'not paired';
   $('status').className = 'pill' + (s.status === 'connected' ? ' ok' : '');
@@ -8,6 +8,9 @@ async function render() {
   $('paired').style.display = paired ? 'block' : 'none';
   $('server').value = $('server').value || s.server || 'https://arcwork-ai.vercel.app';
   $('ask').checked = s.askBeforeActions !== false;
+  if (document.activeElement !== $('hosts')) {
+    $('hosts').value = (s.autoApproveHosts || []).join('\n');
+  }
   $('activity').textContent = (s.activity || []).slice(-15).join('\n') || '—';
 }
 $('pairBtn').onclick = async () => {
@@ -18,5 +21,6 @@ $('pairBtn').onclick = async () => {
 };
 $('unpair').onclick = async () => { await chrome.runtime.sendMessage({ type: 'unpair' }); render(); };
 $('ask').onchange = () => chrome.storage.local.set({ askBeforeActions: $('ask').checked });
+$('hosts').onchange = () => chrome.storage.local.set({ autoApproveHosts: $('hosts').value.split('\n').map(x => x.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/,'')).filter(Boolean) });
 chrome.storage.onChanged.addListener(render);
 render();
