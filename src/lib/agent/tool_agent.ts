@@ -188,14 +188,15 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     }),
     read_file: tool({
       description: `Read a file with line numbers. Reads up to ${MAX_READ_LINES} lines; use offset for more.`,
-      inputSchema: z.object({ path: z.string(), offset: z.number().int().min(1).optional(), limit: z.number().int().min(1).max(2000).optional() }),
+      inputSchema: z.object({ path: z.string(), offset: z.coerce.number().int().min(0).optional(), limit: z.coerce.number().int().min(1).max(2000).optional() }),
       execute: async ({ path, offset = 1, limit = MAX_READ_LINES }) => {
         const f = findFile(path);
         if (!f) return `Error: ${path} does not exist.`;
         const lines = f.content.split('\n');
-        const slice = lines.slice(offset - 1, offset - 1 + limit);
-        const body = slice.map((l, i) => `${offset + i}\t${l}`).join('\n');
-        const more = offset - 1 + limit < lines.length ? `\n… ${lines.length - (offset - 1 + limit)} more lines (use offset).` : '';
+        const start = Math.max(1, offset ?? 1);
+        const slice = lines.slice(start - 1, start - 1 + limit);
+        const body = slice.map((l, i) => `${start + i}\t${l}`).join('\n');
+        const more = start - 1 + limit < lines.length ? `\n… ${lines.length - (start - 1 + limit)} more lines (use offset).` : '';
         return `${path} (${lines.length} lines)\n${body}${more}`;
       },
     }),
@@ -341,8 +342,11 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       }),
       read_file: tool({
         description: `Read a file (with line numbers) from the user's folder. Reads up to ${LOCAL_READ_LINES} lines; use offset/limit (or grep first) to read only the part you need.`,
-        inputSchema: z.object({ path: z.string(), offset: z.number().int().min(1).optional(), limit: z.number().int().min(1).max(2000).optional() }),
-        execute: async ({ path, offset = 1, limit = LOCAL_READ_LINES }) => sliceNumbered(path, await local.call('read_file', { path: abs(path) }), offset, limit),
+        inputSchema: z.object({ path: z.string(), offset: z.coerce.number().int().min(0).optional(), limit: z.coerce.number().int().min(1).max(2000).optional() }),
+        execute: async ({ path, offset = 1, limit = LOCAL_READ_LINES }) => {
+          const start = Math.max(1, offset ?? 1);
+          return sliceNumbered(path, await local.call('read_file', { path: abs(path) }), start, limit);
+        },
       }),
       edit_file: tool({
         description: 'Replace an exact old_string with new_string in a file in the user\'s folder.',
