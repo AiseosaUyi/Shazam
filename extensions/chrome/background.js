@@ -246,6 +246,26 @@ function waitCheck(text, gone) {
   return gone ? !hasText : hasText;
 }
 
+async function evalInMain(tabId, code) {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    args: [String(code)],
+    func: async (src) => {
+      try {
+        const fn = new Function('return (async () => { ' + src + ' })()');
+        const v = await fn();
+        let out;
+        try { out = JSON.stringify(v === undefined ? null : v); } catch (e) { out = String(v); }
+        return { ok: true, value: (out || 'null').slice(0, 5000) };
+      } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+      }
+    },
+  });
+  return res?.result;
+}
+
 // ---------------------------------------------------------------- approvals
 
 function askApprovalNotification(title, message) {
@@ -342,7 +362,7 @@ function showApprovalBar(title, message, sensitive) {
   });
 }
 
-async function askApproval(title, message, label = '') {
+async function askApproval(title, message, label = '', forceAsk = false) {
   const tab = await agentTab();
   const host = (() => { try { return new URL(tab.url).host; } catch { return ''; } })();
 
@@ -350,14 +370,14 @@ async function askApproval(title, message, label = '') {
 
   // Check allowedHosts in session storage
   const { allowedHosts = [] } = await chrome.storage.session.get('allowedHosts');
-  if (!sensitive && host && allowedHosts.includes(host)) {
+  if (!sensitive && !forceAsk && host && allowedHosts.includes(host)) {
     await log(`auto-approved on ${host}`);
     return true;
   }
 
   // Check autoApproveHosts in local storage (preset)
   const s = await settings();
-  if (!sensitive && host && (s.autoApproveHosts || []).some(h => host === h || host.endsWith('.' + h))) {
+  if (!sensitive && !forceAsk && host && (s.autoApproveHosts || []).some(h => host === h || host.endsWith('.' + h))) {
     await log(`auto-approved (preset) on ${host}`);
     return true;
   }
@@ -368,7 +388,7 @@ async function askApproval(title, message, label = '') {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: showApprovalBar,
-      args: [title, message, sensitive],
+      args: [title, message, sensitive || forceAsk],
     });
     const choice = res?.result;
 
@@ -519,6 +539,17 @@ async function handle(cmd) {
       const r = await inPage(tab.id, pageDrag, [Number(p.from_element), Number(p.to_element)]);
       await log(`drag [${p.from_element}] onto [${p.to_element}]`);
       return r?.ok ? { ok: true, result: 'Dragged.' } : { ok: false, result: r?.error || 'Drag failed.' };
+    }
+    case 'eval': {
+      if (String(p.code).length > 400) return { ok: false, result: 'Script too long (max 400 characters) so the user can review all of it. Split it or use browser_read.' };
+      const tab = await agentTab();
+      if (!(await askApproval('Arcwork wants to run JavaScript', `${p.reason || 'Run script'}:\n${String(p.code)}`, '', true))) {
+        await log('denied eval');
+        return { ok: false, result: 'The user denied running this script.' };
+      }
+      const r = await evalInMain(tab.id, p.code);
+      await log('eval ran');
+      return r?.ok ? { ok: true, result: r.value } : { ok: false, result: 'Script error (some sites block eval with CSP): ' + (r?.error || 'unknown') };
     }
     case 'wait_for': {
       const tab = await agentTab();

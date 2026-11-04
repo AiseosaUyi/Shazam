@@ -143,6 +143,11 @@ Use local_* tools to work in those folders with the user's own git credentials (
       inputSchema: z.object({ element: z.number().int().min(0) }),
       execute: async (input) => run(userId, 'browser', 'hover', input, 30_000),
     });
+    tools.browser_eval = tool({
+      description: 'Run JavaScript in the agent tab (page context) and return the JSON result. Code is limited to 400 characters. ALWAYS asks the user to approve. Prefer browser_read/click; use this only for reading data the other tools cannot reach. Never read or send cookies, tokens or passwords.',
+      inputSchema: z.object({ code: z.string().max(400), reason: z.string() }),
+      execute: async (input) => run(userId, 'browser', 'eval', input, 180_000),
+    });
     tools.browser_drag = tool({
       description: 'Drag one element (by number from browser_read) onto another. Asks the user to approve.',
       inputSchema: z.object({ from_element: z.number().int().min(0), to_element: z.number().int().min(0), reason: z.string() }),
