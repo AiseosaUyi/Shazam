@@ -157,6 +157,8 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
       return `Error: ${err?.message || err} Wait a moment and retry this step.`;
     }
   };
+  const { loadProjectMemory } = await import('./project-memory');
+  const memory = await loadProjectMemory((p) => call('read_file', { path: p }), root).catch(() => '');
   const [mcp, skills] = await Promise.all([
     buildMcpToolset(repo, o.user.id, { allowMutations: o.allowExternalWrites, platform, onPendingAction: (a) => send('pending_action', a) }),
     buildSkillTools(platform, o.user.id, 'code'),
@@ -169,7 +171,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     files: [],
     local: { root, deviceName: device.name, call },
     extraTools: { ...mcp.tools, ...skills.tools, ...buildAskTool({ userId: o.user.id, runId: o.runId ?? null, onEvent: send, signal: o.signal }) },
-    extraInstructions: [QUESTION_GUIDANCE, mcp.inventory, skills.inventory].filter(Boolean).join('\n\n'),
+    extraInstructions: [memory, QUESTION_GUIDANCE, mcp.inventory, skills.inventory].filter(Boolean).join('\n\n'),
     maxSteps: o.maxSteps ?? 40,
     signal: o.signal,
     onEvent: send,
@@ -177,7 +179,17 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
   });
-  return { text: out.text || 'Done.', model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, steps: out.steps, paused: out.paused };
+  let text = out.text || 'Done.';
+  if (!out.paused && (out.filesModified || []).length > 0) {
+    const { autoVerify } = await import('./verify');
+    const v = await autoVerify(
+      (command, timeoutMs) => call('exec', { cwd: root, command, timeoutMs }, timeoutMs + 30_000),
+      (p) => call('read_file', { path: p }),
+      root,
+    ).catch(() => null);
+    if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
+  }
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {
