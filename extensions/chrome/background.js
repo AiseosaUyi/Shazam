@@ -439,7 +439,8 @@ async function askApproval(title, message, label = '', forceAsk = false) {
   const tab = await agentTab();
   const host = (() => { try { return new URL(tab.url).host; } catch { return ''; } })();
 
-  const sensitive = /\b(submit|apply|pay|purchase|buy|place order|checkout|confirm|delete|remove|send|publish|post|transfer|withdraw|subscribe)\b/i.test(title + ' ' + message + ' ' + label);
+  // Only the element label decides sensitivity; model-written reasons and typed text must not trigger it.
+  const sensitive = /\b(submit|apply|pay|purchase|buy|place order|checkout|confirm|delete|remove|send|publish|post|transfer|withdraw|subscribe)\b/i.test(label);
 
   // Check allowAllUntil from previous "hour" grant
   const { allowAllUntil = 0 } = await chrome.storage.session.get('allowAllUntil');
@@ -538,7 +539,7 @@ async function handle(cmd) {
     }
     case 'type': {
       const tab = await agentTab();
-      if (s.askBeforeActions && !(await askApproval('Arcwork wants to type', `${p.reason || 'Type'}: "${String(p.text).slice(0, 120)}"${p.submit ? ' and submit' : ''}`))) {
+      if (s.askBeforeActions && !(await askApproval('Arcwork wants to type', `${p.reason || 'Type'}: "${String(p.text).slice(0, 120)}"${p.submit ? ' and submit' : ''}`, '', !!p.submit))) {
         await log(`denied typing into [${p.element}]`);
         return { ok: false, result: 'The user denied typing.' };
       }
