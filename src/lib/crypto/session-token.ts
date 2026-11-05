@@ -1,8 +1,9 @@
 import { envVar, isProduction } from '@/lib/env';
+import { HKDF_INFO_SESSION, deriveKeyBytes, writeV2Keys } from '@/lib/crypto/hkdf';
 
 const SIGNING_ALGORITHM = { name: 'HMAC', hash: 'SHA-256' };
 
-async function getSigningKey(): Promise<CryptoKey> {
+function getSessionSecret(): string {
   const secret = envVar('SESSION_SECRET') || envVar('SHAZAM_ENCRYPTION_KEY');
   if (!secret) {
     // A secret that lives in the repo lets anyone forge an admin session. Fail closed when deployed.
@@ -10,9 +11,19 @@ async function getSigningKey(): Promise<CryptoKey> {
       throw new Error('SESSION_SECRET is not configured. Set it as a secret before serving traffic.');
     }
   }
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret || 'shazam-dev-only-session-key-not-for-production');
+  return secret || 'shazam-dev-only-session-key-not-for-production';
+}
+
+/** Legacy key: the secret bytes used directly. Still accepted for verification during the migration window. */
+async function getSigningKey(): Promise<CryptoKey> {
+  const keyData = new TextEncoder().encode(getSessionSecret());
   return crypto.subtle.importKey('raw', keyData, SIGNING_ALGORITHM, false, ['sign', 'verify']);
+}
+
+/** v2 key: HKDF-derived, independent from the vault encryption key. */
+async function getSigningKeyV2(): Promise<CryptoKey> {
+  const keyData = await deriveKeyBytes(getSessionSecret(), HKDF_INFO_SESSION);
+  return crypto.subtle.importKey('raw', keyData as BufferSource, SIGNING_ALGORITHM, false, ['sign', 'verify']);
 }
 
 function base64UrlEncode(str: string): string {
@@ -74,7 +85,7 @@ export async function createSignedSessionToken(
   };
 
   const payloadStr = base64UrlEncode(JSON.stringify(claim));
-  const key = await getSigningKey();
+  const key = writeV2Keys() ? await getSigningKeyV2() : await getSigningKey();
   const enc = new TextEncoder().encode(payloadStr);
   const signatureBytes = await crypto.subtle.sign('HMAC', key, enc);
   const signatureHex = uint8ArrayToHex(new Uint8Array(signatureBytes));
@@ -96,10 +107,11 @@ export async function verifySignedSessionToken(token: string): Promise<SessionCl
 
   const [payloadStr, signatureHex] = parts;
   try {
-    const key = await getSigningKey();
     const enc = new TextEncoder().encode(payloadStr);
     const signatureBytes = hexToUint8Array(signatureHex);
-    const valid = await crypto.subtle.verify('HMAC', key, signatureBytes as BufferSource, enc);
+    // Accept either key during the migration window; remove the legacy branch in a later release.
+    let valid = await crypto.subtle.verify('HMAC', await getSigningKeyV2(), signatureBytes as BufferSource, enc);
+    if (!valid) valid = await crypto.subtle.verify('HMAC', await getSigningKey(), signatureBytes as BufferSource, enc);
     if (!valid) {
       return null;
     }

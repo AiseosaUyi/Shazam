@@ -1,7 +1,9 @@
 import { envVar, isProduction } from '@/lib/env';
+import { HKDF_INFO_VAULT, deriveKeyBytes, writeV2Keys } from '@/lib/crypto/hkdf';
 
 const ALGORITHM = 'AES-GCM';
 const IV_LENGTH = 12; // 96 bits
+const V2_PREFIX = 'v2:';
 
 function hexToUint8Array(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
@@ -48,13 +50,30 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
-async function getVaultKey(): Promise<CryptoKey> {
+function getMasterSecret(): string {
   const configuredKey = envVar('SHAZAM_ENCRYPTION_KEY') || envVar('SESSION_SECRET');
   if (!configuredKey && isProduction()) {
     // A key that lives in the repo makes every stored BYOK secret readable by anyone with the source.
     throw new Error('SHAZAM_ENCRYPTION_KEY is not configured. Set it as a secret before storing provider keys.');
   }
-  const rawKey = configuredKey || 'shazam-dev-only-vault-key-not-for-production';
+  return configuredKey || 'shazam-dev-only-vault-key-not-for-production';
+}
+
+async function importAesKey(keyBytes: Uint8Array): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', keyBytes as BufferSource, { name: ALGORITHM, length: 256 }, false, [
+    'encrypt',
+    'decrypt',
+  ]);
+}
+
+/** v2 key: HKDF-derived, independent from the session-signing key. */
+async function getVaultKeyV2(): Promise<CryptoKey> {
+  return importAesKey(await deriveKeyBytes(getMasterSecret(), HKDF_INFO_VAULT));
+}
+
+/** Legacy key: the configured secret used directly (hex) or hashed with SHA-256. Kept so old ciphertext stays readable. */
+async function getVaultKey(): Promise<CryptoKey> {
+  const rawKey = getMasterSecret();
 
   let keyBytes: Uint8Array;
   if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
@@ -66,13 +85,7 @@ async function getVaultKey(): Promise<CryptoKey> {
     keyBytes = new Uint8Array(hash);
   }
 
-  return crypto.subtle.importKey(
-    'raw',
-    keyBytes as BufferSource,
-    { name: ALGORITHM, length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
+  return importAesKey(keyBytes);
 }
 
 /**
@@ -82,7 +95,8 @@ async function getVaultKey(): Promise<CryptoKey> {
 export async function encryptSecret(plainText: string): Promise<string> {
   if (!plainText) throw new Error('Cannot encrypt empty secret');
 
-  const key = await getVaultKey();
+  const v2 = writeV2Keys();
+  const key = v2 ? await getVaultKeyV2() : await getVaultKey();
   const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
   const encoded = new TextEncoder().encode(plainText);
 
@@ -97,7 +111,8 @@ export async function encryptSecret(plainText: string): Promise<string> {
   combined.set(iv, 0);
   combined.set(cipherBytes, iv.length);
 
-  return uint8ArrayToBase64(combined);
+  const b64 = uint8ArrayToBase64(combined);
+  return v2 ? V2_PREFIX + b64 : b64;
 }
 
 /**
@@ -106,8 +121,9 @@ export async function encryptSecret(plainText: string): Promise<string> {
 export async function decryptSecret(payloadBase64: string): Promise<string> {
   if (!payloadBase64) throw new Error('Cannot decrypt empty payload');
 
-  const key = await getVaultKey();
-  const combined = base64ToUint8Array(payloadBase64);
+  const isV2 = payloadBase64.startsWith(V2_PREFIX);
+  const key = isV2 ? await getVaultKeyV2() : await getVaultKey();
+  const combined = base64ToUint8Array(isV2 ? payloadBase64.slice(V2_PREFIX.length) : payloadBase64);
 
   if (combined.length <= IV_LENGTH) {
     throw new Error('Invalid encrypted payload length');
