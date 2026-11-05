@@ -220,6 +220,8 @@ export interface User {
   createdAt: string;
 }
 
+export type ApprovalMode = 'ask' | 'smart' | 'auto';
+
 export type Director = 'auto' | 'claude' | 'codex' | 'cursor' | 'antigravity' | 'arcwork';
 
 export interface UserPreferences {
@@ -234,6 +236,7 @@ export interface UserPreferences {
   allowPaidFallback: boolean;
   preferLocalModel: boolean;
   director: Director;
+  approvalMode: ApprovalMode;
   updatedAt: string;
 }
 

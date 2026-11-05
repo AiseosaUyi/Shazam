@@ -15,6 +15,7 @@ import { buildBridgeTools } from '@/lib/bridge/tools';
 import { RunsRepo, type RunEvent } from './repo';
 import { buildAskTool, QUESTION_GUIDANCE } from '@/lib/agents/ask';
 import type { ResumableRun } from '@/lib/agent/stream';
+import { normalizeApprovalMode } from '@/lib/cowork/approval';
 
 /**
  * One implementation of each agent, shared by the web UI (streamed over SSE) and by
@@ -211,9 +212,12 @@ export async function runCoworkTask(o: CoworkTaskOptions): Promise<TaskResult> {
   const { model, modelId, label, provider } = await getAgentModel(o.user, repo, o.prompt, 'planning', o.pinnedModel, (from, to, reason) => send('model_switch', { from, to, reason }), { localStepTimeoutMs: o.localStepTimeoutMs });
   send('react_model', { model: label, provider, providerModelId: modelId });
 
-  const [google, mcp, skills, media, bridge] = await Promise.all([
-    platform.getOAuth(o.user.id, 'google'),
-    buildMcpToolset(repo, o.user.id, { platform, onPendingAction: (a) => send('pending_action', a) }),
+  const prefs = await repo.getUserPreferences(o.user.id).catch(() => null);
+  const google = await platform.getOAuth(o.user.id, 'google');
+  const approval = { mode: normalizeApprovalMode(prefs?.approvalMode), selfEmails: [o.user.email, google?.accountEmail || ''].filter(Boolean) };
+
+  const [mcp, skills, media, bridge] = await Promise.all([
+    buildMcpToolset(repo, o.user.id, { platform, approval, onPendingAction: (a) => send('pending_action', a) }),
     buildSkillTools(platform, o.user.id, 'cowork'),
     buildMediaTools(o.user.id, repo, platform, { enhancer: model, onAsset: (a) => send('media_asset', a) }),
     buildBridgeTools(o.user.id, o.prompt),
@@ -228,6 +232,7 @@ export async function runCoworkTask(o: CoworkTaskOptions): Promise<TaskResult> {
     platform,
     googleConnected: Boolean(google),
     googleEmail: google?.accountEmail,
+    approval,
     extraTools: { ...mcp.tools, ...skills.tools, ...media.tools, ...bridge.tools, ...buildAskTool({ userId: o.user.id, runId: o.runId ?? null, onEvent: send, signal: o.signal }) },
     extraInstructions: [QUESTION_GUIDANCE, mcp.inventory, skills.inventory, media.inventory, bridge.inventory].filter(Boolean).join('\n\n'),
     signal: o.signal,

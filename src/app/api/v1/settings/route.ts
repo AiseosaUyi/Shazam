@@ -17,6 +17,7 @@ const UpdateSettingsSchema = z.object({
   allowPaidFallback: z.boolean().optional(),
   preferLocalModel: z.boolean().optional(),
   director: z.enum(['auto', 'claude', 'codex', 'cursor', 'antigravity', 'arcwork']).optional(),
+  approvalMode: z.enum(['ask', 'smart', 'auto']).optional(),
 });
 
 export async function GET(req: NextRequest) {

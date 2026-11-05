@@ -6,6 +6,7 @@ import { searchGmail, readGmail, createGmailDraft, validateRecipients } from '@/
 import { listCalendarEvents } from '@/lib/google/calendar';
 import { GoogleNotConnectedError } from '@/lib/google/oauth';
 import { describeNow, RECURRENCES } from '@/lib/jobs/recurrence';
+import { proposeOrRun, type ApprovalPolicy } from '@/lib/cowork/approval';
 
 /**
  * Co-Work agent: an assistant that does real work through tools (Gmail, Calendar,
@@ -26,6 +27,8 @@ export interface CoworkAgentOptions extends ResumableRun {
   extraInstructions?: string;
   /** For scheduled runs: there is no user to approve, so only read-only tools are offered. */
   unattended?: boolean;
+  /** Which outward actions may run without asking. Omitted = always ask. */
+  approval?: ApprovalPolicy;
   signal?: AbortSignal;
   onEvent?: (event: string, data: unknown) => void;
 }
@@ -52,7 +55,12 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
 
   const propose = async (kind: string, summary: string, payload: unknown) => {
     if (opts.unattended) return `NOT RUN: "${summary}" needs the user's approval and this is an unattended scheduled run.`;
-    const action = await platform.createPendingAction(userId, kind, summary, payload);
+    const run = await proposeOrRun(platform, userId, kind, summary, payload, opts.approval);
+    const action = run.action;
+    if (run.auto) {
+      onEvent?.('auto_action', { id: action.id, kind, summary, ok: run.ok, result: run.result });
+      return run.ok ? `DONE (ran automatically, it only affects the user): ${run.result}` : `FAILED: ${summary}. ${run.result}`;
+    }
     onEvent?.('pending_action', { id: action.id, kind, summary, payload });
     return `AWAITING USER APPROVAL (action ${action.id}): ${summary}. It has NOT happened yet. Tell the user to review and approve it in the chat.`;
   };
@@ -221,7 +229,7 @@ ${opts.googleConnected ? `Google is connected as ${opts.googleEmail || 'the user
 How to work:
 - Use tools to do the task instead of describing what you would do.
 - Before scheduling, call current_time and convert relative times ("tomorrow 9am") to ISO-8601 with the user's offset.
-- Sending, scheduling, creating events and changing external data go to the user for approval. Tool results say "AWAITING USER APPROVAL": tell the user it is ready for their approval. Never say it was sent or scheduled before approval.
+- Safe actions that only affect the user (their own inbox, calendar and schedule) run immediately and the tool result says DONE. Anything that reaches other people or changes external data waits for approval and the tool result says "AWAITING USER APPROVAL": tell the user it is ready for their approval. Never say something was sent or scheduled unless the tool result says DONE.
 - Write emails completely (greeting, body, sign-off). Never leave placeholders like [Your Name] if you know the name; ask if you do not.
 - Only mention tools, MCP servers and skills that appear in your tool list. If something is not connected, say so plainly.
 - Be concise. Finish with what was done and what is waiting for approval.

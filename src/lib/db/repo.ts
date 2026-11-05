@@ -167,6 +167,7 @@ export class DbRepo {
         allowPaidFallback: false,
         preferLocalModel: true,
         director: 'auto',
+        approvalMode: 'smart',
         updatedAt: now,
       };
     }
@@ -182,6 +183,7 @@ export class DbRepo {
       allowPaidFallback: Boolean(row.allow_paid_fallback),
       preferLocalModel: row.prefer_local_model === undefined || row.prefer_local_model === null ? true : Boolean(row.prefer_local_model),
       director: (row.director as Director) || 'auto',
+      approvalMode: row.approval_mode === 'ask' || row.approval_mode === 'auto' ? row.approval_mode : 'smart',
       updatedAt: row.updated_at,
     };
   }
@@ -191,8 +193,8 @@ export class DbRepo {
     const updated = { ...current, ...prefs, updatedAt: new Date().toISOString() };
     await this.db
       .prepare(
-        `INSERT INTO user_preferences (user_id, default_cost_policy, max_cost_per_task_usd, monthly_budget_usd, privacy_mode, retention_days, allowed_providers, preferred_region, auto_fallback_enabled, allow_paid_fallback, prefer_local_model, director, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO user_preferences (user_id, default_cost_policy, max_cost_per_task_usd, monthly_budget_usd, privacy_mode, retention_days, allowed_providers, preferred_region, auto_fallback_enabled, allow_paid_fallback, prefer_local_model, director, approval_mode, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(user_id) DO UPDATE SET
            default_cost_policy = excluded.default_cost_policy,
            max_cost_per_task_usd = excluded.max_cost_per_task_usd,
@@ -205,6 +207,7 @@ export class DbRepo {
            allow_paid_fallback = excluded.allow_paid_fallback,
            prefer_local_model = excluded.prefer_local_model,
            director = excluded.director,
+           approval_mode = excluded.approval_mode,
            updated_at = excluded.updated_at`
       )
       .bind(
@@ -220,6 +223,7 @@ export class DbRepo {
         updated.allowPaidFallback ? 1 : 0,
         updated.preferLocalModel === false ? 0 : 1,
         updated.director || 'auto',
+        updated.approvalMode || 'smart',
         updated.updatedAt
       )
       .run();
@@ -332,6 +336,29 @@ export class DbRepo {
       cooldownUntil: row.cooldown_until,
       consecutiveErrors: row.consecutive_errors,
     };
+  }
+
+  /** One query for every route's health in the given scopes, keyed `${routeId}|${scope}`. */
+  async getRouteHealthBulk(
+    scopes: string[]
+  ): Promise<Map<string, { cooldownUntil: string | null; consecutiveErrors: number; ewmaLatencyMs: number | null }>> {
+    const out = new Map<string, { cooldownUntil: string | null; consecutiveErrors: number; ewmaLatencyMs: number | null }>();
+    if (scopes.length === 0) return out;
+    const placeholders = scopes.map(() => '?').join(',');
+    const res = await this.db
+      .prepare(
+        `SELECT route_id, scope, cooldown_until, consecutive_errors, ewma_latency_ms FROM route_health WHERE scope IN (${placeholders})`
+      )
+      .bind(...scopes)
+      .all<any>();
+    for (const row of res.results ?? []) {
+      out.set(`${row.route_id}|${row.scope}`, {
+        cooldownUntil: row.cooldown_until,
+        consecutiveErrors: row.consecutive_errors ?? 0,
+        ewmaLatencyMs: row.ewma_latency_ms ?? null,
+      });
+    }
+    return out;
   }
 
   async setRouteCooldown(routeId: string, scope: string, cooldownUntil: string, errorType: string): Promise<void> {

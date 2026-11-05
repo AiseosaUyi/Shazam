@@ -12,7 +12,7 @@ import { LocalAICard } from '@/components/LocalAICard';
 import { AgentClientsCard } from '@/components/AgentClientsCard';
 import { SystemStrip } from '@/components/SystemStrip';
 import { AgentRunsList } from '@/components/AgentRunsList';
-import { DirectorCard } from '@/components/DirectorCard';
+import { DirectorCard, ApprovalModeCard } from '@/components/DirectorCard';
 
 /**
  * One place for everything Arcwork can use: models, apps, your devices, and the assistants
@@ -109,6 +109,7 @@ export default function ConnectionsPage() {
           <section id="assistants" className="scroll-mt-8 space-y-3">
             <h2 className="text-[15px] font-semibold text-ink">Assistants you already pay for</h2>
             <DirectorCard />
+            <ApprovalModeCard />
             <AgentClientsCard />
             <AgentRunsList source="mcp" title="Recent tasks from your assistants" blurb="Work Claude, Codex or Antigravity handed to Arcwork. Open one to watch it live." />
           </section>

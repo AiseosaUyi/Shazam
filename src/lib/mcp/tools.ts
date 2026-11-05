@@ -3,6 +3,7 @@ import type { DbRepo } from '@/lib/db/repo';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { callMcpTool, type McpTool } from './client';
 import type { PlatformRepo } from '@/lib/db/platform-repo';
+import { proposeOrRun, type ApprovalPolicy } from '@/lib/cowork/approval';
 
 /**
  * Exposes every tool of the user's active MCP servers to an AI SDK agent as a real,
@@ -26,7 +27,7 @@ export interface McpToolsetResult {
 export async function buildMcpToolset(
   repo: DbRepo,
   userId: string,
-  opts: { allowMutations?: boolean; platform?: PlatformRepo; onPendingAction?: (action: { id: string; summary: string }) => void } = {}
+  opts: { allowMutations?: boolean; platform?: PlatformRepo; approval?: ApprovalPolicy; onPendingAction?: (action: { id: string; summary: string }) => void } = {}
 ): Promise<McpToolsetResult> {
   const servers = (await repo.getMcpServers(userId)).filter((s) => s.status === 'active');
   const tools: ToolSet = {};
@@ -56,7 +57,9 @@ export async function buildMcpToolset(
           if (mutating && !opts.allowMutations) {
             if (opts.platform) {
               const summary = `${server.name}: ${t.name}(${JSON.stringify(input).slice(0, 300)})`;
-              const action = await opts.platform.createPendingAction(userId, 'mcp_call', summary, { serverId: server.id, tool: t.name, args: input });
+              const run = await proposeOrRun(opts.platform, userId, 'mcp_call', summary, { serverId: server.id, tool: t.name, args: input }, opts.approval);
+              if (run.auto) return `${run.ok ? 'DONE' : 'MCP tool error'}: ${run.result}`;
+              const action = run.action;
               opts.onPendingAction?.({ id: action.id, summary });
               return `AWAITING USER APPROVAL (action ${action.id}): "${t.name}" on ${server.name} changes external data, so it was NOT run yet. Tell the user it is waiting for their approval in the chat.`;
             }

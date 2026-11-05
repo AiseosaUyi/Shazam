@@ -84,3 +84,71 @@ export function DirectorCard() {
     </div>
   );
 }
+
+type ApprovalOption = 'ask' | 'smart' | 'auto';
+
+const APPROVAL_OPTIONS: { value: ApprovalOption; label: string; hint: string }[] = [
+  { value: 'smart', label: 'Smart (recommended)', hint: 'Things that only affect you run on their own (your inbox, your calendar, emails to yourself). Anything that reaches other people or changes an outside system asks first.' },
+  { value: 'ask', label: 'Ask every time', hint: 'Every email, event, schedule and outside change waits for your approval.' },
+  { value: 'auto', label: 'Never ask', hint: 'Co-Work does everything it decides to, including emailing other people. Use with care.' },
+];
+
+export function ApprovalModeCard() {
+  const [mode, setMode] = useState<ApprovalOption>('smart');
+  const savedRef = useRef<ApprovalOption>('smart');
+  const [status, setStatus] = useState<'saved' | 'error' | null>(null);
+
+  useEffect(() => {
+    fetch('/api/v1/settings')
+      .then((r) => (r.ok ? r.json() : { preferences: {} }))
+      .then((d) => {
+        const v = d.preferences?.approvalMode;
+        if (APPROVAL_OPTIONS.some((o) => o.value === v)) {
+          setMode(v);
+          savedRef.current = v;
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function select(value: ApprovalOption) {
+    setMode(value);
+    setStatus(null);
+    try {
+      const res = await fetch('/api/v1/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalMode: value }),
+      });
+      if (!res.ok) throw new Error('fail');
+      savedRef.current = value;
+      setStatus('saved');
+      setTimeout(() => setStatus(null), 2000);
+    } catch {
+      setMode(savedRef.current);
+      setStatus('error');
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-line/[0.08] bg-surface p-4 space-y-4">
+      <div>
+        <p className="text-sm font-semibold text-ink">Approvals</p>
+        <p className="text-xs text-ink-2">How often Co-Work stops to ask before acting.</p>
+      </div>
+      <div role="radiogroup" className="space-y-2">
+        {APPROVAL_OPTIONS.map((opt) => (
+          <label key={opt.value} className={`flex items-start gap-2 rounded-xl border border-line/[0.06] p-2.5 cursor-pointer ${mode === opt.value ? 'border-brand/40 bg-brand/[0.05]' : ''}`}>
+            <input type="radio" name="approval-mode" value={opt.value} checked={mode === opt.value} onChange={() => select(opt.value)} className="mt-1 shrink-0 accent-brand" />
+            <div>
+              <p className={`text-[13px] font-medium ${mode === opt.value ? 'text-brand' : 'text-ink'}`}>{opt.label}</p>
+              <p className="text-[11px] text-ink-3">{opt.hint}</p>
+            </div>
+          </label>
+        ))}
+      </div>
+      {status === 'error' && <p className="text-[11px] text-red-400">Couldn't save. Try again.</p>}
+      {status === 'saved' && <p className="text-[11px] text-ink-3">Saved.</p>}
+    </div>
+  );
+}
