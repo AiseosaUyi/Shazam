@@ -396,7 +396,7 @@ function showApprovalBar(title, message, sensitive) {
     style.textContent = `
       :host { position: fixed; top: 0; left: 0; right: 0; z-index: 2147483647; }
       .bar { background: #111; color: #fff; font: 14px system-ui, -apple-system, sans-serif; padding: 10px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-      .msg { flex: 1; min-width: 200px; }
+      .msg { flex: 1; min-width: 200px; white-space: pre-wrap; }
       .msg strong { color: #f59e0b; }
       button { background: #f59e0b; color: #111; border: none; padding: 6px 14px; border-radius: 4px; font: 600 13px system-ui; cursor: pointer; }
       button.secondary { background: #374151; color: #fff; }
@@ -408,11 +408,12 @@ function showApprovalBar(title, message, sensitive) {
 
     // Bar content
     const bar = document.createElement('div');
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     bar.className = 'bar';
     bar.innerHTML = `
-      <div class="msg"><strong>${title}</strong> ${message}${sensitive ? '<span class="sensitive-badge">SENSITIVE</span>' : ''}</div>
+      <div class="msg"><strong>${esc(title)}</strong> ${esc(message)}${sensitive ? '<span class="sensitive-badge">SENSITIVE</span>' : ''}</div>
       <button data-choice="once">Allow once</button>
-      ${!sensitive ? '<button data-choice="site" class="secondary">Allow for this site</button>' : ''}
+      ${!sensitive ? '<button data-choice="site" class="secondary">Always allow this site</button><button data-choice="hour" class="secondary">Allow all sites for 1 hour</button>' : ''}
       <button data-choice="deny" class="danger">Deny</button>
     `;
     shadow.appendChild(bar);
@@ -439,6 +440,13 @@ async function askApproval(title, message, label = '', forceAsk = false) {
 
   const sensitive = /\b(submit|apply|pay|purchase|buy|place order|checkout|confirm|delete|remove|send|publish|post|transfer|withdraw|subscribe)\b/i.test(title + ' ' + message + ' ' + label);
 
+  // Check allowAllUntil from previous "hour" grant
+  const { allowAllUntil = 0 } = await chrome.storage.session.get('allowAllUntil');
+  if (!sensitive && !forceAsk && allowAllUntil > Date.now()) {
+    await log(`auto-approved (hour) on ${host}`);
+    return true;
+  }
+
   // Check allowedHosts in session storage
   const { allowedHosts = [] } = await chrome.storage.session.get('allowedHosts');
   if (!sensitive && !forceAsk && host && allowedHosts.includes(host)) {
@@ -456,6 +464,7 @@ async function askApproval(title, message, label = '', forceAsk = false) {
   // Show in-page approval bar
   try {
     await chrome.tabs.update(tab.id, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true, drawAttention: true }).catch(() => {});
     const [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: showApprovalBar,
@@ -464,8 +473,16 @@ async function askApproval(title, message, label = '', forceAsk = false) {
     const choice = res?.result;
 
     if (choice === 'site') {
-      allowedHosts.push(host);
-      await chrome.storage.session.set({ allowedHosts });
+      const s = await settings();
+      const hosts = Array.isArray(s.autoApproveHosts) ? s.autoApproveHosts.slice() : [];
+      if (host && !hosts.includes(host)) { hosts.push(host); }
+      await chrome.storage.local.set({ autoApproveHosts: hosts });
+      log(`always allowed ${host}`);
+      return true;
+    }
+    if (choice === 'hour') {
+      await chrome.storage.session.set({ allowAllUntil: Date.now() + 3600000 });
+      log('all sites allowed for 1 hour');
       return true;
     }
     if (choice === 'once') return true;
