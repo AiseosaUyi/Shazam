@@ -16,6 +16,7 @@ import { RunsRepo, type RunEvent } from './repo';
 import { buildAskTool, QUESTION_GUIDANCE } from '@/lib/agents/ask';
 import type { ResumableRun } from '@/lib/agent/stream';
 import { normalizeApprovalMode } from '@/lib/cowork/approval';
+import { errMessage } from '@/lib/errors';
 
 /**
  * One implementation of each agent, shared by the web UI (streamed over SSE) and by
@@ -152,10 +153,10 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
       const out = await callDevice(o.user.id, 'desktop', command, payload, { timeoutMs, signal: o.signal });
       const text = typeof out.result === 'string' ? out.result : JSON.stringify(out.result);
       return out.ok ? text : `Error: ${text}`;
-    } catch (err: any) {
+    } catch (err) {
       if (o.signal?.aborted) throw err;
       // A brief disconnect must not end the run: tell the model, which can retry the step.
-      return `Error: ${err?.message || err} Wait a moment and retry this step.`;
+      return `Error: ${errMessage(err) || err} Wait a moment and retry this step.`;
     }
   };
   const { loadProjectMemory } = await import('./project-memory');

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Zap, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
+import { errMessage } from '@/lib/errors';
 
 export default function SignupPage() {
   const [email, setEmail] = useState('');
@@ -45,8 +46,8 @@ export default function SignupPage() {
 
       router.push('/onboarding');
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMessage(err));
     } finally {
       setLoading(false);
     }

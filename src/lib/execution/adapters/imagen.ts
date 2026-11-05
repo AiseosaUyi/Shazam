@@ -2,6 +2,7 @@ import type { StreamChunk } from '@/lib/types';
 import type { ExecuteOptions, AdapterResult } from './openai-compatible';
 import { normalizeProviderError } from './error';
 import { createTimeoutSignal } from './model-resolver';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Google Official Multimodal Image Generation Adapter ("Nano Banana" / Gemini Image)
@@ -218,11 +219,11 @@ export async function executeGoogleImagen(options: ExecuteOptions): Promise<Adap
             break;
           }
         }
-      } catch (innerErr: any) {
+      } catch (innerErr) {
         if (signal?.aborted) {
           throw new Error('Task cancelled');
         }
-        lastErrorText = innerErr.message || String(innerErr);
+        lastErrorText = errMessage(innerErr) || String(innerErr);
       }
     }
   } finally {

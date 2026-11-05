@@ -43,7 +43,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
       }),
       signal: timedSignal,
     });
-  } catch (err: any) {
+  } catch (err) {
     cleanup();
     if (signal?.aborted) throw new Error('Task cancelled');
     throw normalizeProviderError('Google', err);
@@ -73,7 +73,7 @@ export async function executeGemini(options: ExecuteOptions): Promise<AdapterRes
         }),
         signal: fbSignal,
       });
-    } catch (err: any) {
+    } catch (err) {
       fbCleanup();
       if (signal?.aborted) throw new Error('Task cancelled');
       throw normalizeProviderError('Google', err);

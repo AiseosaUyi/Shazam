@@ -2,6 +2,7 @@ import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { put } from '@vercel/blob';
 import { BridgeRepo, callDevice, BridgeOfflineError } from './repo';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Agent tools backed by the user's own devices:
@@ -33,8 +34,8 @@ function fmt(out: { ok: boolean; result: any }): string {
 async function run(userId: string, kind: 'desktop' | 'browser', command: string, payload: unknown, timeoutMs = 120_000, signal?: AbortSignal): Promise<string> {
   try {
     return fmt(await callDevice(userId, kind, command, payload, { timeoutMs, signal }));
-  } catch (err: any) {
-    return err instanceof BridgeOfflineError ? err.message : `Error: ${err.message || err}`;
+  } catch (err) {
+    return err instanceof BridgeOfflineError ? errMessage(err) : `Error: ${errMessage(err) || err}`;
   }
 }
 
@@ -118,8 +119,8 @@ Use local_* tools to work in those folders with the user's own git credentials (
           if (!out.ok || !dataUrl?.startsWith('data:image/')) return fmt(out);
           const blob = await put(`screens/${userId}/${Date.now()}.jpg`, Buffer.from(dataUrl.split(',')[1], 'base64'), { access: 'public', addRandomSuffix: true, contentType: 'image/jpeg' });
           return `Screenshot: ![screenshot](${blob.url})`;
-        } catch (err: any) {
-          return err instanceof BridgeOfflineError ? err.message : `Error: ${err.message || err}`;
+        } catch (err) {
+          return err instanceof BridgeOfflineError ? errMessage(err) : `Error: ${errMessage(err) || err}`;
         }
       },
     });

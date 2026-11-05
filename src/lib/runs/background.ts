@@ -4,6 +4,7 @@ import { RunsRepo, type AgentRun, type RunAgent, type RunOptions } from './repo'
 import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
 import { BridgeOfflineError } from '@/lib/bridge/repo';
 import { isRetryableModelError } from '@/lib/agent/fallback';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Background runs outlive one serverless invocation. The function hosting a run is killed
@@ -106,7 +107,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       // Link the auto-created project so feedback continues in the same files.
       await runs.setProject(user.id, run.id, out.projectId);
     }
-  } catch (err: any) {
+  } catch (err) {
     await rec.flush();
     await runs.setLease(user.id, run.id, null);
     // A resumed run that finds the computer briefly offline waits for the next resume instead of failing.
@@ -127,7 +128,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       });
       return;
     }
-    await runs.update(user.id, run.id, { status: 'error', error: err.message || String(err), events: rec.events });
+    await runs.update(user.id, run.id, { status: 'error', error: errMessage(err) || String(err), events: rec.events });
   }
 }
 

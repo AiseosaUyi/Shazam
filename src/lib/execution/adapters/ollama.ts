@@ -46,7 +46,7 @@ export async function executeOllama(options: ExecuteOptions): Promise<AdapterRes
       }),
       signal,
     });
-  } catch (err: any) {
+  } catch (err) {
     if (signal?.aborted) throw new Error('Task cancelled by user');
     throw new Error(
       `Ollama local inference unavailable on ${OLLAMA_BASE_URL}. Ensure Ollama is running ('ollama serve' or launch Ollama desktop).`

@@ -2,6 +2,7 @@ import { generateImage, generateText, type LanguageModel } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { put } from '@vercel/blob';
 import type { PlatformRepo, MediaAsset } from '@/lib/db/platform-repo';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Image generation pipeline:
@@ -142,8 +143,8 @@ export async function generateAndStoreImage(req: ImageRequest, platform: Platfor
       mimeType = r.mimeType;
       provider = 'Google Nano Banana';
       model = r.model;
-    } catch (err: any) {
-      errors.push(err.message);
+    } catch (err) {
+      errors.push(errMessage(err));
     }
   }
 
@@ -158,8 +159,8 @@ export async function generateAndStoreImage(req: ImageRequest, platform: Platfor
       mimeType = image.mediaType || 'image/png';
       provider = 'OpenAI';
       model = 'gpt-image-1';
-    } catch (err: any) {
-      errors.push(`OpenAI: ${err.message}`);
+    } catch (err) {
+      errors.push(`OpenAI: ${errMessage(err)}`);
     }
   }
 
@@ -178,8 +179,8 @@ export async function generateAndStoreImage(req: ImageRequest, platform: Platfor
         provider = 'Vercel AI Gateway';
         model = GATEWAY_IMAGE_MODEL;
         billedTo = 'platform';
-      } catch (err: any) {
-        errors.push(`${GATEWAY_IMAGE_MODEL}: ${err.message}`);
+      } catch (err) {
+        errors.push(`${GATEWAY_IMAGE_MODEL}: ${errMessage(err)}`);
       }
     }
   }

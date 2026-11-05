@@ -5,6 +5,7 @@ import { sendGmail, validateRecipients } from '@/lib/google/gmail';
 import { createCalendarEvent } from '@/lib/google/calendar';
 import { callMcpTool } from '@/lib/mcp/client';
 import { alignFirstRun } from '@/lib/jobs/recurrence';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Executes an action the user explicitly approved. Agents can only *propose* outward
@@ -59,7 +60,7 @@ export async function executeApprovedAction(action: PendingAction, platform = ne
       default:
         return { ok: false, result: `Unknown action type "${action.kind}".` };
     }
-  } catch (err: any) {
-    return { ok: false, result: err.message || String(err) };
+  } catch (err) {
+    return { ok: false, result: errMessage(err) || String(err) };
   }
 }

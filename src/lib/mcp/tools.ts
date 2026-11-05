@@ -4,6 +4,7 @@ import { decryptSecret } from '@/lib/crypto/vault';
 import { callMcpTool, type McpTool } from './client';
 import type { PlatformRepo } from '@/lib/db/platform-repo';
 import { proposeOrRun, type ApprovalPolicy } from '@/lib/cowork/approval';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Exposes every tool of the user's active MCP servers to an AI SDK agent as a real,
@@ -68,8 +69,8 @@ export async function buildMcpToolset(
           try {
             const result = await callMcpTool({ url: server.url, authToken }, t.name, (input as Record<string, unknown>) || {});
             return `${result.isError ? 'MCP tool error: ' : ''}${result.text.slice(0, 12000) || '(empty result)'}`;
-          } catch (err: any) {
-            return `MCP call failed: ${err.message || err}`;
+          } catch (err) {
+            return `MCP call failed: ${errMessage(err) || err}`;
           }
         },
       });

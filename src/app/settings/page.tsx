@@ -32,6 +32,7 @@ import {
   Info,
 } from 'lucide-react';
 import type { UserPreferences } from '@/lib/types';
+import { errMessage } from '@/lib/errors';
 
 interface McpServer {
   id: string;
@@ -281,8 +282,8 @@ export default function SettingsPage() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMessage(err));
     } finally {
       setSaving(false);
     }
@@ -315,8 +316,8 @@ export default function SettingsPage() {
       } else {
         setMcpError(data.error || 'Failed to connect MCP server.');
       }
-    } catch (err: any) {
-      setMcpError(err.message || 'Network error.');
+    } catch (err) {
+      setMcpError(errMessage(err) || 'Network error.');
     } finally {
       setAddingMcp(false);
     }

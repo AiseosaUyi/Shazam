@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { validateFilePath } from './policy';
 import { buildProjectIndex } from './indexer';
 import type { ProjectSandbox } from './sandbox';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Native tool-calling coding agent (Claude Code / OpenCode style) on the AI SDK.
@@ -265,8 +266,8 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
           commandsRun.push({ command, exitCode: result.exitCode });
           const out = result.output.length > 8000 ? `…(truncated)\n${result.output.slice(-8000)}` : result.output;
           return `$ ${command}\nexit code: ${result.exitCode}\n${out || '(no output)'}`;
-        } catch (err: any) {
-          return `Command could not run: ${err.message || err}`;
+        } catch (err) {
+          return `Command could not run: ${errMessage(err) || err}`;
         }
       },
     }),
@@ -306,8 +307,8 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
           const r = await sandbox.startPreview(command, port);
           onEvent?.('preview', { url: r.url });
           return `Preview running at ${r.url}\n${r.output.slice(-2000)}`;
-        } catch (err: any) {
-          return `Error: preview failed: ${err.message || err}`;
+        } catch (err) {
+          return `Error: preview failed: ${errMessage(err) || err}`;
         }
       },
     });

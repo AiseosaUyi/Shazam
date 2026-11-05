@@ -7,6 +7,7 @@ import { sandboxAvailable } from '@/lib/agent/sandbox';
 import { generateAndStoreImage, gatewayAvailable } from './image';
 import { VideoEditor, buildSrt } from './video';
 import { videoReviewNotes } from './review';
+import { errMessage } from '@/lib/errors';
 
 async function userKey(repo: DbRepo, userId: string, provider: string): Promise<string | null> {
   const cred = await repo.getCredential(userId, provider);
@@ -41,8 +42,8 @@ export async function buildMediaTools(
           );
           opts.onAsset?.({ id: r.asset.id, kind: 'image', url: r.asset.url, prompt, model: r.asset.model });
           return `Image created with ${r.provider} (${r.model}).\n![${prompt.replace(/[\[\]]/g, '').slice(0, 80)}](${r.asset.url})\nURL: ${r.asset.url}${r.enhanced ? `\nExpanded prompt: ${r.finalPrompt}` : ''}`;
-        } catch (err: any) {
-          return `Error: image generation failed: ${err.message}`;
+        } catch (err) {
+          return `Error: image generation failed: ${errMessage(err)}`;
         }
       },
     });
@@ -70,8 +71,8 @@ export async function buildMediaTools(
           const r = await new VideoEditor(userId).edit(source_url, operations as any, platform, title || 'Edited video');
           opts.onAsset?.({ id: r.asset.id, kind: 'video', url: r.asset.url, prompt: title, model: r.asset.model });
           return `Video rendered (${r.durationSeconds.toFixed(1)}s).\nSteps:\n- ${r.log.join('\n- ')}\nURL: ${r.asset.url}\n\n${videoReviewNotes(r.durationSeconds, operations as any)}`;
-        } catch (err: any) {
-          return `Error: video edit failed: ${err.message}`;
+        } catch (err) {
+          return `Error: video edit failed: ${errMessage(err)}`;
         }
       },
     });
@@ -83,8 +84,8 @@ export async function buildMediaTools(
           const editor = new VideoEditor(userId);
           const r = await editor.transcribeUrl(source_url);
           return `Transcript (${r.durationInSeconds?.toFixed?.(1) ?? '?'}s):\n${buildSrt(r.segments as any, 12, 6).slice(0, 15000)}`;
-        } catch (err: any) {
-          return `Error: transcription failed: ${err.message}`;
+        } catch (err) {
+          return `Error: transcription failed: ${errMessage(err)}`;
         }
       },
     });

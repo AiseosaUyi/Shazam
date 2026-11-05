@@ -34,7 +34,7 @@ export async function executeAnthropic(options: ExecuteOptions): Promise<Adapter
       }),
       signal: timedSignal,
     });
-  } catch (err: any) {
+  } catch (err) {
     cleanup();
     if (signal?.aborted) throw new Error('Task cancelled');
     throw normalizeProviderError('Anthropic', err);

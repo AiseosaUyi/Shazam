@@ -5,6 +5,7 @@ import { dispatchExecution } from './dispatcher';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { envFlag, envVar } from '@/lib/env';
 import { buildProjectIndex } from '@/lib/agent/indexer';
+import { errMessage } from '@/lib/errors';
 import type {
   CostPolicy,
   TaskClass,
@@ -13,6 +14,7 @@ import type {
   User,
   ChatMessage,
   StreamChunk,
+  ProviderError,
 } from '@/lib/types';
 
 
@@ -160,8 +162,8 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
   let currentResolution: RouteResolution;
   try {
     currentResolution = await resolveTaskRoute(taskSpec, user, repo);
-  } catch (err: any) {
-    onEvent('error', { message: err.message || 'Routing failed.' });
+  } catch (err) {
+    onEvent('error', { message: errMessage(err) || 'Routing failed.' });
     throw err;
   }
 
@@ -370,7 +372,8 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
       });
 
       return;
-    } catch (err: any) {
+    } catch (caught) {
+      const err = caught as ProviderError;
       const latencyMs = Date.now() - attemptStart;
 
       if (signal?.aborted) {
@@ -518,7 +521,7 @@ async function runImageTask(opts: { user: User; repo: DbRepo; prompt: string; co
     await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId, role: 'assistant', content: text });
     await repo.touchConversation(user.id, conversationId);
     onEvent('done', { fullText: text, usage: { promptTokens: 0, completionTokens: 0, tokensKind: 'estimated' }, costUSD: 0, costKind: 'estimated' });
-  } catch (err: any) {
-    onEvent('error', { message: err.message || 'Image generation failed.' });
+  } catch (err) {
+    onEvent('error', { message: errMessage(err) || 'Image generation failed.' });
   }
 }

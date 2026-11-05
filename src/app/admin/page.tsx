@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Power, CheckCircle2, AlertCircle, RefreshCw, Lock } from 'lucide-react';
 import type { Provider, CatalogRoute } from '@/lib/types';
+import { errMessage } from '@/lib/errors';
 import { AdminWaitlist } from '@/components/AdminWaitlist';
 
 export default function AdminPage() {
@@ -39,8 +40,8 @@ export default function AdminPage() {
       setRoutes(catJson.routes || []);
       setOverrides(overJson.overrides || []);
       setAuditEvents(auditJson.auditEvents || []);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(errMessage(e));
     } finally {
       setLoading(false);
     }
@@ -69,8 +70,8 @@ export default function AdminPage() {
       setActionStatus(`Updated ${targetType} "${targetId}" to ${nextStatus}.`);
       setTimeout(() => setActionStatus(null), 3000);
       await loadData();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(errMessage(e));
     }
   };
 

@@ -34,6 +34,7 @@ import { SystemStrip } from '@/components/SystemStrip';
 import { AgentSuggestion } from '@/components/AgentSuggestion';
 import { StepList, formatWhen, type ToolStep } from '@/components/agent/StepList';
 import { QuestionCard, PlanCard } from '@/components/agent/AgentCards';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Co-Work: a real tool-using assistant. Every step shown here is an actual tool call;
@@ -252,8 +253,8 @@ export default function CoWorkPage() {
       try {
         const blob = await upload(`uploads/${user.id}/${file.name}`, file, { access: 'public', handleUploadUrl: '/api/v1/media/upload' });
         setAttachments((prev) => [...prev, { name: file.name, url: blob.url, type: file.type }]);
-      } catch (err: any) {
-        dialog.alert({ title: 'Upload failed', body: String(err.message || err) });
+      } catch (err) {
+        dialog.alert({ title: 'Upload failed', body: String(errMessage(err) || err) });
       } finally {
         setUploading(null);
       }
@@ -363,8 +364,8 @@ export default function CoWorkPage() {
           }
         }
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') error = err.message || 'Something went wrong.';
+    } catch (err) {
+      if ((err as { name?: string })?.name !== 'AbortError') error = errMessage(err) || 'Something went wrong.';
     } finally {
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: output, steps: [...steps], actions: [...actions], error }]);
       setLiveText('');
@@ -410,8 +411,8 @@ export default function CoWorkPage() {
           { id: crypto.randomUUID(), role: 'assistant', content: `Started in the background. It keeps running even if you close this tab. [Watch it live](/runs/${runId})` },
         ]);
       }
-    } catch (err: any) {
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: '', error: err?.message || 'Could not start the background task.' }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: '', error: errMessage(err) || 'Could not start the background task.' }]);
     }
   }
 

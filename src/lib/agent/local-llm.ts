@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { callDevice, type BridgeDevice } from '@/lib/bridge/repo';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Local LLMs (Ollama / LM Studio) on the user's own computer, reached through the desktop
@@ -81,11 +82,11 @@ export function createLocalModel(userId: string, device: BridgeDevice, model: Lo
         const out = await callDevice(userId, 'desktop', 'llm_http', { url: target, method: init?.method || 'POST', body, timeoutMs: timeoutMs - 5000 }, { timeoutMs, signal });
         if (!out.ok && TIMEOUT_RX.test(String(out.result))) return { timedOut: true as const };
         return { timedOut: false as const, out };
-      } catch (err: any) {
+      } catch (err) {
         if (signal?.aborted) throw err;
-        if (TIMEOUT_RX.test(String(err?.message))) return { timedOut: true as const };
+        if (TIMEOUT_RX.test(String(errMessage(err)))) return { timedOut: true as const };
         // The computer went offline mid-run: let this step move to a cloud model (503 is retryable).
-        return { timedOut: false as const, out: { ok: false, result: `local model unavailable: ${err?.message || err}`, status: 503 } };
+        return { timedOut: false as const, out: { ok: false, result: `local model unavailable: ${errMessage(err) || err}`, status: 503 } };
       }
     };
 

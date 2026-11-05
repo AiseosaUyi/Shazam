@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import type { ProjectSandbox } from './sandbox';
+import { errMessage } from '@/lib/errors';
 
 /**
  * GitHub from the cloud sandbox, using the user's own fine-grained token (Connections →
@@ -39,8 +40,8 @@ export function buildGithubTools(token: string, sandbox: ProjectSandbox, files: 
           const me = await gh(token, '/user');
           try {
             await gh(token, `/repos/${repo}`);
-          } catch (err: any) {
-            if (!create_if_missing || !/404/.test(err.message)) throw err;
+          } catch (err) {
+            if (!create_if_missing || !/404/.test(errMessage(err))) throw err;
             const [owner, name] = repo.split('/');
             await gh(token, owner === me.login ? '/user/repos' : `/orgs/${owner}/repos`, { method: 'POST', body: JSON.stringify({ name, private: isPrivate !== false, auto_init: false }) });
           }
@@ -60,8 +61,8 @@ export function buildGithubTools(token: string, sandbox: ProjectSandbox, files: 
           ].join('\n');
           const r = await sandbox.run(script, 120_000, undefined, { GH_TOKEN: token });
           return redact(`exit code: ${r.exitCode}\n${r.output}\n${r.exitCode === 0 ? `Pushed to https://github.com/${repo}/tree/${branch}` : ''}`);
-        } catch (err: any) {
-          return redact(`Error: ${err.message}`);
+        } catch (err) {
+          return redact(`Error: ${errMessage(err)}`);
         }
       },
     }),
@@ -74,8 +75,8 @@ export function buildGithubTools(token: string, sandbox: ProjectSandbox, files: 
           const info = await gh(token, `/repos/${repo}`);
           const pr = await gh(token, `/repos/${repo}/pulls`, { method: 'POST', body: JSON.stringify({ head, base: base || info.default_branch, title, body: body || '' }) });
           return `Opened PR #${pr.number}: ${pr.html_url}`;
-        } catch (err: any) {
-          return redact(`Error: ${err.message}`);
+        } catch (err) {
+          return redact(`Error: ${errMessage(err)}`);
         }
       },
     }),

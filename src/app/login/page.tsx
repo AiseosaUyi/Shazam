@@ -5,6 +5,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Zap, ArrowRight, AlertCircle } from 'lucide-react';
+import { errMessage } from '@/lib/errors';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -49,8 +50,8 @@ export default function LoginPage() {
       const next = new URLSearchParams(window.location.search).get('next') || '';
       router.push(/^\/(?!\/)[\w\-./?=&%]*$/.test(next) ? next : '/agent');
       router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMessage(err));
     } finally {
       setLoading(false);
     }

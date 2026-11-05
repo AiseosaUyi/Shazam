@@ -59,7 +59,7 @@ export async function executeOpenAICompatible(options: ExecuteOptions, endpoint:
       }),
       signal: timedSignal,
     });
-  } catch (err: any) {
+  } catch (err) {
     cleanup();
     if (signal?.aborted) throw new Error('Task cancelled');
     throw normalizeProviderError(route.providerId, err);

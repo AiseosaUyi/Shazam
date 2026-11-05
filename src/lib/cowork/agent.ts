@@ -7,6 +7,7 @@ import { listCalendarEvents } from '@/lib/google/calendar';
 import { GoogleNotConnectedError } from '@/lib/google/oauth';
 import { describeNow, RECURRENCES } from '@/lib/jobs/recurrence';
 import { proposeOrRun, type ApprovalPolicy } from '@/lib/cowork/approval';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Co-Work agent: an assistant that does real work through tools (Gmail, Calendar,
@@ -44,9 +45,9 @@ function parseFutureDate(iso: string): Date {
 const googleGuard = async <T>(fn: () => Promise<T>): Promise<T | string> => {
   try {
     return await fn();
-  } catch (err: any) {
+  } catch (err) {
     if (err instanceof GoogleNotConnectedError) return err.message;
-    return `Error: ${err.message || err}`;
+    return `Error: ${errMessage(err) || err}`;
   }
 };
 
@@ -118,8 +119,8 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
           return await propose('schedule_task', `Schedule task "${title}" at ${when.toISOString()}${recurrence ? ` repeating ${recurrence}` : ''}`, {
             title, prompt, runAt: when.toISOString(), recurrence, timezone, emailResultTo: email_result_to,
           });
-        } catch (err: any) {
-          return `Error: ${err.message}`;
+        } catch (err) {
+          return `Error: ${errMessage(err)}`;
         }
       },
     });
@@ -169,8 +170,8 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
           execute: async ({ to, cc, subject, body, thread_id }) => {
             try {
               validateRecipients([...to, ...(cc || [])]);
-            } catch (err: any) {
-              return `Error: ${err.message}`;
+            } catch (err) {
+              return `Error: ${errMessage(err)}`;
             }
             return propose('gmail_send', `Send "${subject}" to ${to.join(', ')}`, { to, cc, subject, body, threadId: thread_id });
           },
@@ -190,8 +191,8 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
               return await propose('schedule_email', `Schedule "${subject}" to ${to.join(', ')} for ${local}${recurrence ? `, repeating ${recurrence}` : ''}`, {
                 to, cc, subject, body, sendAt: when.toISOString(), recurrence, timezone,
               });
-            } catch (err: any) {
-              return `Error: ${err.message}`;
+            } catch (err) {
+              return `Error: ${errMessage(err)}`;
             }
           },
         }),
@@ -208,8 +209,8 @@ export async function runCoworkAgent(opts: CoworkAgentOptions): Promise<{ text: 
           execute: async ({ summary, description, start, end, attendees, add_meet }) => {
             try {
               parseFutureDate(start);
-            } catch (err: any) {
-              return `Error: ${err.message}`;
+            } catch (err) {
+              return `Error: ${errMessage(err)}`;
             }
             return propose('calendar_create', `Create event "${summary}" ${start} → ${end}${attendees?.length ? ` with ${attendees.join(', ')}` : ''}`, {
               summary, description, start, end, timeZone: timezone, attendees, addMeet: add_meet,

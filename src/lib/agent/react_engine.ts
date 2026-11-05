@@ -7,6 +7,7 @@
 import { parsePatchesFromText, applySearchReplace, type SearchReplacePatch } from './patcher';
 import { buildProjectIndex } from './indexer';
 import { validateFilePath } from './policy';
+import { errMessage } from '@/lib/errors';
 
 export interface AgentTool {
   name: string;
@@ -359,8 +360,8 @@ export async function executeReActLoop(
         observation = `Unknown tool: "${tool}". Supported tools: ${AGENT_TOOLS.map((t) => t.name).join(', ')}`;
         isError = true;
       }
-    } catch (err: any) {
-      observation = `Execution Exception in ${tool}: ${err.message}`;
+    } catch (err) {
+      observation = `Execution Exception in ${tool}: ${errMessage(err)}`;
       isError = true;
     }
 

@@ -6,6 +6,7 @@ import { getAgentModel } from '@/lib/agent/resolve';
 import { runCoworkAgent } from '@/lib/cowork/agent';
 import { buildMcpToolset } from '@/lib/mcp/tools';
 import { buildSkillTools } from '@/lib/skills';
+import { errMessage } from '@/lib/errors';
 
 /** Executes one claimed job. Scheduled agent tasks run read-only (no one is there to approve). */
 async function executeJob(job: ScheduledJob, platform: PlatformRepo): Promise<string> {
@@ -54,8 +55,8 @@ export async function runDueJobs(limit = 10): Promise<Array<{ id: string; ok: bo
       const output = await executeJob(job, platform);
       await platform.finishJob(job, { ok: true, output, nextRunAt: nextOccurrence(job.runAt, job.recurrence, job.timezone) });
       results.push({ id: job.id, ok: true, output });
-    } catch (err: any) {
-      const output = err.message || String(err);
+    } catch (err) {
+      const output = errMessage(err) || String(err);
       await platform.finishJob(job, { ok: false, output });
       results.push({ id: job.id, ok: false, output });
     }

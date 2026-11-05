@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import type { CostPolicy, TaskClass, Model } from '@/lib/types';
+import { errMessage } from '@/lib/errors';
 
 interface Message {
   id: string;
@@ -465,8 +466,8 @@ export default function WorkspacePage() {
                 } else if (eventType === 'error') {
                   throw new Error(data.message || 'Execution error');
                 }
-              } catch (e: any) {
-                if (e.message && e.message !== 'Unexpected token') throw e;
+              } catch (e) {
+                if (errMessage(e) && errMessage(e) !== 'Unexpected token') throw e;
               }
             }
           }
@@ -533,8 +534,8 @@ export default function WorkspacePage() {
             } else if (eventType === 'error') {
               throw new Error(data.message || 'Execution error');
             }
-          } catch (e: any) {
-            if (e.message && e.message !== 'Unexpected token') {
+          } catch (e) {
+            if (errMessage(e) && errMessage(e) !== 'Unexpected token') {
               throw e;
             }
           }
@@ -557,13 +558,13 @@ export default function WorkspacePage() {
       }
       setStreamingText('');
       setStreamingReasoning('');
-    } catch (err: any) {
+    } catch (err) {
       setStreamingText('');
       setStreamingReasoning('');
-      if (err.name === 'AbortError') {
+      if ((err as { name?: string })?.name === 'AbortError') {
         // aborted cleanly
       } else {
-        const rawMsg = err.message || 'Execution failed.';
+        const rawMsg = errMessage(err) || 'Execution failed.';
         let userMessage = 'Unable to complete this request.';
         let subtext: string | undefined = undefined;
         let fixAction: string | undefined = undefined;
