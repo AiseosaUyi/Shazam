@@ -17,7 +17,8 @@ Shazam AI allows users to access multiple AI models through a unified, high-perf
   - Active rate-limit cooldown and error-rate drop.
   - Credential availability check (BYOK or system default).
 - **Stage 2 (Normalized Scoring Engine):**
-  $$\text{Score} = w_q \cdot \text{Quality} + w_h \cdot \text{Health} + w_l \cdot \text{Latency} + w_c \cdot \text{Cost} + w_{qta} \cdot \text{QuotaConfidence} + w_p \cdot \text{Privacy}$$
+  $$\text{Score} = w_q \cdot \text{Quality} + w_h \cdot \text{Health} + w_l \cdot \text{Latency} + w_c \cdot \text{Cost} + w_{qta} \cdot \text{QuotaConfidence}$$
+  Health comes from consecutive errors, latency from the observed EWMA per route. Privacy is enforced as a hard filter in Stage 1, not as a score term.
   Weights are tuned according to user policy (`balanced`, `free_only`, `lowest_cost`, `best_quality`, `manual_pin`).
 
 ### 2. Multi-Provider Ecosystem & Verified Model Matrix (2026-10-27 Audit)

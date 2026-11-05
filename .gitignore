@@ -19,3 +19,7 @@ dist-desktop
 .shazam-token
 .vercel
 .env*
+.gstack/
+scratch/
+reports/
+.agents/
