@@ -51,18 +51,20 @@ export async function resolveTaskRoute(
 
   const canUseSystemKeys = user.role === 'admin' || envFlag('SHAZAM_SHARE_SYSTEM_KEYS', false);
 
-  // Cooldowns
+  // Cooldowns and health: one query instead of two per route (the catalogue has dozens of routes,
+  // so the old loop made 60+ sequential DB round trips before every single request).
+  const healthRows = await repo.getRouteHealthBulk([user.id, 'global']);
   const activeCooldowns = new Map<string, string>();
+  const routeHealth = new Map<string, { consecutiveErrors: number; ewmaLatencyMs: number | null }>();
   for (const r of catalog.routes) {
-    const userHealth = await repo.getRouteHealth(r.id, user.id);
-    if (userHealth?.cooldownUntil && new Date(userHealth.cooldownUntil).getTime() > Date.now()) {
-      activeCooldowns.set(r.id, userHealth.cooldownUntil);
-      continue;
-    }
-    const globalHealth = await repo.getRouteHealth(r.id, 'global');
-    if (globalHealth?.cooldownUntil && new Date(globalHealth.cooldownUntil).getTime() > Date.now()) {
-      activeCooldowns.set(r.id, globalHealth.cooldownUntil);
-    }
+    const userHealth = healthRows.get(`${r.id}|${user.id}`);
+    const globalHealth = healthRows.get(`${r.id}|global`);
+    const live = [userHealth, globalHealth].find(
+      (h) => h?.cooldownUntil && new Date(h.cooldownUntil).getTime() > Date.now()
+    );
+    if (live?.cooldownUntil) activeCooldowns.set(r.id, live.cooldownUntil);
+    const h = userHealth ?? globalHealth;
+    if (h) routeHealth.set(r.id, { consecutiveErrors: h.consecutiveErrors, ewmaLatencyMs: h.ewmaLatencyMs });
   }
 
   // Filter out any explicitly excluded routes (e.g. from prior failed attempts)
@@ -88,7 +90,7 @@ export async function resolveTaskRoute(
   }
 
   // Stage 2 Scoring
-  const scored = scoreCandidates(eligible, taskSpec, modelMap, routeMap);
+  const scored = scoreCandidates(eligible, taskSpec, modelMap, routeMap, routeHealth);
   const topCandidate = scored[0];
 
   const chosenRoute = routeMap.get(topCandidate.routeId)!;
@@ -158,7 +160,8 @@ export async function determineFallback(
   await repo.setRouteCooldown(failedRoute.id, scope, cooldownUntil, error.type);
 
   // If 401 invalid credentials on user key, mark invalid
-  if (error.statusCode === 401 || error.type === 'invalid_credentials') {
+  // Only the user's own key can be "invalid" here. A 401 on a shared system key is our problem, not theirs.
+  if (userCred && (error.statusCode === 401 || error.type === 'invalid_credentials')) {
     await repo.markCredentialStatus(user.id, failedRoute.providerId, 'invalid');
   }
 

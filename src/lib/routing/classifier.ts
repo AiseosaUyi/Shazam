@@ -71,11 +71,15 @@ export function classifyTask(
       taskClass = 'video_generation';
       outputModality = 'video';
       confidence = 'keyword';
-    } else if (p.includes('text to speech') || p.includes('transcribe') || p.includes('voiceover')) {
+    } else if (p.includes('text to speech') || p.includes('voiceover')) {
       taskClass = 'audio';
       outputModality = 'audio';
       confidence = 'keyword';
-    } else if (inputModalities.includes('image') || p.includes('inspect this image') || p.includes('ocr')) {
+    } else if (/\btranscri(be|ption)\b/.test(p)) {
+      // Transcription turns audio into text; the output is text, not audio.
+      taskClass = 'audio';
+      confidence = 'keyword';
+    } else if (inputModalities.includes('image') || p.includes('inspect this image') || /\bocr\b/.test(p)) {
       taskClass = 'vision';
       confidence = 'keyword';
     } else if (inputModalities.includes('document') || p.includes('summarize the attached pdf') || p.includes('extract tables from document')) {
@@ -84,7 +88,7 @@ export function classifyTask(
     } else if (
       p.includes('```') ||
       p.includes('write code') ||
-      p.includes('function ') ||
+      /\bfunction\b/.test(p) ||
       p.includes('bug in') ||
       p.includes('refactor') ||
       p.includes('typescript') ||
@@ -118,12 +122,12 @@ export function classifyTask(
       requiredCapabilities.push('reasoning');
       confidence = 'keyword';
     } else if (
-      p.includes('draft ') ||
+      /\bdraft\b/.test(p) ||
       p.includes('essay') ||
       p.includes('blog post') ||
       p.includes('rewrite') ||
       p.includes('creative story') ||
-      p.includes('email')
+      /\be-?mail\b/.test(p)
     ) {
       taskClass = 'writing';
       confidence = 'keyword';
