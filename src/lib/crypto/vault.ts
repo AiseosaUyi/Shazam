@@ -49,10 +49,12 @@ function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 async function getVaultKey(): Promise<CryptoKey> {
-  const rawKey =
-    envVar('SHAZAM_ENCRYPTION_KEY') ||
-    envVar('SESSION_SECRET') ||
-    'shazam-production-vault-aes256gcm-key-2026-secure-default';
+  const configuredKey = envVar('SHAZAM_ENCRYPTION_KEY') || envVar('SESSION_SECRET');
+  if (!configuredKey && isProduction()) {
+    // A key that lives in the repo makes every stored BYOK secret readable by anyone with the source.
+    throw new Error('SHAZAM_ENCRYPTION_KEY is not configured. Set it as a secret before storing provider keys.');
+  }
+  const rawKey = configuredKey || 'shazam-dev-only-vault-key-not-for-production';
 
   let keyBytes: Uint8Array;
   if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {

@@ -1,14 +1,17 @@
-import { envVar } from '@/lib/env';
+import { envVar, isProduction } from '@/lib/env';
 
 const SIGNING_ALGORITHM = { name: 'HMAC', hash: 'SHA-256' };
 
 async function getSigningKey(): Promise<CryptoKey> {
-  const secret =
-    envVar('SESSION_SECRET') ||
-    envVar('SHAZAM_ENCRYPTION_KEY') ||
-    'shazam-ai-session-key-2026-fallback-secret-production';
+  const secret = envVar('SESSION_SECRET') || envVar('SHAZAM_ENCRYPTION_KEY');
+  if (!secret) {
+    // A secret that lives in the repo lets anyone forge an admin session. Fail closed when deployed.
+    if (isProduction()) {
+      throw new Error('SESSION_SECRET is not configured. Set it as a secret before serving traffic.');
+    }
+  }
   const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
+  const keyData = encoder.encode(secret || 'shazam-dev-only-session-key-not-for-production');
   return crypto.subtle.importKey('raw', keyData, SIGNING_ALGORITHM, false, ['sign', 'verify']);
 }
 

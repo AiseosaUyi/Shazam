@@ -7,6 +7,9 @@ import { createSignedSessionToken } from '@/lib/crypto/session-token';
 import { isProduction } from '@/lib/env';
 import { isEmailConfiguredAdmin, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS, verifyCsrfOrigin } from '@/lib/auth/session';
 
+// Same PBKDF2 cost as a real hash, so unknown emails take as long to reject as wrong passwords.
+const DUMMY_HASH = `pbkdf2:100000:${'00'.repeat(16)}:${'00'.repeat(32)}`;
+
 const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, 'Password is required.'),
@@ -46,19 +49,31 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password } = parseResult.data;
+
+    // Per-account throttle on top of the per-IP one, so a botnet can't grind a single account.
+    const acct = await repo.checkRateLimit(`login-acct:${email.toLowerCase().trim()}`, 300, 8);
+    if (!acct.allowed) {
+      return NextResponse.json(
+        { error: 'Too many login attempts for this account. Please wait a few minutes and try again.' },
+        { status: 429 }
+      );
+    }
+
     const user = await repo.getUserByEmail(email);
 
     if (!user) {
+      await verifyPassword(password, DUMMY_HASH);
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
-    }
-
-    if (user.status === 'suspended') {
-      return NextResponse.json({ error: 'This account has been suspended.' }, { status: 403 });
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
+    }
+
+    // Only reveal suspension to someone who actually knows the password.
+    if (user.status === 'suspended') {
+      return NextResponse.json({ error: 'This account has been suspended.' }, { status: 403 });
     }
 
     let role = user.role;
@@ -99,7 +114,7 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message || 'Authentication service error. Please try again.' },
+      { error: isProduction() ? 'Authentication service error. Please try again.' : (err.message || 'Authentication service error. Please try again.') },
       { status: 500 }
     );
   }

@@ -40,11 +40,11 @@ export function verifyCsrfOrigin(req: NextRequest): boolean {
     const originUrl = new URL(origin);
     const hostName = host.split(':')[0].toLowerCase();
     const originHost = originUrl.hostname.toLowerCase();
+    // Only the app's own host. A blanket *.workers.dev allowance lets any attacker-owned Worker
+    // make cross-site requests with the victim's cookies. Loopback is for local dev only.
     return (
       originHost === hostName ||
-      originHost.endsWith('.workers.dev') ||
-      originHost === 'localhost' ||
-      originHost === '127.0.0.1'
+      (!isProduction() && (originHost === 'localhost' || originHost === '127.0.0.1'))
     );
   } catch {
     return false;
@@ -61,6 +61,7 @@ export async function getCurrentUser(req: NextRequest, repo = new DbRepo()): Pro
   }
 
   // 1. Check DB session first (Cloudflare D1 or local SQLite)
+  let sessionLookupFailed = false;
   try {
     const tokenHash = await hashSessionToken(token);
     const sessionResult = await repo.getSession(tokenHash);
@@ -72,7 +73,7 @@ export async function getCurrentUser(req: NextRequest, repo = new DbRepo()): Pro
       return user;
     }
   } catch {
-    // Continue to cryptographic fallback
+    sessionLookupFailed = true; // DB unreachable: the signed token is all we can check
   }
 
   // 2. Cryptographic signed token fallback (resilient across serverless Lambda containers)
@@ -86,16 +87,21 @@ export async function getCurrentUser(req: NextRequest, repo = new DbRepo()): Pro
     // Hydrate user in current runtime database so relational joins & rate-limits succeed
     let resolvedUserId = claim.u;
     try {
-      const db = getDb();
-      // Check if user with this email already exists in runtime DB with a pre-seeded ID (e.g. usr_admin_01)
+      const db = (repo as unknown as { db?: ReturnType<typeof getDb> }).db ?? getDb();
+      // Check if the account already exists here (possibly with a pre-seeded ID such as usr_admin_01)
       const existing = await db
-        .prepare('SELECT id, role FROM users WHERE email = ?')
+        .prepare('SELECT id, role, status FROM users WHERE email = ?')
         .bind(claim.e.toLowerCase().trim())
-        .first<{ id: string; role?: string }>();
+        .first<{ id: string; role?: string; status?: string }>();
 
       if (existing) {
+        // A suspended account must not get back in through a still-valid signature.
+        if (existing.status === 'suspended') return null;
+        // The account lives in this database but its session row is gone: the user logged out
+        // (or an admin revoked it). A valid signature alone must not resurrect that session.
+        if (!sessionLookupFailed) return null;
         resolvedUserId = existing.id;
-        if (existing.role === 'admin') role = 'admin';
+        role = existing.role === 'admin' ? 'admin' : (isEmailConfiguredAdmin(claim.e) ? 'admin' : 'user');
       } else {
         await db
           .prepare(

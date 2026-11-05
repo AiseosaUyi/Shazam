@@ -51,7 +51,7 @@ function getFallbackDb(): SqlDatabase {
 
     // Pre-seed default administrator & QA tester accounts in the local fallback DB only.
     // These hashes live in a public repo, so they must never exist in a deployed database.
-    if (!process.env.VERCEL) try {
+    if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') try {
       (db as any).exec(`
         INSERT OR IGNORE INTO users (id, email, name, password_hash, role, status, onboarded, created_at)
         VALUES 

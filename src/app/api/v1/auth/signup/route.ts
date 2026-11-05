@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message || 'Internal registration error.' },
+      { error: isProduction() ? 'Internal registration error. Please try again.' : (err.message || 'Internal registration error.') },
       { status: 500 }
     );
   }
