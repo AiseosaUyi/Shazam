@@ -12,6 +12,18 @@ import { BridgeRepo, callDevice, BridgeOfflineError } from './repo';
  * that cannot run.
  */
 
+export function hostsFromPrompt(text: string): string[] {
+  const out = new Set<string>();
+  const re = /(?<![@\w.-])(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?::\d+)?(?:\/[^\s]*)?/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text || ''))) {
+    const h = m[1].toLowerCase().replace(/^www\./, '');
+    if (/^(e\.g|i\.e)$/.test(h) || /\.(png|jpe?g|gif|svg|pdf|docx?|xlsx?|csv|json|txt|md|ts|tsx|js|jsx|css|html?)$/.test(h)) continue;
+    out.add(h);
+  }
+  return Array.from(out).slice(0, 20);
+}
+
 function fmt(out: { ok: boolean; result: any }): string {
   const r = out.result;
   const text = typeof r === 'string' ? r : JSON.stringify(r, null, 2);
@@ -26,11 +38,12 @@ async function run(userId: string, kind: 'desktop' | 'browser', command: string,
   }
 }
 
-export async function buildBridgeTools(userId: string): Promise<{ tools: ToolSet; inventory: string }> {
+export async function buildBridgeTools(userId: string, userPrompt = ''): Promise<{ tools: ToolSet; inventory: string }> {
   const repo = new BridgeRepo();
   const [desktop, browser] = await Promise.all([repo.onlineDevice(userId, 'desktop'), repo.onlineDevice(userId, 'browser')]);
   const tools: ToolSet = {};
   const lines: string[] = [];
+  const trustedHosts = hostsFromPrompt(userPrompt);
 
   if (desktop) {
     const workspaces = (desktop.capabilities.workspaces as string[] | undefined) || [];
@@ -68,37 +81,39 @@ Use local_* tools to work in those folders with the user's own git credentials (
   if (browser) {
     lines.push(`Browser extension "${browser.name}" is connected: you can browse in the user's real Chrome (their logged-in sessions). Read pages with browser_read before clicking. Clicks and typing may require the user to approve on their screen. Never enter passwords or payment details.`);
 
+    const runB = (command: string, payload: Record<string, unknown>, timeoutMs: number) => run(userId, 'browser', command, { ...payload, trustedHosts }, timeoutMs);
+
     tools.browser_open = tool({
       description: 'Open a URL in the agent\'s Chrome tab (reuses one tab per session). Returns the page title and URL.',
       inputSchema: z.object({ url: z.string().url() }),
-      execute: async ({ url }) => run(userId, 'browser', 'open', { url }, 60_000),
+      execute: async ({ url }) => runB('open', { url }, 60_000),
     });
     tools.browser_read = tool({
       description: 'Read the current page: visible text plus numbered interactive elements ([12] button "Sign in"). Use the numbers with browser_click/browser_type.',
       inputSchema: z.object({ max_chars: z.number().int().min(1000).max(40000).optional() }),
-      execute: async ({ max_chars }) => run(userId, 'browser', 'read', { maxChars: max_chars || 15000 }, 60_000),
+      execute: async ({ max_chars }) => runB('read', { maxChars: max_chars || 15000 }, 60_000),
     });
     tools.browser_click = tool({
       description: 'Click an element by its number from browser_read.',
       inputSchema: z.object({ element: z.number().int().min(0), reason: z.string().describe('Shown to the user if approval is required') }),
-      execute: async (input) => run(userId, 'browser', 'click', input, 180_000),
+      execute: async (input) => runB('click', { ...input }, 180_000),
     });
     tools.browser_type = tool({
       description: 'Type text into an input by its number from browser_read. Optionally press Enter.',
       inputSchema: z.object({ element: z.number().int().min(0), text: z.string(), submit: z.boolean().optional(), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'type', input, 180_000),
+      execute: async (input) => runB('type', { ...input }, 180_000),
     });
     tools.browser_scroll = tool({
       description: 'Scroll the page up or down.',
       inputSchema: z.object({ direction: z.enum(['up', 'down']) }),
-      execute: async (input) => run(userId, 'browser', 'scroll', input, 30_000),
+      execute: async (input) => runB('scroll', { ...input }, 30_000),
     });
     tools.browser_screenshot = tool({
       description: 'Take a screenshot of the agent tab. Returns an image URL (show it to the user); use browser_read for the page content.',
       inputSchema: z.object({}),
       execute: async () => {
         try {
-          const out = await callDevice(userId, 'browser', 'screenshot', {}, { timeoutMs: 60_000 });
+          const out = await callDevice(userId, 'browser', 'screenshot', { trustedHosts }, { timeoutMs: 60_000 });
           const dataUrl: string | undefined = out.result?.dataUrl;
           if (!out.ok || !dataUrl?.startsWith('data:image/')) return fmt(out);
           const blob = await put(`screens/${userId}/${Date.now()}.jpg`, Buffer.from(dataUrl.split(',')[1], 'base64'), { access: 'public', addRandomSuffix: true, contentType: 'image/jpeg' });
@@ -111,72 +126,72 @@ Use local_* tools to work in those folders with the user's own git credentials (
     tools.browser_back = tool({
       description: 'Go back in the agent tab history.',
       inputSchema: z.object({}),
-      execute: async () => run(userId, 'browser', 'back', {}, 30_000),
+      execute: async () => runB('back', {}, 30_000),
     });
     tools.browser_tabs = tool({
       description: 'List all tabs in the current Chrome window with their IDs. Use browser_switch_tab to switch.',
       inputSchema: z.object({}),
-      execute: async () => run(userId, 'browser', 'tabs', {}, 30_000),
+      execute: async () => runB('tabs', {}, 30_000),
     });
     tools.browser_switch_tab = tool({
       description: 'Switch to a different tab by ID (from browser_tabs). Changes the active agent tab.',
       inputSchema: z.object({ tab_id: z.number().int() }),
-      execute: async ({ tab_id }) => run(userId, 'browser', 'switch_tab', { tab_id }, 30_000),
+      execute: async ({ tab_id }) => runB('switch_tab', { tab_id }, 30_000),
     });
     tools.browser_close_tab = tool({
       description: 'Close a tab by ID. Cannot close the only tab; asks user approval if enabled.',
       inputSchema: z.object({ tab_id: z.number().int() }),
-      execute: async ({ tab_id }) => run(userId, 'browser', 'close_tab', { tab_id }, 180_000),
+      execute: async ({ tab_id }) => runB('close_tab', { tab_id }, 180_000),
     });
     tools.browser_key = tool({
       description: 'Press a key (Enter, Tab, Escape, ArrowDown, ArrowUp, ArrowLeft, ArrowRight, Backspace, Space). Optionally target a numbered element.',
       inputSchema: z.object({ key: z.enum(['Enter', 'Tab', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Space']), element: z.number().int().min(0).optional(), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'key', input, 180_000),
+      execute: async (input) => runB('key', { ...input }, 180_000),
     });
     tools.browser_select = tool({
       description: 'Select an option in a <select> dropdown by value or matching text. Element must be a select from browser_read.',
       inputSchema: z.object({ element: z.number().int(), value: z.string(), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'select', input, 180_000),
+      execute: async (input) => runB('select', { ...input }, 180_000),
     });
     tools.browser_hover = tool({
       description: 'Hover the mouse over an element by its number from browser_read (opens menus/tooltips). Then browser_read again.',
       inputSchema: z.object({ element: z.number().int().min(0) }),
-      execute: async (input) => run(userId, 'browser', 'hover', input, 30_000),
+      execute: async (input) => runB('hover', { ...input }, 30_000),
     });
     tools.browser_eval = tool({
       description: 'Run JavaScript in the agent tab (page context) and return the JSON result. Code is limited to 400 characters. ALWAYS asks the user to approve. Prefer browser_read/click; use this only for reading data the other tools cannot reach. Never read or send cookies, tokens or passwords.',
       inputSchema: z.object({ code: z.string().max(400), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'eval', input, 180_000),
+      execute: async (input) => runB('eval', { ...input }, 180_000),
     });
     tools.browser_upload = tool({
       description: 'Attach a file (downloaded from an https URL, max 8 MB) to a file input by its number from browser_read. ALWAYS asks the user to approve. Use it for CVs/resumes the user provided. Never upload anything the user did not ask you to.',
       inputSchema: z.object({ element: z.number().int().min(0), url: z.string().url(), filename: z.string().optional(), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'upload', input, 180_000),
+      execute: async (input) => runB('upload', { ...input }, 180_000),
     });
     tools.browser_console = tool({
       description: 'Read the agent tab console (logs, errors, exceptions). Recording starts at the first call (Chrome shows a "debugging this browser" banner), so call it early, then reload or interact, then call again. Optional regex pattern, limit (default 50), clear.',
       inputSchema: z.object({ pattern: z.string().optional(), limit: z.number().int().min(1).max(300).optional(), clear: z.boolean().optional() }),
-      execute: async (input) => run(userId, 'browser', 'console', input, 60_000),
+      execute: async (input) => runB('console', { ...input }, 60_000),
     });
     tools.browser_network = tool({
       description: 'List network requests made by the agent tab (method, status, type, URL with query values masked; no bodies or headers). Recording starts at the first call. Optional regex pattern, limit (default 50), clear.',
       inputSchema: z.object({ pattern: z.string().optional(), limit: z.number().int().min(1).max(500).optional(), clear: z.boolean().optional() }),
-      execute: async (input) => run(userId, 'browser', 'network', input, 60_000),
+      execute: async (input) => runB('network', { ...input }, 60_000),
     });
     tools.browser_drag = tool({
       description: 'Drag one element (by number from browser_read) onto another. Asks the user to approve.',
       inputSchema: z.object({ from_element: z.number().int().min(0), to_element: z.number().int().min(0), reason: z.string() }),
-      execute: async (input) => run(userId, 'browser', 'drag', input, 180_000),
+      execute: async (input) => runB('drag', { ...input }, 180_000),
     });
     tools.browser_wait_for = tool({
       description: 'Wait for text to appear or disappear in the page body. Polls every 400ms up to timeout_seconds (default 10, max 30).',
       inputSchema: z.object({ text: z.string().optional(), gone: z.boolean().optional(), timeout_seconds: z.number().int().min(1).max(30).optional() }),
-      execute: async (input) => run(userId, 'browser', 'wait_for', input, 45_000),
+      execute: async (input) => runB('wait_for', { ...input }, 45_000),
     });
     tools.browser_find = tool({
       description: 'Search interactive elements on the current page (from browser_read output). Returns up to 20 matching lines case-insensitive.',
       inputSchema: z.object({ query: z.string() }),
-      execute: async ({ query }) => run(userId, 'browser', 'find', { query }, 60_000),
+      execute: async ({ query }) => runB('find', { query }, 60_000),
     });
   }
 

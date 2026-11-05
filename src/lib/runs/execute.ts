@@ -89,7 +89,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   const [mcp, skills, bridge, ghCred] = await Promise.all([
     buildMcpToolset(repo, o.user.id, { allowMutations: o.allowExternalWrites, platform, onPendingAction: (a) => send('pending_action', a) }),
     buildSkillTools(platform, o.user.id, 'code'),
-    buildBridgeTools(o.user.id),
+    buildBridgeTools(o.user.id, o.prompt),
     repo.getCredential(o.user.id, 'github'),
   ]);
   const ghToken = ghCred && ghCred.status === 'valid' ? await decryptSecret(ghCred.encryptedKey).catch(() => null) : null;
@@ -216,7 +216,7 @@ export async function runCoworkTask(o: CoworkTaskOptions): Promise<TaskResult> {
     buildMcpToolset(repo, o.user.id, { platform, onPendingAction: (a) => send('pending_action', a) }),
     buildSkillTools(platform, o.user.id, 'cowork'),
     buildMediaTools(o.user.id, repo, platform, { enhancer: model, onAsset: (a) => send('media_asset', a) }),
-    buildBridgeTools(o.user.id),
+    buildBridgeTools(o.user.id, o.prompt),
   ]);
 
   const result = await runCoworkAgent({

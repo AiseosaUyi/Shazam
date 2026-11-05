@@ -7,6 +7,7 @@
 const DEFAULTS = { server: 'https://arcwork-ai.vercel.app', token: null, askBeforeActions: true, autoApproveHosts: [] };
 let polling = false;
 const pendingApprovals = new Map();
+let currentTrusted = [];
 
 async function settings() {
   return { ...DEFAULTS, ...(await chrome.storage.local.get(['server', 'token', 'askBeforeActions', 'deviceName', 'autoApproveHosts'])) };
@@ -461,6 +462,12 @@ async function askApproval(title, message, label = '', forceAsk = false) {
     return true;
   }
 
+  // Check trusted hosts from the task prompt
+  if (!sensitive && !forceAsk && host && currentTrusted.some((h) => host.replace(/^www\./, '') === h || host.replace(/^www\./, '').endsWith('.' + h))) {
+    await log(`auto-approved (named in task) on ${host}`);
+    return true;
+  }
+
   // Show in-page approval bar
   try {
     await chrome.tabs.update(tab.id, { active: true });
@@ -497,6 +504,7 @@ async function askApproval(title, message, label = '', forceAsk = false) {
 
 async function handle(cmd) {
   const p = cmd.payload || {};
+  currentTrusted = Array.isArray(p.trustedHosts) ? p.trustedHosts.map((x) => String(x).toLowerCase()) : [];
   const s = await settings();
   switch (cmd.command) {
     case 'open': {
