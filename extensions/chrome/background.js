@@ -71,7 +71,7 @@ async function inPage(tabId, func, args = []) {
 
 // Runs in the page. Numbers visible interactive elements and returns text + element list.
 function pageSnapshot(maxChars) {
-  const sel = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[role=menuitem],[contenteditable=true],summary';
+  const sel = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],[role=menuitem],[contenteditable=true],summary,[draggable=true]';
   const els = Array.from(document.querySelectorAll(sel)).filter((el) => {
     if (el.matches('input[type=file]')) return true;
     const r = el.getBoundingClientRect();
