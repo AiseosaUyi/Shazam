@@ -40,6 +40,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
   }
   await syncVaultFromCookie(req, user.id, repo, user.email);
+
+  // Rate limit by user: 20 run starts per minute
+  const { allowed } = await repo.checkRateLimit(`runs-start:${user.id}`, 60, 20);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait a moment before sending more requests.' },
+      { status: 429 }
+    );
+  }
+
   const parsed = StartSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid request' }, { status: 400 });
   const d = parsed.data;

@@ -35,6 +35,15 @@ export async function POST(req: NextRequest) {
   }
   await syncVaultFromCookie(req, user.id, repo, user.email);
 
+  // Rate limit by user: 30 cowork agent calls per minute
+  const { allowed } = await repo.checkRateLimit(`cowork-agent:${user.id}`, 60, 30);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait a moment before sending more requests.' },
+      { status: 429 }
+    );
+  }
+
   const parsed = Schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid request' }, { status: 400 });
   const { prompt, pinnedModel } = parsed.data;
