@@ -4,6 +4,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { callDevice, BridgeOfflineError } from '@/lib/bridge/repo';
 import { recommendModel, isValidModelName } from '@/lib/local-ai/recommend';
+import { errMessage } from '@/lib/errors';
 
 const ActionSchema = z.object({
   action: z.enum(['pull', 'pull-progress', 'create', 'start']),
@@ -15,8 +16,8 @@ export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -26,9 +27,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ connected: true, ...status, recommended: recommendModel(status.hardware?.ramGB ?? 0) });
   } catch (err) {
     if (err instanceof BridgeOfflineError) {
-      return NextResponse.json({ connected: false, error: err.message }, { status: 200 });
+      return NextResponse.json({ connected: false, error: errMessage(err) }, { status: 200 });
     }
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 504 });
+    return NextResponse.json({ error: err instanceof Error ? errMessage(err) : 'Unknown error' }, { status: 504 });
   }
 }
 
@@ -37,8 +38,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   let body: any;
@@ -97,8 +98,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ result: result.result });
   } catch (err) {
     if (err instanceof BridgeOfflineError) {
-      return NextResponse.json({ error: err.message }, { status: 409 });
+      return NextResponse.json({ error: errMessage(err) }, { status: 409 });
     }
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 504 });
+    return NextResponse.json({ error: err instanceof Error ? errMessage(err) : 'Unknown error' }, { status: 504 });
   }
 }

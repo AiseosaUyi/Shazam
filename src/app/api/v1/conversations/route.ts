@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 const CreateConversationSchema = z.object({
   title: z.string().min(1).max(100).default('New Conversation'),
@@ -13,8 +14,8 @@ export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -30,8 +31,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   let body: any = {};

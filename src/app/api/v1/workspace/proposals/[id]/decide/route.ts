@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 const DecideSchema = z.object({
   decision: z.enum(['applied', 'rejected']),
@@ -15,8 +16,8 @@ export async function POST(
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const { id } = await params;

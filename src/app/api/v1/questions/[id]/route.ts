@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser, verifyCsrfOrigin } from '@/lib/auth/session';
 import { QuestionsRepo } from '@/lib/agents/ask';
+import { errMessage } from '@/lib/errors';
 
 /** The user's answer to an agent's question; the paused task resumes with it. */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -10,8 +11,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let user;
   try {
     user = await requireUser(req, new DbRepo());
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   const parsed = z.object({ answer: z.string().trim().min(1).max(4000) }).safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'answer is required' }, { status: 400 });

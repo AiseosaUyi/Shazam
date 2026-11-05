@@ -4,6 +4,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { PlatformRepo } from '@/lib/db/platform-repo';
 import { requireUser, verifyCsrfOrigin } from '@/lib/auth/session';
 import { executeApprovedAction } from '@/lib/cowork/actions';
+import { errMessage } from '@/lib/errors';
 
 export const maxDuration = 60;
 
@@ -18,8 +19,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let user;
   try {
     user = await requireUser(req, new DbRepo());
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   const { id } = await params;
   const parsed = Schema.safeParse(await req.json().catch(() => null));

@@ -6,6 +6,7 @@ import { verifyPassword, hashSessionToken } from '@/lib/crypto/auth';
 import { createSignedSessionToken } from '@/lib/crypto/session-token';
 import { isProduction } from '@/lib/env';
 import { isEmailConfiguredAdmin, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS, verifyCsrfOrigin } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 // Same PBKDF2 cost as a real hash, so unknown emails take as long to reject as wrong passwords.
 const DUMMY_HASH = `pbkdf2:100000:${'00'.repeat(16)}:${'00'.repeat(32)}`;
@@ -112,9 +113,9 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: isProduction() ? 'Authentication service error. Please try again.' : (err.message || 'Authentication service error. Please try again.') },
+      { error: isProduction() ? 'Authentication service error. Please try again.' : (errMessage(err) || 'Authentication service error. Please try again.') },
       { status: 500 }
     );
   }

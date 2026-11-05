@@ -3,6 +3,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { encryptSecret, maskKey } from '@/lib/crypto/vault';
 import { setVaultCookieOnResponse, syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
+import { errMessage } from '@/lib/errors';
 
 const COOKIE = 'shazam_openrouter_pkce';
 
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
     await setVaultCookieOnResponse(res, user.id, repo, user.email);
     return res;
   } catch (err) {
-    console.error('[openrouter-oauth] error', err instanceof Error ? err.message : err);
+    console.error('[openrouter-oauth] error', err instanceof Error ? errMessage(err) : err);
     return done('error');
   }
 }

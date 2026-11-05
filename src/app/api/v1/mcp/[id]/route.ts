@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 export async function DELETE(
   req: NextRequest,
@@ -11,8 +12,8 @@ export async function DELETE(
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const { id } = await params;
@@ -32,8 +33,8 @@ export async function PATCH(
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const { id } = await params;

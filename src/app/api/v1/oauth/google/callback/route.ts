@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { completeGoogleOAuth, googleRedirectUri } from '@/lib/google/oauth';
+import { errMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   let user;
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     await completeGoogleOAuth(user.id, code, googleRedirectUri(req.nextUrl.origin));
     return done('connected');
   } catch (err) {
-    console.error('[google-oauth] token exchange failed', err instanceof Error ? err.message : err);
+    console.error('[google-oauth] token exchange failed', err instanceof Error ? errMessage(err) : err);
     return done('error');
   }
 }

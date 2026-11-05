@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireAdmin } from '@/lib/auth/session';
 import { WaitlistRepo } from '@/lib/db/waitlist-repo';
+import { errMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
     await requireAdmin(req, new DbRepo());
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Forbidden' }, { status: 403 });
   }
   return NextResponse.json({ entries: await new WaitlistRepo().list() });
 }
@@ -20,8 +21,8 @@ export async function PATCH(req: NextRequest) {
   let admin;
   try {
     admin = await requireAdmin(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Forbidden' }, { status: 403 });
   }
   const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input.' }, { status: 400 });

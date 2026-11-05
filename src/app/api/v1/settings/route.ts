@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 const UpdateSettingsSchema = z.object({
   defaultCostPolicy: z
@@ -25,8 +26,8 @@ export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const preferences = await repo.getUserPreferences(user.id);
@@ -38,8 +39,8 @@ export async function PATCH(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   let body: any;

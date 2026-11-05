@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/session';
 import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
 import { deriveConversationTitle } from '@/lib/execution/orchestrator';
 import { runCoworkTask } from '@/lib/runs/execute';
+import { errMessage } from '@/lib/errors';
 
 export const maxDuration = 300;
 
@@ -30,8 +31,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   await syncVaultFromCookie(req, user.id, repo, user.email);
 
@@ -81,8 +82,8 @@ export async function POST(req: NextRequest) {
         await repo.addMessage({ id: crypto.randomUUID(), userId: user.id, conversationId: conversationId!, role: 'assistant', content: result.text || '(no reply)' });
         await repo.touchConversation(user.id, conversationId!);
         send('cowork_done', { conversationId, text: result.text, steps: result.steps });
-      } catch (err: any) {
-        send('cowork_error', { message: err.message || 'Co-Work agent failed.' });
+      } catch (err) {
+        send('cowork_error', { message: errMessage(err) || 'Co-Work agent failed.' });
       } finally {
         controller.close();
       }

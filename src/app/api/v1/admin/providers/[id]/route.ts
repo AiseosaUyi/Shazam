@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireAdmin } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 const StatusSchema = z.object({
   status: z.enum(['enabled', 'disabled']),
@@ -16,8 +17,8 @@ export async function PATCH(
   let admin;
   try {
     admin = await requireAdmin(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Forbidden' }, { status: 403 });
   }
 
   const { id: providerId } = await params;

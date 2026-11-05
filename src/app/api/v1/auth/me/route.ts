@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, requireUser } from '@/lib/auth/session';
 import { DbRepo } from '@/lib/db/repo';
 import { getDb } from '@/lib/env';
+import { errMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser(req);
@@ -40,8 +41,8 @@ export async function DELETE(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   const body: any = await req.json().catch(() => ({}));
   if (String(body?.confirmEmail || '').trim().toLowerCase() !== user.email.toLowerCase()) {
@@ -59,7 +60,7 @@ export async function DELETE(req: NextRequest) {
       await del(urls);
     }
   } catch (err) {
-    console.error('[delete-account] blob cleanup failed', err instanceof Error ? err.message : err);
+    console.error('[delete-account] blob cleanup failed', err instanceof Error ? errMessage(err) : err);
   }
 
   for (const table of USER_TABLES) {

@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/session';
 import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
 import { runTaskOrchestrator } from '@/lib/execution/orchestrator';
 import type { CostPolicy, TaskClass } from '@/lib/types';
+import { errMessage } from '@/lib/errors';
 
 const CreateTaskSchema = z.object({
   prompt: z.string().min(1, 'Prompt cannot be empty').max(1_000_000, 'Prompt exceeds 1MB limit'),
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   // Hydrate user credentials from vault cookie if needed across serverless containers
@@ -94,8 +95,8 @@ export async function POST(req: NextRequest) {
           repo,
           onEvent: sendEvent,
         });
-      } catch (err: any) {
-        sendEvent('error', { message: err.message || 'Internal task failure.' });
+      } catch (err) {
+        sendEvent('error', { message: errMessage(err) || 'Internal task failure.' });
       } finally {
         try {
           controller.close();
@@ -121,8 +122,8 @@ export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const tasks = await repo.listTasks(user.id, 50);

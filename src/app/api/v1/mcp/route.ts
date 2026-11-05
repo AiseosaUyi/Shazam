@@ -4,6 +4,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { encryptSecret } from '@/lib/crypto/vault';
 import { listMcpTools } from '@/lib/mcp/client';
+import { errMessage } from '@/lib/errors';
 
 const AddMcpServerSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(100),
@@ -17,8 +18,8 @@ export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const servers = await repo.getMcpServers(user.id);
@@ -30,8 +31,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   let body: any;
@@ -72,9 +73,9 @@ export async function POST(req: NextRequest) {
   let discoveredTools;
   try {
     discoveredTools = await listMcpTools({ url, authToken });
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: `Could not connect to ${name}: ${err.message || 'unknown error'}` },
+      { error: `Could not connect to ${name}: ${errMessage(err) || 'unknown error'}` },
       { status: 422 }
     );
   }

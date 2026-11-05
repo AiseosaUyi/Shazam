@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { syncVaultFromCookie, setVaultCookieOnResponse } from '@/lib/crypto/vault-cookie';
 import { getLiveCatalog } from '@/lib/catalog';
 import { envFlag, envVar } from '@/lib/env';
+import { errMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   try {
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
       await setVaultCookieOnResponse(response, user.id, repo, user.email);
     }
     return response;
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to list providers.' }, { status: 500 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Failed to list providers.' }, { status: 500 });
   }
 }

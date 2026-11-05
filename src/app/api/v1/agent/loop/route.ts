@@ -4,6 +4,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { syncVaultFromCookie } from '@/lib/crypto/vault-cookie';
 import { runCodeTask } from '@/lib/runs/execute';
+import { errMessage } from '@/lib/errors';
 
 export const maxDuration = 300;
 
@@ -23,8 +24,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   await syncVaultFromCookie(req, user.id, repo, user.email);
 
@@ -54,8 +55,8 @@ export async function POST(req: NextRequest) {
           stepsCount: out.steps,
           commandsRun: out.commandsRun,
         });
-      } catch (err: any) {
-        send('react_error', { message: err.message || 'Error executing the coding agent' });
+      } catch (err) {
+        send('react_error', { message: errMessage(err) || 'Error executing the coding agent' });
       } finally {
         controller.close();
       }

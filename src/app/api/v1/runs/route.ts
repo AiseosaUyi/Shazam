@@ -6,13 +6,14 @@ import { executeRun } from '@/lib/runs/background';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { RunsRepo } from '@/lib/runs/repo';
+import { errMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, new DbRepo());
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   return NextResponse.json({ runs: await new RunsRepo().list(user.id, 30) });
 }
@@ -36,8 +37,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   await syncVaultFromCookie(req, user.id, repo, user.email);
 

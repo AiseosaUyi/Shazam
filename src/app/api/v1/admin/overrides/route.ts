@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireAdmin } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 const OverrideSchema = z.object({
   targetType: z.enum(['provider', 'route']),
@@ -14,8 +15,8 @@ export async function GET(req: NextRequest) {
   const repo = new DbRepo();
   try {
     await requireAdmin(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Forbidden' }, { status: 403 });
   }
 
   const overrides = await repo.getCatalogOverrides();
@@ -27,8 +28,8 @@ export async function PATCH(req: NextRequest) {
   let admin;
   try {
     admin = await requireAdmin(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Forbidden' }, { status: 403 });
   }
 
   let body: any;

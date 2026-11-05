@@ -6,6 +6,7 @@ import { hashPassword, hashSessionToken } from '@/lib/crypto/auth';
 import { createSignedSessionToken } from '@/lib/crypto/session-token';
 import { envFlag, isProduction } from '@/lib/env';
 import { getAdminEmails, isEmailConfiguredAdmin, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS, verifyCsrfOrigin } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 const SignupSchema = z.object({
   email: z.string().email().max(255),
@@ -108,9 +109,9 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: isProduction() ? 'Internal registration error. Please try again.' : (err.message || 'Internal registration error.') },
+      { error: isProduction() ? 'Internal registration error. Please try again.' : (errMessage(err) || 'Internal registration error.') },
       { status: 500 }
     );
   }

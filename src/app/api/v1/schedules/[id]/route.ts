@@ -4,6 +4,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { PlatformRepo } from '@/lib/db/platform-repo';
 import { requireUser, verifyCsrfOrigin } from '@/lib/auth/session';
 import { RECURRENCES } from '@/lib/jobs/recurrence';
+import { errMessage } from '@/lib/errors';
 
 const Patch = z.object({
   action: z.enum(['pause', 'resume', 'cancel', 'update']),
@@ -21,8 +22,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let user;
   try {
     user = await auth(req);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   const { id } = await params;
   const platform = new PlatformRepo();
@@ -36,8 +37,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let user;
   try {
     user = await auth(req);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   const { id } = await params;
   const parsed = Patch.safeParse(await req.json().catch(() => null));

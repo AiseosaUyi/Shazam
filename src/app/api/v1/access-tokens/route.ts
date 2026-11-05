@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser, verifyCsrfOrigin } from '@/lib/auth/session';
 import { RunsRepo } from '@/lib/runs/repo';
+import { errMessage } from '@/lib/errors';
 
 export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, new DbRepo());
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   return NextResponse.json({ tokens: await new RunsRepo().listTokens(user.id) });
 }
@@ -20,8 +21,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, new DbRepo());
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   const parsed = z.object({ name: z.string().trim().min(1).max(60) }).safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'name is required' }, { status: 400 });

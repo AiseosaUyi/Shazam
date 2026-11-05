@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
+import { errMessage } from '@/lib/errors';
 
 /**
  * Issues client-upload tokens so browsers upload media straight to Blob (functions cap
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
       onUploadCompleted: async () => {},
     });
     return NextResponse.json(result);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Upload failed' }, { status: 400 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Upload failed' }, { status: 400 });
   }
 }

@@ -5,6 +5,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { encryptSecret, maskKey } from '@/lib/crypto/vault';
 import { syncVaultFromCookie, setVaultCookieOnResponse } from '@/lib/crypto/vault-cookie';
+import { errMessage } from '@/lib/errors';
 
 const CredentialSchema = z.object({
   providerId: z.string().min(1),
@@ -16,8 +17,8 @@ export async function GET(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   await syncVaultFromCookie(req, user.id, repo, user.email);
@@ -40,8 +41,8 @@ export async function POST(req: NextRequest) {
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   await syncVaultFromCookie(req, user.id, repo, user.email);
@@ -70,9 +71,9 @@ export async function POST(req: NextRequest) {
   let encryptedKey: string;
   try {
     encryptedKey = await encryptSecret(apiKey.trim());
-  } catch (err: any) {
+  } catch (err) {
     return NextResponse.json(
-      { error: err.message || 'Encryption failed.' },
+      { error: errMessage(err) || 'Encryption failed.' },
       { status: 500 }
     );
   }

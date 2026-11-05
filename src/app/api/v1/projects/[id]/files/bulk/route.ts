@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DbRepo } from '@/lib/db/repo';
 import { requireUser } from '@/lib/auth/session';
 import { validateFilePath } from '@/lib/agent/policy';
+import { errMessage } from '@/lib/errors';
 
 const BulkFilesSchema = z.object({
   files: z.array(
@@ -21,8 +22,8 @@ export async function POST(
   let user;
   try {
     user = await requireUser(req, repo);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
 
   const { id: projectId } = await params;

@@ -4,6 +4,7 @@ import { DbRepo } from '@/lib/db/repo';
 import { PlatformRepo } from '@/lib/db/platform-repo';
 import { requireUser, verifyCsrfOrigin } from '@/lib/auth/session';
 import { toSkillMarkdown } from '@/lib/skills';
+import { errMessage } from '@/lib/errors';
 
 const Patch = z.object({
   enabled: z.boolean().optional(),
@@ -25,8 +26,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   let ctx;
   try {
     ctx = await load(req, id);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   if (!ctx.skill) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (req.nextUrl.searchParams.get('format') === 'md') {
@@ -43,8 +44,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let ctx;
   try {
     ctx = await load(req, id);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   if (!ctx.skill) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const parsed = Patch.safeParse(await req.json().catch(() => null));
@@ -72,8 +73,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   let ctx;
   try {
     ctx = await load(req, id);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    return NextResponse.json({ error: errMessage(err) || 'Unauthorized' }, { status: 401 });
   }
   if (!ctx.skill) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   await ctx.platform.deleteSkill(ctx.user.id, ctx.skill.id);
