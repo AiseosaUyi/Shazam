@@ -55,7 +55,8 @@ async function waitForNews(userId: string, taskId: string, waitS: number) {
 
 const INSTRUCTIONS = `Arcwork runs coding, email, calendar, image and video work on free models, so the user saves their own AI plan's usage.
 To save the user's usage:
-- Delegate real work with start_task instead of doing it yourself. Write one complete, self-contained prompt.
+- Delegate real work instead of doing it yourself. For quick jobs call run_task (starts and waits in one call). For long jobs use start_task, then get_task_status. Write one complete, self-contained prompt.
+- Keep your own context small: act on the short summary, and never paste large files or logs back into the prompt. Arcwork can read the project itself.
 - Then call get_task_status repeatedly; each call waits up to ${MAX_WAIT_S}s on Arcwork's side, so call it again immediately when it says still working.
 - Review the short summary it returns. Only call read_project_file for specific files if something looks wrong, and only use detail="full" if you truly need it.
 - Send corrections with send_feedback rather than fixing the work yourself.
@@ -109,6 +110,42 @@ const handler = createMcpHandler(
         const pinnedModel = model && model.toLowerCase() !== 'auto' ? model : undefined;
         after(() => executeRun(user, run, { ...(pinnedModel ? { pinnedModel } : {}), ...(max_steps ? { maxSteps: max_steps } : {}) }));
         return text(`Started ${chosen} task (model: ${pinnedModel || 'auto'}).\ntask_id: ${run.id}\nCall get_task_status(task_id) now; it waits for progress on our side, so keep calling it until the task is done. Watch it live: ${APP_URL}/runs/${run.id}`);
+      }
+    );
+
+    server.registerTool(
+      'run_task',
+      {
+        title: 'Run an Arcwork task and wait for the result',
+        description:
+          'One call instead of start_task + get_task_status. Delegates the work to Arcwork\'s free local/cloud models, waits up to ' + MAX_WAIT_S + 's, and returns the short result if it finishes. If it is still working you get a task_id: continue with get_task_status. Best for quick jobs (a small edit, a draft, a lookup, a summary). Uses far fewer of your tokens than doing the work yourself.',
+        inputSchema: z.object({
+          prompt: z.string().describe('Complete, self-contained instructions (Arcwork does not see your conversation).'),
+          agent: z.enum(['auto', 'code', 'cowork']).default('auto'),
+          project_id: z.string().optional(),
+          local_folder: z.string().optional().describe('Absolute path of a folder on the user\'s computer to work in.'),
+          model: z.string().max(100).regex(/^[A-Za-z0-9._:\/-]+$/).optional().describe('"local" = model on the user\'s computer, omitted/"auto" = Arcwork picks (local first).'),
+        }),
+      },
+      async ({ prompt, agent, project_id, local_folder, model }, ctx) => {
+        const user = await userFrom(ctx);
+        let chosen = agent;
+        if (chosen === 'auto') {
+          const s = suggestAgent(prompt, await loadSuggestContext(user.id));
+          chosen = s.agent === 'code' ? 'code' : 'cowork';
+        }
+        if (local_folder) {
+          const { BridgeRepo } = await import('@/lib/bridge/repo');
+          const { offlineMessage } = await import('@/lib/bridge/folders');
+          if (!(await new BridgeRepo().onlineDevice(user.id, 'desktop'))) return text(offlineMessage(local_folder));
+        }
+        const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: local_folder ? `local:${local_folder}` : project_id, source: 'mcp' });
+        const pinnedModel = model && model.toLowerCase() !== 'auto' ? model : undefined;
+        after(() => executeRun(user, run, { ...(pinnedModel ? { pinnedModel } : {}) }));
+        const { run: latest, q } = await waitForNews(user.id, run.id, MAX_WAIT_S);
+        if (!latest) return text(`Started ${chosen} task ${run.id}. Call get_task_status to follow it.`);
+        const ask = q ? `\n\nQUESTION FOR YOU (question_id ${q.id}): ${q.question}\nOptions: ${q.options.join(' | ')}\nAnswer with answer_question (ask your human if you are unsure).` : '';
+        return text(summarizeRun(latest, 0, 'summary') + ask + `\nWatch it live: ${APP_URL}/runs/${run.id}`);
       }
     );
 

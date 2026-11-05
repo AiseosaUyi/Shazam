@@ -174,10 +174,11 @@ async function nativeAsk(options) {
   return response;
 }
 
-async function approveRisky(summary, detail) {
-  const response = await nativeAsk({ type: 'warning', buttons: ['Deny', 'Allow once'], defaultId: 0, cancelId: 0, title: 'Arcwork wants to run a command', message: summary, detail });
-  logBridge(response === 1 ? `approved: ${detail.split('\n')[0]}` : `denied: ${detail.split('\n')[0]}`);
-  return response === 1;
+async function approveRisky(summary, detail, opts = {}) {
+  const buttons = opts.canRemember ? ['Deny', 'Allow once', opts.rememberLabel || 'Always allow in this folder'] : ['Deny', 'Allow once'];
+  const response = await nativeAsk({ type: 'warning', buttons, defaultId: 0, cancelId: 0, title: 'Arcwork wants to run a command', message: summary, detail });
+  logBridge(response === 2 ? `approved and remembered: ${detail.split('\n')[0]}` : response === 1 ? `approved: ${detail.split('\n')[0]}` : `denied: ${detail.split('\n')[0]}`);
+  return response === 2 ? 'always' : response === 1;
 }
 
 /** On-demand consent: a task needs a folder that isn't allowed yet. */

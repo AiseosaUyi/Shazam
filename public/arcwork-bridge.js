@@ -37,6 +37,20 @@ function replaceLiteral(text, oldString, newString) {
   return text.slice(0, i) + newString + text.slice(i + oldString.length);
 }
 
+/**
+ * A command the person may tell Arcwork to stop asking about, per folder. Only plain, single,
+ * non-destructive commands qualify: a non-force "git push" and a plain "vercel deploy".
+ * Anything chained (&&, ;, |, $(), backticks), forced, or destructive (rm -rf, sudo, publish,
+ * reset --hard, drops, deletes) always asks, every time.
+ */
+function commandTrustKey(command) {
+  const c = String(command || '').trim().replace(/\s+/g, ' ');
+  if (/[;&|`$<>(){}\n\\]/.test(c)) return null;
+  if (/^git push( (-u|--set-upstream))?( (origin|upstream))?( [\w./-]+)?$/.test(c) && !/(^| )(-f|--force\S*|--delete|-d|\+\S*|:\S*)( |$)/.test(c)) return 'git push';
+  if (/^vercel( (deploy|--prod|--prebuilt|--yes|-y))*$/.test(c)) return 'vercel deploy';
+  return null;
+}
+
 function loadConfig() {
   try {
     return { server: DEFAULT_SERVER, workspaces: [], ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) };
@@ -310,8 +324,21 @@ class BridgeClient {
           return { ok: false, result: 'This command keeps running (server/watch mode). Use start_preview to run it in the background instead of run_command.' };
         }
         if (RISKY_COMMAND.test(p.command)) {
-          const ok = await this.approve('Arcwork wants to run a command that changes things outside the editor', `${p.command}\n\nin ${cwd}`);
-          if (!ok) return { ok: false, result: 'The user declined this command on their computer.' };
+          const key = commandTrustKey(p.command);
+          const trustId = key ? `${cwd}\u0000${key}` : null;
+          const remembered = trustId && (this.cfg.trustedCommands || []).includes(trustId);
+          if (remembered) {
+            this.log(`auto-approved (remembered for this folder): ${key}`);
+          } else {
+            const choice = await this.approve('Arcwork wants to run a command that changes things outside the editor', `${p.command}\n\nin ${cwd}`, { canRemember: Boolean(key), rememberLabel: key ? `Always allow "${key}" in this folder` : '' });
+            if (choice !== true && choice !== 'always') return { ok: false, result: 'The user declined this command on their computer.' };
+            if (choice === 'always' && trustId) {
+              const cfg = loadConfig();
+              cfg.trustedCommands = Array.from(new Set([...(cfg.trustedCommands || []), trustId]));
+              saveConfig(cfg);
+              this.cfg.trustedCommands = cfg.trustedCommands;
+            }
+          }
         }
         this.log(`$ ${p.command}   (${cwd})`);
         const r = await execCommand(p.command, cwd, Math.min(600_000, Number(p.timeoutMs) || 120_000));
@@ -615,7 +642,7 @@ function windowsTaskArgs(nodePath, scriptPath) {
   return ['/Create', '/SC', 'ONLOGON', '/TN', 'ArcworkBridge', '/TR', `"${nodePath}" "${scriptPath}" start --background`, '/F'];
 }
 
-module.exports = { deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName, launchAgentPlist, systemdUnit, windowsTaskArgs, replaceLiteral };
+module.exports = { commandTrustKey, deviceAuth, checkConsentFolder, LONG_RUNNING, probeLocalModels, isAllowedLocalUrl, BridgeClient, loadConfig, saveConfig, pair, guardPath, RISKY_COMMAND, DEFAULT_SERVER, CONFIG_PATH, VERSION, validModelName, launchAgentPlist, systemdUnit, windowsTaskArgs, replaceLiteral };
 
   return module.exports;
 })();
