@@ -5,6 +5,7 @@ import { validateFilePath } from './policy';
 import { buildProjectIndex } from './indexer';
 import type { ProjectSandbox } from './sandbox';
 import { errMessage } from '@/lib/errors';
+import { webFetchText, webSearch } from './web';
 
 /**
  * Native tool-calling coding agent (Claude Code / OpenCode style) on the AI SDK.
@@ -35,6 +36,8 @@ export interface ToolAgentOptions extends ResumableRun {
   /** Work directly in a folder on the user's computer through the desktop bridge. */
   local?: { root: string; deviceName: string; call: (command: string, payload: Record<string, unknown>, timeoutMs?: number) => Promise<string> };
   maxSteps?: number;
+  /** Plan mode: only read-only tools are offered, and the run ends with a written plan. */
+  planMode?: boolean;
   signal?: AbortSignal;
   onEvent?: (event: string, data: unknown) => void;
 }
@@ -47,6 +50,27 @@ export interface ToolAgentResult {
   commandsRun: Array<{ command: string; exitCode: number }>;
   /** Stopped at the time limit before finishing; resume from the saved checkpoint. */
   paused: boolean;
+}
+
+/** Tools that never change files or run commands. Plan mode and subagents are limited to these. */
+export const READ_ONLY_TOOLS = ['list_files', 'grep', 'read_file', 'web_fetch', 'web_search'] as const;
+/** Plan mode also keeps the planning helpers and the read-only subagent tool. */
+export const PLAN_MODE_TOOLS = [...READ_ONLY_TOOLS, 'todo_write', 'ask_user', 'task'] as const;
+export const MAX_SUBAGENTS = 4;
+export const SUBAGENT_MAX_STEPS = 12;
+export const SUBAGENT_TIME_MS = 120_000;
+export const SUBAGENT_SUMMARY_CHARS = 2000;
+
+const PLAN_MODE_NOTE = `PLAN MODE (overrides the workflow above): you can only read and research. You cannot edit files or run commands, and those tools are not available.
+Explore with list_files, grep, read_file, web_search, web_fetch (or the task tool for a focused read-only investigation), then finish with a written plan as your final message: goal, the files you would change and how, the steps in order, how to verify, and risks or open questions. Do not claim any change was made.`;
+
+const SUBAGENT_INSTRUCTIONS = `You are a read-only research subagent. Investigate the question you are given using list_files, grep, read_file, web_search and web_fetch. You cannot edit files or run commands.
+Be efficient: you have a small step budget. Finish with a concise summary (under ${SUBAGENT_SUMMARY_CHARS} characters) that names exact file paths and line numbers and states what you found. If you could not find something, say so plainly. Never guess.`;
+
+export function pickTools(tools: ToolSet, names: readonly string[]): ToolSet {
+  const out: ToolSet = {};
+  for (const n of names) if (tools[n]) out[n] = tools[n];
+  return out;
 }
 
 const MAX_READ_LINES = 400;
@@ -141,7 +165,7 @@ ${extra ? `\n${extra}` : ''}`;
 }
 
 export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgentResult> {
-  const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, local, maxSteps = 40, signal, onEvent } = options;
+  const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, local, maxSteps = 40, planMode = false, signal, onEvent } = options;
 
   const filesModified = new Set<string>();
   const filesDeleted = new Set<string>();
@@ -284,15 +308,12 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     web_fetch: tool({
       description: 'Fetch a public https URL (docs, API references) and return its text.',
       inputSchema: z.object({ url: z.string().url() }),
-      execute: async ({ url }) => {
-        const u = new URL(url);
-        if (u.protocol !== 'https:' || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u.hostname)) {
-          return 'Error: only public https URLs are allowed.';
-        }
-        const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'ArcworkAgent/1.0' } });
-        const text = (await res.text()).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-        return `HTTP ${res.status}\n${text.slice(0, 12000)}`;
-      },
+      execute: async ({ url }, { abortSignal }) => webFetchText(url, { signal: abortSignal }),
+    }),
+    web_search: tool({
+      description: 'Search the web and return the top results (title, url, snippet). Use web_fetch on a result URL to read it. If search is unavailable it says so: never invent results.',
+      inputSchema: z.object({ query: z.string().min(2).max(300) }),
+      execute: async ({ query }, { abortSignal }) => webSearch(query, { signal: abortSignal }),
     }),
     ...extraTools,
   };
@@ -397,13 +418,58 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     localIndex = await local.call('list_files', { path: local.root, max: 400 }).catch(() => '');
   }
 
+  // Subagents: a fresh, read-only nested loop that returns a short summary (max MAX_SUBAGENTS per run).
+  let subagentsStarted = 0;
+  const subagentTools = pickTools(tools, READ_ONLY_TOOLS);
+  tools.task = tool({
+    description: `Delegate a focused, read-only investigation (e.g. "find where auth is handled") to a subagent with a fresh context. It can search and read code and the web but cannot edit or run commands, and returns a short summary. Max ${MAX_SUBAGENTS} per run.`,
+    inputSchema: z.object({
+      description: z.string().min(3).max(100).describe('Short label, e.g. "Find where auth is handled"'),
+      prompt: z.string().min(10).max(4000).describe('Everything the subagent needs: what to find and what to report back'),
+    }),
+    execute: async ({ description, prompt: subPrompt }, { abortSignal }) => {
+      if (subagentsStarted >= MAX_SUBAGENTS) return `Error: subagent limit reached (${MAX_SUBAGENTS} per run). Continue with your own tools.`;
+      subagentsStarted++;
+      const sub = abortSignal ?? signal;
+      const deadline = Math.min(Date.now() + SUBAGENT_TIME_MS, options.deadline ?? Infinity);
+      onEvent?.('subagent_start', { description });
+      try {
+        const r = await streamAgent({
+          model,
+          instructions: SUBAGENT_INSTRUCTIONS,
+          messages: [{ role: 'user', content: subPrompt }],
+          tools: subagentTools,
+          maxSteps: SUBAGENT_MAX_STEPS,
+          signal: sub,
+          deadline,
+          onEvent: (event, data) => {
+            if (event === 'react_step' || event === 'react_observation') onEvent?.(`subagent_${event === 'react_step' ? 'step' : 'observation'}`, { description, ...(data as object) });
+          },
+        });
+        let summary = r.text || 'The subagent finished without a summary.';
+        if (r.paused) summary = `(Subagent hit its time limit; partial findings)\n${summary}`;
+        if (summary.length > SUBAGENT_SUMMARY_CHARS) summary = `${summary.slice(0, SUBAGENT_SUMMARY_CHARS - 1)}…`;
+        return summary;
+      } catch (err) {
+        if (sub?.aborted) throw err;
+        return `Error: subagent failed: ${errMessage(err) || err}`;
+      } finally {
+        onEvent?.('subagent_done', { description });
+      }
+    },
+  });
+
+  // Plan mode: write/edit/command tools are not even offered to the model.
+  const offered = planMode ? pickTools(tools, PLAN_MODE_TOOLS) : tools;
+  const extra = [extraInstructions, planMode ? PLAN_MODE_NOTE : ''].filter(Boolean).join('\n\n') || undefined;
+
   const { text, steps, paused } = await streamAgent({
     model,
     instructions: local
-      ? buildLocalInstructions(local.root, local.deviceName, localIndex, extraInstructions)
-      : buildInstructions(projectName, files, hasExecution, extraInstructions),
+      ? buildLocalInstructions(local.root, local.deviceName, localIndex, extra)
+      : buildInstructions(projectName, files, hasExecution, extra),
     messages: startMessages(prompt, history, options.resumeMessages),
-    tools,
+    tools: offered,
     maxSteps,
     signal,
     onEvent,
