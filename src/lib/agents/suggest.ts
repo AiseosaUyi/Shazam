@@ -60,6 +60,12 @@ export function suggestAgent(prompt: string, ctx: SuggestContext): Suggestion {
   // A short factual question is chat, not an agent run.
   if (text.length < 80 && /^(what|why|how|who|when|explain|define|is|are|can you explain)\b/i.test(text) && !/\b(my|our)\b/i.test(text)) scores.chat += 2;
 
+  // Conversational instructions stay in Chat even when the text mentions code words ("repeat this in a
+  // code block", "explain this JavaScript"). Real build requests carry an action verb and win anyway.
+  const chatVerb = /^(translate|repeat|explain|define|paraphrase|proofread|rephrase|shorten|summari[sz]e (this|the|that)|tell me|what|why|how|who|when|where|which|can you explain|give me (a|an|the|some)? ?(list|checklist|summary|example|examples|tips|ideas|overview|comparison))\b/i;
+  const buildVerb = /\b(build|implement|scaffold|set up|deploy|push|commit|run (the )?tests?|refactor|fix (the|this|my|a) (bug|error|test|issue)|create (a|an) (app|component|function|endpoint|api|page|script|repo))\b|\.(ts|tsx|py|go|rs|java|rb|php|sql)\b|```/i;
+  if (chatVerb.test(text) && !buildVerb.test(text)) scores.chat += 6;
+
   const ranked = (Object.entries(scores) as Array<[AgentKind, number]>).sort((a, b) => b[1] - a[1]);
   const [agent, top] = ranked[0];
   const second = ranked[1][1];

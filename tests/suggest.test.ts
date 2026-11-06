@@ -13,6 +13,11 @@ describe('Agent suggestion before running', () => {
     ['Create a 9:16 poster for our Friday party', 'image'],
     ['Cut the silences from this clip and add captions [Attached video: a.mp4](https://x/a.mp4)', 'video'],
     ['What is a vector database?', 'chat'],
+    ["Repeat this back exactly inside a code block, then in one line translate it to Yoruba: <script>alert('x')</script> **not bold**", 'chat'],
+    ['Explain how this JavaScript closure works and why the counter resets', 'chat'],
+    ['Translate this email draft into French', 'chat'],
+    ['Give me a 5-point checklist for reviewing a mobile onboarding flow', 'chat'],
+    ['Implement a debounce function in src/utils.ts and run the tests', 'code'],
   ];
   for (const [prompt, agent] of cases) {
     it(`routes "${prompt.slice(0, 40)}…" to ${agent}`, () => assert.equal(suggestAgent(prompt, ctx).agent, agent));

@@ -185,6 +185,29 @@ export async function generateAndStoreImage(req: ImageRequest, platform: Platfor
     }
   }
 
+  // Last resort that needs no key: a free public FLUX endpoint. Not for edits (it can't take a reference image).
+  if (!bytes && !reference) {
+    if ((await countImagesToday(platform, req.userId)) >= DAILY_LIMIT) {
+      errors.push(`Free daily image limit reached (${DAILY_LIMIT}/day).`);
+    } else {
+      try {
+        const size = GATEWAY_SIZES[aspectRatio].split('x').map(Number);
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt.slice(0, 1500))}?width=${size[0]}&height=${size[1]}&nologo=true&model=flux`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(50_000) });
+        const type = res.headers.get('content-type') || '';
+        const buf = new Uint8Array(await res.arrayBuffer());
+        if (!res.ok || !type.startsWith('image/') || buf.length < 2000) throw new Error(`free image service returned ${res.status}`);
+        bytes = buf;
+        mimeType = type.split(';')[0];
+        provider = 'Free FLUX (Pollinations)';
+        model = 'flux';
+        billedTo = 'platform';
+      } catch (err) {
+        errors.push(`Free image service: ${errMessage(err)}`);
+      }
+    }
+  }
+
   if (!bytes) {
     throw new Error(errors.length ? errors.join(' | ') : 'No image provider is available. Connect a Google (billing) or OpenAI key.');
   }
