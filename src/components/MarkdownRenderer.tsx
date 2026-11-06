@@ -379,7 +379,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
 function renderInline(text: string, onOpenFile?: (path: string) => void): React.ReactNode {
   const tokens: React.ReactNode[] = [];
   // Tokenize ![image](url), `code`, **bold**, *italic*, [link](url)
-  const regex = /(!\[[^\]]*\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  const regex = /(<sub>[\s\S]*?<\/sub>|!\[[^\]]*\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
   let match;
 
@@ -390,7 +390,13 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
 
     const token = match[0];
 
-    if (token.startsWith('![') && token.includes('](')) {
+    if (token.startsWith('<sub>')) {
+      tokens.push(
+        <span key={`sub-${match.index}`} className="text-[11px] text-ink-3 font-mono">
+          {token.slice(5, -6)}
+        </span>
+      );
+    } else if (token.startsWith('![') && token.includes('](')) {
       const imgMatch = token.match(/^!\[(.*?)\]\((.*?)\)$/);
       if (imgMatch) {
         tokens.push(
