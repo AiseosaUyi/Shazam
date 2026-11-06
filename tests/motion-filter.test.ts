@@ -26,3 +26,12 @@ describe('animate_image filter graph', () => {
     assert.doesNotMatch(buildMotionFilter({ motion: 'none', aspect: '9:16', seconds: 5 }), /drawtext/);
   });
 });
+
+import { isMissingFilter } from '../src/lib/media/video';
+describe('missing ffmpeg filter detection', () => {
+  it('recognises a build without drawtext and ignores other failures', () => {
+    assert.equal(isMissingFilter(new Error("ffmpeg step failed (exit 8): [AVFilterGraph @ 0x1] No such filter: 'drawtext'")), true);
+    assert.equal(isMissingFilter(new Error('Error opening output files: Filter not found')), true);
+    assert.equal(isMissingFilter(new Error('curl: (22) The requested URL returned error: 404')), false);
+  });
+});

@@ -103,6 +103,11 @@ export function speechSpans(ffmpegLog: string, duration: number, pad = 0.15): Ar
   return keep;
 }
 
+/** True when ffmpeg failed because a filter is not compiled into this build. */
+export function isMissingFilter(err: unknown): boolean {
+  return /No such filter|Filter not found/i.test(String((err as { message?: string })?.message || err));
+}
+
 export type MotionKind = 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'none';
 export type MotionAspect = '9:16' | '1:1' | '16:9' | '4:5';
 
@@ -339,9 +344,20 @@ export class VideoEditor {
       textFile = `${WORK}/${id}-text.txt`;
       await this.sandbox.writeBinary(textFile, new TextEncoder().encode(text));
     }
-    const vf = buildMotionFilter({ motion: o.motion ?? 'zoom_in', aspect, seconds, textFile, fontFile: `${FONT_DIR}/DejaVuSans-Bold.ttf`, textAt: o.textAt });
-    await this.sh(`${FF} -y -v error -i ${q(img)} -vf ${q(vf)} -t ${seconds} -r 30 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart ${q(out)}`);
-    this.log.push(`Animated image: ${o.motion ?? 'zoom_in'} · ${aspect} · ${seconds}s${text ? ` · text "${text}"` : ''}`);
+    const render = (withText: boolean) => {
+      const vf = buildMotionFilter({ motion: o.motion ?? 'zoom_in', aspect, seconds, textFile: withText ? textFile : undefined, fontFile: `${FONT_DIR}/DejaVuSans-Bold.ttf`, textAt: o.textAt });
+      return this.sh(`${FF} -y -v error -i ${q(img)} -vf ${q(vf)} -t ${seconds} -r 30 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart ${q(out)}`);
+    };
+    let textApplied = Boolean(textFile);
+    try {
+      await render(true);
+    } catch (err) {
+      // Some ffmpeg builds ship without drawtext. Keep the motion clip and say plainly that the text was not added.
+      if (!textFile || !isMissingFilter(err)) throw err;
+      textApplied = false;
+      await render(false);
+    }
+    this.log.push(`Animated image: ${o.motion ?? 'zoom_in'} · ${aspect} · ${seconds}s${text ? (textApplied ? ` · text "${text}"` : ' · text overlay NOT added (this ffmpeg build has no text filter); put the text in the image prompt instead') : ''}`);
     const durationSeconds = await this.duration(out);
     const bytes = await this.sandbox.readBinary(out);
     if (!bytes) throw new Error('Rendered video could not be read back from the sandbox.');

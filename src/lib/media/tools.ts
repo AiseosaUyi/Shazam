@@ -84,7 +84,7 @@ export async function buildMediaTools(
         motion: z.enum(['zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'none']).optional(),
         aspect: z.enum(['9:16', '1:1', '16:9', '4:5']).optional().describe('Default 9:16 (stories/reels).'),
         seconds: z.number().min(2).max(15).optional().describe('Default 6.'),
-        text: z.string().max(80).optional().describe('Overlay text that fades in (no emoji).'),
+        text: z.string().max(80).optional().describe('Best-effort overlay text that fades in (no emoji). It is skipped on ffmpeg builds without a text filter, and the result says so. For reliable text, put it in the generate_image prompt in quotes instead.'),
         text_position: z.enum(['top', 'middle', 'bottom']).optional(),
         title: z.string().optional(),
       }),
