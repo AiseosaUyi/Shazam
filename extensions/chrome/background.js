@@ -5,7 +5,7 @@
  */
 
 // Keep in sync with manifest.json. Reported to the server so a stale installed copy is detectable.
-const EXT_VERSION = '1.1.0';
+const EXT_VERSION = '1.2.0';
 
 
 const DEFAULTS = { server: 'https://arcwork-ai.vercel.app', token: null, askBeforeActions: true, autoApproveHosts: [] };
@@ -87,10 +87,27 @@ function pageSnapshot(maxChars) {
   const items = els.slice(0, 300).map((el, i) => {
     el.setAttribute('data-shazam-idx', String(i));
     const tag = el.tagName.toLowerCase();
-    const type = el.getAttribute('type') || '';
-    const label = (el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name') || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    const clean = (v) => String(v || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    const isField = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const buttonLike = tag === 'input' && ['submit', 'button', 'reset'].includes(type);
+    // Passwords and payment fields: never report what is in them.
+    const hint = `${el.getAttribute('autocomplete') || ''} ${el.getAttribute('name') || ''} ${el.id || ''}`.toLowerCase();
+    const secret = type === 'password' || /cc-|card|cvc|cvv|iban|ssn|passw/.test(hint);
+    // Name a field by its visible <label>, never by what the user typed into it.
+    const own = el.getAttribute('aria-label') || (isField && el.labels && el.labels[0] ? el.labels[0].innerText : '');
+    const label = clean(own || (isField ? '' : el.innerText) || (buttonLike ? el.value : '') || el.getAttribute('placeholder') || el.getAttribute('title') || el.getAttribute('name') || (isField && !secret ? el.value : ''));
     const kind = tag === 'a' ? 'link' : tag === 'input' ? `input${type ? `:${type}` : ''}` : tag;
-    return `[${i}] ${kind} "${label}"${tag === 'a' ? ` → ${el.getAttribute('href')?.slice(0, 80)}` : ''}`;
+    let state = '';
+    if (tag === 'input' && (type === 'checkbox' || type === 'radio')) state = el.checked ? ' [checked]' : ' [unchecked]';
+    else if (tag === 'select') {
+      const opts = Array.from(el.options).slice(0, 12).map((o) => clean(o.text));
+      state = ` = "${clean(el.selectedOptions[0] ? el.selectedOptions[0].text : '')}" (options: ${opts.join(' | ')})`;
+    } else if ((tag === 'input' && !buttonLike && type !== 'file') || tag === 'textarea') {
+      state = secret ? (el.value ? ' = [hidden]' : ' = (empty)') : el.value ? ` = "${clean(el.value)}"` : ' = (empty)';
+    }
+    if (el.disabled) state += ' [disabled]';
+    return `[${i}] ${kind} "${label}"${state}${tag === 'a' ? ` → ${el.getAttribute('href')?.slice(0, 80)}` : ''}`;
   });
   const text = (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n').slice(0, maxChars);
   return { title: document.title, url: location.href, text, elements: items.join('\n') };
