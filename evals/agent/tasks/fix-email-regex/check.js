@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { isEmail } = load('validate.js');
+for (const ok of ['a@b.co', 'first.last@sub.example.com', 'x+tag@example.org']) assert.equal(isEmail(ok), true, ok);
+for (const bad of ['a@b', '@b.com', 'a@.com', 'a b@c.com', 'a@b.c', '', 'plain', 'a@@b.com', 'a@b..com']) assert.equal(isEmail(bad), false, JSON.stringify(bad));
+assert.equal(isEmail(null), false);
+assert.equal(isEmail(42), false);

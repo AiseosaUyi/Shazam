@@ -1,0 +1,4 @@
+{
+  "name": "add-debounce",
+  "instruction": "Implement and export debounce(fn, ms) in util.js (currently a stub). It returns a function that delays calling fn until ms milliseconds have passed since the last call, then calls fn once with the arguments of the LAST call."
+}

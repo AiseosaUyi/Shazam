@@ -1,0 +1,24 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { debounce } = load('util.js');
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+(async () => {
+  const calls = [];
+  const d = debounce((x) => calls.push(x), 40);
+  d(1); d(2); d(3);
+  assert.equal(calls.length, 0, 'must not call immediately');
+  await wait(120);
+  assert.deepEqual(calls, [3]);
+  d(4);
+  await wait(15);
+  d(5);
+  await wait(15);
+  assert.deepEqual(calls, [3], 'timer must reset on each call');
+  await wait(120);
+  assert.deepEqual(calls, [3, 5]);
+})().catch((e) => { console.error(e); process.exit(1); });

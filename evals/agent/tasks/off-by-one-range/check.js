@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { range } = load('range.js');
+assert.deepEqual(range(1, 3), [1, 2, 3]);
+assert.deepEqual(range(0, 0), [0]);
+assert.deepEqual(range(3, 1), []);
+assert.deepEqual(range(-1, 1), [-1, 0, 1]);

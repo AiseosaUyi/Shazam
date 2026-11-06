@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { deepMerge } = load('merge.js');
+const a = { x: 1, nested: { p: 1, q: 2 }, list: [1, 2] };
+const b = { y: 2, nested: { q: 3, r: 4 }, list: [9] };
+const aCopy = JSON.parse(JSON.stringify(a));
+const bCopy = JSON.parse(JSON.stringify(b));
+assert.deepEqual(deepMerge(a, b), { x: 1, y: 2, nested: { p: 1, q: 3, r: 4 }, list: [9] });
+assert.deepEqual(a, aCopy);
+assert.deepEqual(b, bCopy);
+assert.deepEqual(deepMerge({}, { a: { b: 1 } }), { a: { b: 1 } });
+assert.deepEqual(deepMerge({ a: { b: 1 } }, { a: null }), { a: null });

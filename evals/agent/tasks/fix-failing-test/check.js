@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+assert.equal(read('palindrome.test.js'), fs.readFileSync(path.join(taskDir, 'start', 'palindrome.test.js'), 'utf8'), 'test file must not be modified');
+const r = cp.spawnSync(process.execPath, ['--test'], { cwd: process.cwd(), encoding: 'utf8' });
+assert.equal(r.status, 0, r.stdout.slice(-800));

@@ -1,0 +1,13 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const p = load('price.js');
+assert.equal(p.bookPrice(10), 12);
+assert.equal(p.toyPrice(10), 14);
+assert.equal(p.foodPrice(10), 11.5);
+assert.equal(p.bookPrice(9.99), 11.99);
+assert.equal((read('price.js').match(/1\.2/g) || []).length, 1, 'the literal 1.2 must appear exactly once');

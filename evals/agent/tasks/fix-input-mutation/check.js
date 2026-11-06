@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { addItem } = load('cart.js');
+const cart = Object.freeze({ items: Object.freeze([{ name: 'a', price: 5 }]), total: 5 });
+const next = addItem(cart, { name: 'b', price: 7 });
+assert.notEqual(next, cart);
+assert.equal(next.items.length, 2);
+assert.equal(next.items[1].name, 'b');
+assert.equal(next.total, 12);
+assert.equal(cart.items.length, 1);
+assert.equal(cart.total, 5);

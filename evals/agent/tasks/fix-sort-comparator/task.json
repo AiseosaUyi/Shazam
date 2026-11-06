@@ -1,0 +1,4 @@
+{
+  "name": "fix-sort-comparator",
+  "instruction": "people.js exports sortPeople(list) which is supposed to sort by age ascending, breaking ties by name alphabetically. It is broken (bad comparator) and it also mutates the input. Fix both: return a new sorted array and leave the input untouched."
+}

@@ -1,0 +1,4 @@
+{
+  "name": "implement-stack",
+  "instruction": "Implement the Stack class in stack.js (currently a stub), exported as module.exports = { Stack }. Methods: push(x), pop() (returns the top item; throws Error(\"Stack is empty\") when empty), peek() (returns the top item or undefined if empty, does not remove it), isEmpty() (boolean) and a size getter (number of items)."
+}

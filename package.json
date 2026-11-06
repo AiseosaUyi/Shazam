@@ -14,6 +14,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-sqlite --no-warnings --import tsx --test tests/*.test.ts",
+    "eval:agent": "tsx scripts/eval-agent.ts",
+    "eval:agent:dry": "tsx scripts/eval-agent.ts --dry",
     "desktop": "electron desktop/main.js",
     "desktop:dist": "electron-builder --mac --arm64",
     "cli": "node cli/shazam-cli.js",

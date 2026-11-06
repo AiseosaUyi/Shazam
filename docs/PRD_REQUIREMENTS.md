@@ -38,6 +38,16 @@ Last QA: 2026-10-30. Score history in §9. Setup steps that need an account owne
 | C10 | Git: show diff, commit, branch, open a PR (via the bridge or GitHub app) after approval. | A PR is created on a test repo. |
 | C11 | Benchmark: pass at least 60% of a 20-task internal eval (small SWE-style tasks) on the default free model. Track the score per build. | `npm run eval:agent` prints the pass rate. |
 
+### C11 agent benchmark: how to run
+
+20 small SWE-style tasks live in `evals/agent/tasks/<name>/` (`task.json` instruction, `start/` fixtures, `solution/` reference, `check.js` deterministic checker run offline with `node` in a temp dir).
+
+- `npm run eval:agent:dry`: no model or keys needed. Verifies every checker FAILS on `start/` and PASSES on `solution/` (20/20 required). Also runs in `npm test` (`tests/eval-agent-tasks.test.ts`).
+- `npm run eval:agent`: runs the real `runToolAgent` loop per task against a local temp-dir executor, runs the checker, and prints per-task PASS/FAIL, steps, seconds and the pass rate (target >= 60%).
+  - Model: default is the first free key found in `.env.local` / env (Gemini, Cerebras, OpenRouter, Groq, in that order); `--model provider/id` (e.g. `google/gemini-3.8-flash`) overrides; `--local` uses Ollama (`EVAL_LOCAL_MODEL`, default `qwen3.6:35b-a3b`).
+  - Flags: `--limit N`, `--task name`, `--json out.json`, `--max-steps N` (default 25), `--min-pass 0.6` (exit 1 below the threshold; otherwise exit 0 unless the harness crashes).
+- Results: every run writes `evals/agent/results/<timestamp>_<git sha>.json` (gitignored except `.gitkeep`) with the build sha, model and per-task outcome, so the score is tracked per build.
+
 ## 2. Co-Work ("like Claude Cowork")
 
 | ID | Requirement | Acceptance test |

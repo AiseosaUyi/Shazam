@@ -1,0 +1,4 @@
+{
+  "name": "implement-deep-merge",
+  "instruction": "Implement deepMerge(a, b) in merge.js (currently a stub). Plain objects are merged recursively; for any other value type (including arrays) the value from b replaces the one from a. Keys only in a or only in b are kept. Neither input may be mutated; return a new object."
+}

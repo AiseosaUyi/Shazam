@@ -1,0 +1,4 @@
+{
+  "name": "parse-csv",
+  "instruction": "Implement parseCsv(text) in csv.js (currently a stub). The first line is the header row. Return an array of objects, one per data row, keyed by header, with all values as trimmed strings. Ignore blank lines, accept both \\n and \\r\\n line endings, and ignore a trailing newline. No quoted-field handling is needed. Example: \"name,age\\nAnn,30\\nBo,25\" -> [{name:\"Ann\",age:\"30\"},{name:\"Bo\",age:\"25\"}]. Empty input returns []."
+}

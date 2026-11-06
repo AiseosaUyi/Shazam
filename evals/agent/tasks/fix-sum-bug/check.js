@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { sum } = load('sum.js');
+assert.equal(sum([1, 2, 3]), 6);
+assert.equal(sum([]), 0);
+assert.equal(sum([5]), 5);
+assert.equal(sum([-2, 2, 10]), 10);

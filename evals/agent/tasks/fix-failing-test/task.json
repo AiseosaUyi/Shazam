@@ -1,0 +1,4 @@
+{
+  "name": "fix-failing-test",
+  "instruction": "Running \"node --test\" currently fails. palindrome.test.js is correct; the bug is in palindrome.js. Fix palindrome.js so every test passes (do NOT edit the test file)."
+}

@@ -23,3 +23,7 @@ dist-desktop
 scratch/
 reports/
 .agents/
+
+# agent eval results (keep the folder)
+evals/agent/results/*
+!evals/agent/results/.gitkeep

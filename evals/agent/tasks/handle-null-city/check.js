@@ -1,0 +1,14 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { getCity } = load('user.js');
+assert.equal(getCity({ address: { city: 'Lagos' } }), 'Lagos');
+assert.equal(getCity(null), 'unknown');
+assert.equal(getCity(undefined), 'unknown');
+assert.equal(getCity({}), 'unknown');
+assert.equal(getCity({ address: null }), 'unknown');
+assert.equal(getCity({ address: { city: null } }), 'unknown');
