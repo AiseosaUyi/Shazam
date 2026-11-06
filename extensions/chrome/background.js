@@ -4,6 +4,10 @@
  * commands queued by their agents, in a single dedicated "Arcwork" tab.
  */
 
+// Keep in sync with manifest.json. Reported to the server so a stale installed copy is detectable.
+const EXT_VERSION = '1.1.0';
+
+
 const DEFAULTS = { server: 'https://arcwork-ai.vercel.app', token: null, askBeforeActions: true, autoApproveHosts: [] };
 let polling = false;
 const pendingApprovals = new Map();
@@ -750,7 +754,7 @@ async function pollLoop() {
         break;
       }
       try {
-        const data = await api('/api/v1/bridge/poll', { waitMs: 20000, capabilities: { browser: navigator.userAgent, version: '1.0.0' } });
+        const data = await api('/api/v1/bridge/poll', { waitMs: 20000, capabilities: { browser: navigator.userAgent, version: EXT_VERSION } });
         await setStatus('connected');
         for (const cmd of data.commands || []) {
           let out;
@@ -784,7 +788,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const res = await fetch(`${msg.server.replace(/\/$/, '')}/api/v1/bridge/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: msg.code, kind: 'browser', name: msg.name || 'Chrome', capabilities: { version: '1.0.0' } }),
+        body: JSON.stringify({ code: msg.code, kind: 'browser', name: msg.name || 'Chrome', capabilities: { version: EXT_VERSION } }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return sendResponse({ ok: false, error: data.error || `HTTP ${res.status}` });

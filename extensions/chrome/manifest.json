@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Arcwork Browser Bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lets your Arcwork agents browse in your real Chrome: open pages, read, click and type, with your approval.",
   "minimum_chrome_version": "120",
   "permissions": [
