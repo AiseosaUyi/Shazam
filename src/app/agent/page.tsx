@@ -329,7 +329,20 @@ export default function CodePage() {
     const id = runIdRef.current;
     if (id) await fetch(`/api/v1/runs/${id}`, { method: 'DELETE' }).catch(() => {});
     abortRef.current?.abort();
+    abortRef.current = null;
     setBusy(false);
+    // A run that created its project mid-flight belongs to a project this page isn't showing yet: switch to it.
+    const run: Run | undefined = id ? await fetch(`/api/v1/runs/${id}`).then((res) => (res.ok ? res.json() : null)).then((r) => r?.run).catch(() => undefined) : undefined;
+    const project = run ? digest(run).project : null;
+    if (project && workspace.kind === 'cloud' && !workspace.project) {
+      const list = await loadProjects();
+      const p = list.find((x) => x.id === project);
+      if (p) {
+        setWorkspace({ kind: 'cloud', project: p });
+        loadFiles(p.id);
+        return;
+      }
+    }
     loadThread(workspace);
   }
 
