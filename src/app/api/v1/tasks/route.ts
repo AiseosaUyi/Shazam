@@ -8,7 +8,7 @@ import type { CostPolicy, TaskClass } from '@/lib/types';
 import { errMessage } from '@/lib/errors';
 
 const CreateTaskSchema = z.object({
-  prompt: z.string().min(1, 'Prompt cannot be empty').max(1_000_000, 'Prompt exceeds 1MB limit'),
+  prompt: z.string().trim().min(1, 'Prompt cannot be empty').max(200_000, 'Prompt is too long (limit 200,000 characters). Attach large files instead of pasting them.'),
   conversationId: z.string().optional(),
   projectId: z.string().optional(),
   costPolicy: z
