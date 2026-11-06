@@ -30,6 +30,19 @@ function encodeHeader(value: string): string {
   return /^[\x20-\x7e]*$/.test(value) ? value : `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
 }
 
+/** Models write markdown; plain-text email would show the raw ** and # marks. Strip them, keep the words. */
+export function markdownToPlain(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/__([^_\n]+)__/g, '$1')
+    .replace(/(?<![\w*])\*([^*\n]+)\*(?![\w*])/g, '$1')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1 ($2)')
+    .replace(/^\s*[*+]\s+/gm, '- ');
+}
+
 /** Builds a base64url RFC 2822 message. Header values are stripped of CR/LF (header injection). */
 export function buildRawMessage(email: OutgoingEmail, from?: string | null): string {
   const strip = (v: string) => v.replace(/[\r\n]+/g, ' ');
@@ -43,7 +56,7 @@ export function buildRawMessage(email: OutgoingEmail, from?: string | null): str
     `Content-Type: ${email.html ? 'text/html' : 'text/plain'}; charset="UTF-8"`,
     'Content-Transfer-Encoding: base64',
   ].filter(Boolean);
-  const body = Buffer.from(email.body, 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
+  const body = Buffer.from(email.html ? email.body : markdownToPlain(email.body), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
   return Buffer.from(`${headers.join('\r\n')}\r\n\r\n${body}`, 'utf8').toString('base64url');
 }
 
