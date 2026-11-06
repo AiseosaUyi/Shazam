@@ -42,6 +42,8 @@ export interface CodeTaskOptions extends ResumableRun {
   history?: ModelMessage[];
   pinnedModel?: string | null;
   maxSteps?: number;
+  /** Plan mode: read-only research that ends with a written plan (no edits or commands). */
+  planMode?: boolean;
   allowExternalWrites?: boolean;
   /** Absolute path of an allowed folder on the user's paired computer: work there instead of a cloud project. */
   localRoot?: string | null;
@@ -121,6 +123,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
     extraTools: { ...mcp.tools, ...skills.tools, ...bridge.tools, ...github, ...buildAskTool({ userId: o.user.id, runId: o.runId ?? null, onEvent: send, signal: o.signal }) },
     extraInstructions: [QUESTION_GUIDANCE, mcp.inventory, skills.inventory, bridge.inventory, githubNote].filter(Boolean).join('\n\n'),
     maxSteps: o.maxSteps ?? 40,
+    planMode: o.planMode,
     signal: o.signal,
     onEvent: persistingSend,
     resumeMessages: o.resumeMessages,
@@ -175,6 +178,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     extraTools: { ...mcp.tools, ...skills.tools, ...buildAskTool({ userId: o.user.id, runId: o.runId ?? null, onEvent: send, signal: o.signal }) },
     extraInstructions: [memory, QUESTION_GUIDANCE, mcp.inventory, skills.inventory].filter(Boolean).join('\n\n'),
     maxSteps: o.maxSteps ?? 40,
+    planMode: o.planMode,
     signal: o.signal,
     onEvent: send,
     resumeMessages: o.resumeMessages,

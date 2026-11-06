@@ -24,6 +24,8 @@ const TOOL_LABELS: Record<string, string> = {
   start_preview: 'Started a preview',
   todo_write: 'Updated the plan',
   web_fetch: 'Read a web page',
+  web_search: 'Searched the web',
+  task: 'Subagent',
   github_push: 'Pushed to GitHub',
   github_create_pr: 'Opened a pull request',
   github_clone: 'Cloned a repo',
@@ -55,7 +57,8 @@ const TOOL_LABELS: Record<string, string> = {
   load_skill: 'Loaded a skill',
 };
 
-export function toolLabel(name: string): string {
+export function toolLabel(name: string, args?: { description?: string }): string {
+  if (name === 'task' && args?.description) return `Subagent: ${args.description}`;
   if (TOOL_LABELS[name]) return TOOL_LABELS[name];
   if (name.includes('__')) {
     const [server, tool] = name.split('__');
@@ -84,8 +87,9 @@ export function StepList({ steps, live }: { steps: ToolStep[]; live?: boolean })
           <li key={`${s.step}-${i}`} className="relative">
             <span className={`absolute -left-[21px] top-[9px] h-2 w-2 rounded-full ring-4 ring-canvas ${running ? 'bg-brand shz-live' : s.isError ? 'bg-red-400' : 'bg-brand/70'}`} />
             <button onClick={() => setOpen(open === i ? null : i)} className="flex w-full items-center gap-2 rounded-lg py-1 text-left text-[12.5px] text-ink-2 hover:text-ink">
-              <span className="truncate">{toolLabel(s.tool)}</span>
+              <span className="truncate">{toolLabel(s.tool, s.args)}</span>
               {s.args?.path && <span className="shz-mono truncate text-[11px] text-ink-3">{String(s.args.path).split('/').slice(-2).join('/')}</span>}
+              {s.args?.query && <span className="shz-mono truncate text-[11px] text-ink-3">{String(s.args.query).slice(0, 60)}</span>}
               {s.args?.command && <span className="shz-mono truncate text-[11px] text-ink-3">{String(s.args.command).slice(0, 60)}</span>}
               {running && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-brand" />}
               {s.isError && <AlertCircle className="h-3 w-3 shrink-0 text-red-400" />}
