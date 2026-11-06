@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+for (const f of ['users.js', 'index.js', 'report.js']) assert.ok(!/getUserName/.test(read(f)), f + ' still mentions getUserName');
+assert.equal(typeof load('users.js').fetchUserName, 'function');
+assert.equal(load('index.js').greet({ name: 'Ann' }), 'Hello, Ann');
+assert.equal(load('report.js').line({ name: 'Bo' }), '- Bo');

@@ -1,0 +1,4 @@
+{
+  "name": "refactor-duplicate-tax",
+  "instruction": "price.js repeats the same tax calculation (the 1.2 multiplier with rounding) in three functions. Refactor: extract a single helper (e.g. withTax) so that the number 1.2 appears exactly once in price.js. Exports and results must stay identical."
+}

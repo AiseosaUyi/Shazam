@@ -1,0 +1,4 @@
+{
+  "name": "add-clamp",
+  "instruction": "Add and export a function clamp(n, min, max) to math.js that limits n to the range [min, max]. If min > max it must throw a RangeError. Keep the existing add export working."
+}

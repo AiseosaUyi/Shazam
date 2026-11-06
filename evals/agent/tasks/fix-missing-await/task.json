@@ -1,0 +1,4 @@
+{
+  "name": "fix-missing-await",
+  "instruction": "prices.js exports async getTotal(ids) which should resolve to the sum of fetchPrice(id) for every id, but it returns a garbage string. Fix it (hint: the prices are promises). getTotal([1, 2, 3]) must resolve to 60."
+}

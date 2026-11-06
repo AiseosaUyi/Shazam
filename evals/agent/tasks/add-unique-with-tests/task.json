@@ -1,0 +1,4 @@
+{
+  "name": "add-unique-with-tests",
+  "instruction": "Add and export unique(arr) to arrays.js: it returns a new array with duplicates removed, keeping the first occurrence order (strict equality). Then add at least two tests for unique to the existing arrays.test.js (keep the existing chunk test). Verify with \"node --test\"."
+}

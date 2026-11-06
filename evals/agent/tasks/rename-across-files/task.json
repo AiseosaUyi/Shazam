@@ -1,0 +1,4 @@
+{
+  "name": "rename-across-files",
+  "instruction": "Rename the function getUserName to fetchUserName everywhere in the project (definition, exports and every call site in all files). Behaviour must not change."
+}

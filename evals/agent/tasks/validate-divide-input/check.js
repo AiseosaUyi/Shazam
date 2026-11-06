@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { divide } = load('calc.js');
+assert.equal(divide(6, 3), 2);
+assert.equal(divide(-9, 3), -3);
+assert.throws(() => divide(1, 0), RangeError);
+assert.throws(() => divide('6', 3), TypeError);
+assert.throws(() => divide(6, '3'), TypeError);
+assert.throws(() => divide(NaN, 3), TypeError);
+assert.throws(() => divide(undefined, 3), TypeError);
+assert.throws(() => divide(Infinity, 3), TypeError);

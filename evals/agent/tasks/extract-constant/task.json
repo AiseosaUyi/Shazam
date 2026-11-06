@@ -1,0 +1,4 @@
+{
+  "name": "extract-constant",
+  "instruction": "The magic number 86400000 (milliseconds per day) is hard-coded in both session.js and cache.js. Create constants.js exporting DAY_MS = 86400000 (module.exports = { DAY_MS }), and make session.js and cache.js import it so the literal 86400000 only appears in constants.js. Behaviour must not change."
+}

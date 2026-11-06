@@ -1,0 +1,4 @@
+{
+  "name": "fix-input-mutation",
+  "instruction": "cart.js exports addItem(cart, item) which mutates the cart it receives. Make it pure: return a NEW cart object ({ items, total }) with the item appended and total increased by item.price, and leave the input cart untouched."
+}

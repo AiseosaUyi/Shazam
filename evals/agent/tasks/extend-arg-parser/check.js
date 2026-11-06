@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { parseArgs } = load('cli.js');
+assert.deepEqual(parseArgs([]), { name: undefined, verbose: false, count: 1 });
+assert.deepEqual(parseArgs(['--name', 'ann', '--verbose', '--count', '3']), { name: 'ann', verbose: true, count: 3 });
+assert.deepEqual(parseArgs(['--count', '10', '--bogus', '--name', 'bo']), { name: 'bo', verbose: false, count: 10 });
+assert.equal(typeof parseArgs(['--count', '2']).count, 'number');

@@ -1,0 +1,4 @@
+{
+  "name": "handle-null-city",
+  "instruction": "user.js exports getCity(user) which crashes when the user, user.address or the city is null or undefined. Make it return the string \"unknown\" in those cases, and still return the city when present."
+}

@@ -1,0 +1,13 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const { parseCsv } = load('csv.js');
+assert.deepEqual(parseCsv('name,age\nAnn,30\nBo,25'), [{ name: 'Ann', age: '30' }, { name: 'Bo', age: '25' }]);
+assert.deepEqual(parseCsv('a,b\r\n1,2\r\n\r\n3,4\r\n'), [{ a: '1', b: '2' }, { a: '3', b: '4' }]);
+assert.deepEqual(parseCsv(' x , y \n 1 , 2 '), [{ x: '1', y: '2' }]);
+assert.deepEqual(parseCsv(''), []);
+assert.deepEqual(parseCsv('only,header\n'), []);

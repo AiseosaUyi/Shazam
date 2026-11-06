@@ -1,0 +1,4 @@
+{
+  "name": "write-missing-test",
+  "instruction": "slugify.js exports slugify(s) and works correctly, but it has no tests. Write slugify.test.js using node:test and node:assert that thoroughly covers it (lowercasing, trimming, replacing runs of punctuation/spaces with a single dash, no leading or trailing dashes). Do not change slugify.js. Run it with \"node --test slugify.test.js\"."
+}

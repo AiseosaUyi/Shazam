@@ -1,0 +1,4 @@
+{
+  "name": "validate-divide-input",
+  "instruction": "calc.js exports divide(a, b). Add input validation: throw a TypeError if either argument is not a finite number (strings, NaN, undefined, Infinity are all invalid), and throw a RangeError if b is 0. Valid input must still return a / b."
+}

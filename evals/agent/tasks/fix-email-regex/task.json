@@ -1,0 +1,4 @@
+{
+  "name": "fix-email-regex",
+  "instruction": "validate.js exports isEmail(s) but its check is far too loose (it accepts \"a@b\"). Make it accept only strings shaped like local@domain.tld: non-empty local part, no whitespace, a domain containing at least one dot, no empty domain labels, and a final label of at least 2 characters. Non-strings return false."
+}

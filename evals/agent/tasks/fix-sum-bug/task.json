@@ -1,0 +1,4 @@
+{
+  "name": "fix-sum-bug",
+  "instruction": "sum.js exports sum(arr) which should add up every number in the array, but sum([1, 2, 3]) returns 3 instead of 6. Fix the bug in sum.js."
+}

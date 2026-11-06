@@ -1,0 +1,4 @@
+{
+  "name": "extend-arg-parser",
+  "instruction": "cli.js exports parseArgs(argv) which only understands \"--name <value>\". Extend it so the result is always { name, verbose, count }: --verbose is a boolean flag (default false), --count <n> is parsed as a Number (default 1), --name <value> is a string (undefined if absent). Unknown arguments are ignored."
+}

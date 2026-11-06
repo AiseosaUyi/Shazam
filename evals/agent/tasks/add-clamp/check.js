@@ -1,0 +1,14 @@
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+const taskDir = __dirname;
+const m = load('math.js');
+assert.equal(m.add(2, 3), 5);
+assert.equal(m.clamp(5, 0, 10), 5);
+assert.equal(m.clamp(-5, 0, 10), 0);
+assert.equal(m.clamp(50, 0, 10), 10);
+assert.equal(m.clamp(0, 0, 0), 0);
+assert.throws(() => m.clamp(1, 10, 0), RangeError);
