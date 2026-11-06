@@ -213,10 +213,11 @@ function ImageCard({ alt = 'Generated Image', src }: { alt?: string; src: string
 function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (path: string) => void }) {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
-  let currentList: { type: 'ul' | 'ol'; items: string[] } | null = null;
+  let currentList: { type: 'ul' | 'ol'; items: string[]; nums: number[] } | null = null;
 
   function flushList() {
     if (!currentList) return;
+    const nums = currentList.nums;
     if (currentList.type === 'ul') {
       elements.push(
         <ul key={`ul-${elements.length}`} className="my-2 space-y-1.5 pl-1">
@@ -234,7 +235,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
           {currentList.items.map((item, idx) => (
             <li key={idx} className="flex items-start gap-2.5 text-ink-2 leading-relaxed">
               <span className="px-1.5 py-0.2 rounded bg-line/[0.05] border border-line/10 text-[10px] font-mono text-brand-soft font-semibold shrink-0 mt-0.5">
-                {idx + 1}
+                {nums[idx] ?? idx + 1}
               </span>
               <span className="flex-1">{renderInline(item, onOpenFile)}</span>
             </li>
@@ -336,7 +337,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     if (ulMatch) {
       if (!currentList || currentList.type !== 'ul') {
         flushList();
-        currentList = { type: 'ul', items: [] };
+        currentList = { type: 'ul', items: [], nums: [] };
       }
       currentList.items.push(ulMatch[1]);
       continue;
@@ -347,9 +348,10 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
     if (olMatch) {
       if (!currentList || currentList.type !== 'ol') {
         flushList();
-        currentList = { type: 'ol', items: [] };
+        currentList = { type: 'ol', items: [], nums: [] };
       }
       currentList.items.push(olMatch[2]);
+      currentList.nums.push(parseInt(olMatch[1], 10));
       continue;
     }
 
