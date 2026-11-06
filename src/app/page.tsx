@@ -1,52 +1,23 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { SystemStrip } from '@/components/SystemStrip';
 import { useDialog } from '@/components/ui/dialog';
-import { AgentSuggestion } from '@/components/AgentSuggestion';
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
-  ArrowUp,
-  Square,
-  Copy,
-  Check,
-  ThumbsUp,
-  ThumbsDown,
-  ChevronDown,
   Plus,
   MessageSquare,
-  Sparkles,
   AlertCircle,
-  Cpu,
-  X,
-  FileText,
-  Folder,
-  FolderOpen,
-  Paperclip,
 } from 'lucide-react';
-import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import type { CostPolicy, TaskClass, Model } from '@/lib/types';
 import { errMessage } from '@/lib/errors';
 import { ArtifactsModal, type ArtifactItem } from '@/components/home/ArtifactsModal';
-import { ModelDropdown } from '@/components/home/ModelDropdown';
+import { MessageThread, type Message } from '@/components/home/MessageThread';
+import { HomeHero, type ProjectItem } from '@/components/home/HomeHero';
+import { ChatComposer } from '@/components/home/ChatComposer';
 import { ConversationSidebar, type ConversationItem } from '@/components/home/ConversationSidebar';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string | null;
-  taskId?: string | null;
-  routeInfo?: any;
-}
 
-
-interface ProjectItem {
-  id: string;
-  name: string;
-  description?: string | null;
-}
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -723,345 +694,45 @@ export default function WorkspacePage() {
         <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6 space-y-6">
           {messages.length === 0 && !isStreaming ? (
             /* Warm, Open Greeting Hero Matching Screenshot */
-            <div className="shz-atmosphere -mx-8 -mt-6 h-full flex flex-col items-center justify-center text-center px-8 space-y-8 pt-10 pb-20 [&>*]:w-full [&>*]:max-w-2xl">
-              {/* Center Editorial Greeting */}
-              <div className="space-y-3">
-                <p className="shz-mono text-[11px] tracking-[0.2em] text-brand/80">{getGreeting()}</p>
-                <h1 className="text-[30px] font-semibold tracking-[-0.025em] text-ink">What are we making today?</h1>
-                <SystemStrip show={['models', 'desktop', 'google']} />
-              </div>
-
-              {/* Main Input Box (Matching User's Screenshot Exactly) */}
-              <div className="w-full relative">
-                <div className="shz-composer p-4 space-y-3">
-                  {/* Attached Context Capsules */}
-                  {(attachedDocs.length > 0 || connectedFolder || selectedProject) && (
-                    <div className="flex flex-wrap gap-1.5 pb-1">
-                      {selectedProject && (
-                        <span className="px-2.5 py-1 rounded-lg bg-brand/10 border border-brand/20 text-brand-soft text-xs flex items-center gap-1.5">
-                          <Folder className="w-3 h-3" />
-                          <span>{selectedProject.name}</span>
-                          <button onClick={() => setSelectedProject(null)} className="hover:text-ink">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      )}
-
-                      {connectedFolder && (
-                        <span className="px-2.5 py-1 rounded-lg bg-line/[0.05] border border-line/10 text-ink-2 text-xs flex items-center gap-1.5">
-                          <FolderOpen className="w-3 h-3 text-brand" />
-                          <span>{connectedFolder.name} ({connectedFolder.files.length} files)</span>
-                          <button onClick={() => setConnectedFolder(null)} className="hover:text-ink">
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      )}
-
-                      {attachedDocs.map((doc, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2.5 py-1 rounded-lg bg-line/[0.05] border border-line/10 text-ink-2 text-xs flex items-center gap-1.5"
-                        >
-                          <FileText className="w-3 h-3 text-emerald-400" />
-                          <span>{doc.name}</span>
-                          <button
-                            onClick={() => setAttachedDocs((prev) => prev.filter((_, i) => i !== idx))}
-                            className="hover:text-ink"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <AgentSuggestion prompt={prompt} current="chat" />
-                  <textarea
-                    ref={textareaRef}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    rows={2}
-                    placeholder={
-                      pinnedModelName?.toLowerCase().includes('flux')
-                        ? "Describe an image to generate with FLUX.1 (e.g. Cyberpunk samurai in neon Tokyo rain)..."
-                        : 'Ask anything, or describe an image to create…'
-                    }
-                    className="w-full bg-transparent text-sm text-ink placeholder:text-ink-3 focus:outline-none resize-none leading-relaxed"
-                  />
-
-                  {/* Inner Bar: "+" attach button on left, model & send on right */}
-                  <div className="flex items-center justify-between pt-2 border-t border-line/[0.06] text-xs">
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setAttachMenuOpen(!attachMenuOpen)}
-                        className="p-1.5 rounded-lg bg-line/[0.04] hover:bg-line/[0.08] text-ink-2 hover:text-ink transition flex items-center gap-1"
-                        title="Add context (Document, Project, Folder)"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-
-                      {/* Attach Popover */}
-                      {attachMenuOpen && (
-                        <div className="absolute left-0 bottom-full mb-2 w-56 rounded-xl bg-surface border border-line/10 shadow-2xl p-1.5 space-y-1 z-30 text-xs">
-                          <button
-                            onClick={() => {
-                              fileInputRef.current?.click();
-                              setAttachMenuOpen(false);
-                            }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2 transition"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Upload Document / File</span>
-                          </button>
-
-                          <button
-                            onClick={handleConnectFolder}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2 transition"
-                          >
-                            <FolderOpen className="w-3.5 h-3.5 text-brand" />
-                            <span>Connect Local Folder</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSend()}
-                        disabled={!prompt.trim()}
-                        className="p-2 bg-brand hover:bg-brand-soft disabled:opacity-30 text-brand-ink font-semibold rounded-xl transition shadow-md flex items-center justify-center"
-                      >
-                        <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Sub-bar Below Composer (Matching Screenshot): Project or folder selector & Model Pill */}
-                <div className="flex items-center justify-between px-2 pt-3 text-xs text-ink-2">
-                  <div className="relative">
-                    <button
-                      onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
-                      className="flex items-center gap-1.5 text-ink-2 hover:text-ink transition"
-                    >
-                      <Folder className="w-3.5 h-3.5 text-brand" />
-                      <span>{selectedProject ? selectedProject.name : 'Project or folder'}</span>
-                      <ChevronDown className="w-3 h-3 text-ink-3" />
-                    </button>
-
-                    {/* Projects Dropdown Menu */}
-                    {projectDropdownOpen && (
-                      <div className="absolute left-0 top-full mt-1.5 w-52 rounded-xl bg-surface border border-line/10 shadow-2xl p-1.5 space-y-1 z-30 text-xs">
-                        <button
-                          onClick={() => {
-                            setSelectedProject(null);
-                            setProjectDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2"
-                        >
-                          <span>None (General Chat)</span>
-                        </button>
-
-                        {projects.map((proj) => (
-                          <button
-                            key={proj.id}
-                            onClick={() => {
-                              setSelectedProject(proj);
-                              setProjectDropdownOpen(false);
-                            }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-ink-2 flex items-center gap-2 truncate"
-                          >
-                            <Folder className="w-3.5 h-3.5 text-brand shrink-0" />
-                            <span className="truncate">{proj.name}</span>
-                          </button>
-                        ))}
-
-                        <div className="border-t border-line/5 pt-1 mt-1">
-                          <button
-                            onClick={() => {
-                              setProjectDropdownOpen(false);
-                              handleConnectFolder();
-                            }}
-                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-line/5 text-brand-soft flex items-center gap-2"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Connect local folder...</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-
-                    {/* Model Dropdown Button */}
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-line/10 bg-line/[0.03] hover:bg-line/[0.06] text-ink-2 text-xs transition"
-                      >
-                        <Cpu className="w-3.5 h-3.5 text-ink-2" />
-                        <span className="font-mono truncate max-w-[140px]">
-                          {getModelButtonLabel()}
-                        </span>
-                        <ChevronDown className="w-3 h-3 text-ink-3" />
-                      </button>
-
-                      {modelDropdownOpen && (
-                        <ModelDropdown
-                          models={models}
-                          connectedProviders={connectedProviders}
-                          pinnedModelName={pinnedModelName}
-                          setPinnedModelName={setPinnedModelName}
-                          onClose={() => setModelDropdownOpen(false)}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <HomeHero
+              greeting={getGreeting()}
+              prompt={prompt}
+              setPrompt={setPrompt}
+              textareaRef={textareaRef}
+              fileInputRef={fileInputRef}
+              handleSend={handleSend}
+              handleConnectFolder={handleConnectFolder}
+              attachedDocs={attachedDocs}
+              setAttachedDocs={setAttachedDocs}
+              connectedFolder={connectedFolder}
+              setConnectedFolder={setConnectedFolder}
+              projects={projects}
+              selectedProject={selectedProject}
+              setSelectedProject={setSelectedProject}
+              projectDropdownOpen={projectDropdownOpen}
+              setProjectDropdownOpen={setProjectDropdownOpen}
+              attachMenuOpen={attachMenuOpen}
+              setAttachMenuOpen={setAttachMenuOpen}
+              modelDropdownOpen={modelDropdownOpen}
+              setModelDropdownOpen={setModelDropdownOpen}
+              models={models}
+              connectedProviders={connectedProviders}
+              pinnedModelName={pinnedModelName}
+              setPinnedModelName={setPinnedModelName}
+              getModelButtonLabel={getModelButtonLabel}
+            />
           ) : (
-            <div className="max-w-3xl mx-auto space-y-6 pb-28">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-                >
-                  {/* User Bubble */}
-                  {msg.role === 'user' ? (
-                    <div className="max-w-2xl rounded-2xl rounded-tr-sm px-4.5 py-3 text-sm bg-surface-2/90 text-ink border border-line/10 shadow-sm leading-relaxed whitespace-pre-wrap">
-                      {msg.content}
-                    </div>
-                  ) : (
-                    /* Assistant Bubble */
-                    <div className="w-full space-y-3">
-                      <div className="flex items-center gap-2 text-xs text-ink-2">
-                        <div className="w-5 h-5 rounded-md bg-brand/20 border border-brand/30 flex items-center justify-center text-brand">
-                          <Sparkles className="w-3 h-3" />
-                        </div>
-                        <span className="font-medium text-ink-2">
-                          {msg.routeInfo?.model?.name || 'Arcwork'}
-                        </span>
-                        {msg.routeInfo?.route?.costClass && (
-                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-mono border border-emerald-500/20">
-                            {msg.routeInfo.route.costClass}
-                          </span>
-                        )}
-                        {msg.routeInfo?.fallback && (
-                          <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand-soft text-[10px] font-mono border border-brand/20" title={msg.routeInfo.fallback.reason || 'Primary provider unavailable'}>
-                            fallback
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Reasoning Drawer */}
-                      {msg.reasoning && (
-                        <details className="rounded-xl bg-line/[0.02] border border-line/[0.06] overflow-hidden text-ink-2">
-                          <summary className="px-3.5 py-2 cursor-pointer text-xs font-mono text-ink-2 hover:text-ink flex items-center gap-2 select-none">
-                            <Cpu className="w-3.5 h-3.5 text-brand" />
-                            <span>View model thought process</span>
-                          </summary>
-                          <div className="p-3.5 text-xs font-mono text-ink-2 whitespace-pre-wrap border-t border-line/[0.06] bg-black/20">
-                            {msg.reasoning}
-                          </div>
-                        </details>
-                      )}
-
-                      <div>
-                        <MarkdownRenderer content={msg.content} />
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-line/5 text-xs text-ink-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleCopy(msg.content, msg.id)}
-                            title="Copy response"
-                            className="p-1.5 text-ink-2 hover:text-ink rounded-lg hover:bg-line/5 transition"
-                          >
-                            {copiedId === msg.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                          {msg.taskId && (
-                            <>
-                              <button
-                                onClick={() => handleFeedback(msg.taskId!, 1)}
-                                title="Helpful"
-                                className={`p-1.5 rounded-lg hover:bg-line/5 transition ${
-                                  feedbackSent[msg.taskId!] === 1
-                                    ? 'text-emerald-400'
-                                    : 'text-ink-2 hover:text-ink'
-                                }`}
-                              >
-                                <ThumbsUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleFeedback(msg.taskId!, -1)}
-                                title="Not helpful"
-                                className={`p-1.5 rounded-lg hover:bg-line/5 transition ${
-                                  feedbackSent[msg.taskId!] === -1
-                                    ? 'text-red-400'
-                                    : 'text-ink-2 hover:text-ink'
-                                }`}
-                              >
-                                <ThumbsDown className="w-3.5 h-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Streaming Assistant Card */}
-              {isStreaming && (
-                <div className="w-full space-y-3 pt-2">
-                  <div className="flex items-center gap-2 text-xs text-ink-2">
-                    <div className="w-5 h-5 rounded-md bg-brand/20 border border-brand/30 flex items-center justify-center text-brand">
-                      <Sparkles className="w-3 h-3 animate-pulse" />
-                    </div>
-                    <span className="font-medium text-ink-2">
-                      {activeRouteInfo?.model?.name || 'Evaluating optimum model...'}
-                    </span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand animate-ping" />
-                  </div>
-
-                  {streamingReasoning && (
-                    <div className="p-3.5 rounded-xl bg-line/[0.02] border border-line/[0.06] text-xs font-mono text-ink-2 whitespace-pre-wrap max-h-36 overflow-y-auto">
-                      <div className="text-[10px] font-semibold text-brand mb-1 flex items-center gap-1.5">
-                        <Cpu className="w-3 h-3" /> Thinking:
-                      </div>
-                      {streamingReasoning}
-                    </div>
-                  )}
-
-                  {streamingText ? (
-                    <div>
-                      <MarkdownRenderer content={streamingText} />
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2.5 text-ink-2 text-xs py-2">
-                      <span className="inline-block w-2 h-4 bg-brand animate-pulse rounded-sm" />
-                      <span>Streaming response tokens...</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <MessageThread
+              messages={messages}
+              copiedId={copiedId}
+              feedbackSent={feedbackSent}
+              isStreaming={isStreaming}
+              activeRouteInfo={activeRouteInfo}
+              streamingReasoning={streamingReasoning}
+              streamingText={streamingText}
+              handleCopy={handleCopy}
+              handleFeedback={handleFeedback}
+            />
           )}
 
           <div ref={messagesEndRef} />
@@ -1069,102 +740,25 @@ export default function WorkspacePage() {
 
         {/* Floating Composer Container when conversation has messages */}
         {messages.length > 0 && (
-          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 bg-gradient-to-t from-canvas via-canvas/90 to-transparent pointer-events-none">
-            <div className="max-w-3xl mx-auto pointer-events-auto relative">
-              <AgentSuggestion prompt={prompt} current="chat" />
-              <div className="shz-composer p-3 sm:p-3.5">
-                <textarea
-                  ref={textareaRef}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  rows={1}
-                  placeholder={
-                    pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
-                      ? "Describe an image to generate with Google Nano Banana (e.g. Cyberpunk samurai in neon Lagos)..."
-                      : pinnedModelName?.toLowerCase().includes('flux')
-                      ? "Describe an image to generate with FLUX.1 (e.g. Cyberpunk samurai in neon Tokyo rain)..."
-                      : 'Ask anything, or describe an image to create…'
-                  }
-                  className="w-full bg-transparent text-sm text-ink placeholder:text-ink-3 focus:outline-none resize-none leading-relaxed max-h-48"
-                />
-
-                <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-line/[0.06]">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="p-1.5 rounded-lg hover:bg-line/5 text-ink-2 hover:text-ink"
-                      title="Attach file"
-                    >
-                      <Paperclip className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setProjectDropdownOpen(!projectDropdownOpen)}
-                      className="text-xs text-ink-2 hover:text-ink flex items-center gap-1"
-                    >
-                      <Folder className="w-3.5 h-3.5 text-ink-2" />
-                      <span>{selectedProject ? selectedProject.name : 'Context'}</span>
-                    </button>
-
-                    <div className="h-3 w-px bg-line/10" />
-
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-line/10 bg-line/[0.03] hover:bg-line/[0.06] text-ink-2 text-xs transition"
-                      >
-                        <Cpu className="w-3.5 h-3.5 text-ink-2" />
-                        <span className="font-mono truncate max-w-[130px]">
-                          {getModelButtonLabel()}
-                        </span>
-                        <ChevronDown className="w-3 h-3 text-ink-3" />
-                      </button>
-
-                      {modelDropdownOpen && (
-                        <ModelDropdown
-                          models={models}
-                          connectedProviders={connectedProviders}
-                          pinnedModelName={pinnedModelName}
-                          setPinnedModelName={setPinnedModelName}
-                          onClose={() => setModelDropdownOpen(false)}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {isStreaming ? (
-                      <button
-                        type="button"
-                        onClick={handleStop}
-                        className="p-2 bg-red-600 hover:bg-red-500 text-ink rounded-xl transition shadow-md"
-                      >
-                        <Square className="w-4 h-4 fill-white" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleSend()}
-                        disabled={!prompt.trim()}
-                        className="p-2 bg-brand hover:bg-brand-soft text-brand-ink font-semibold rounded-xl transition shadow-md disabled:opacity-30"
-                      >
-                        <ArrowUp className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ChatComposer
+            prompt={prompt}
+            setPrompt={setPrompt}
+            textareaRef={textareaRef}
+            fileInputRef={fileInputRef}
+            handleSend={handleSend}
+            handleStop={handleStop}
+            isStreaming={isStreaming}
+            selectedProject={selectedProject}
+            projectDropdownOpen={projectDropdownOpen}
+            setProjectDropdownOpen={setProjectDropdownOpen}
+            modelDropdownOpen={modelDropdownOpen}
+            setModelDropdownOpen={setModelDropdownOpen}
+            models={models}
+            connectedProviders={connectedProviders}
+            pinnedModelName={pinnedModelName}
+            setPinnedModelName={setPinnedModelName}
+            getModelButtonLabel={getModelButtonLabel}
+          />
         )}
       </div>
 
