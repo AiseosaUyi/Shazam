@@ -379,7 +379,7 @@ function TextBlock({ text = '', onOpenFile }: { text?: string; onOpenFile?: (pat
 function renderInline(text: string, onOpenFile?: (path: string) => void): React.ReactNode {
   const tokens: React.ReactNode[] = [];
   // Tokenize ![image](url), `code`, **bold**, *italic*, [link](url)
-  const regex = /(<sub>[\s\S]*?<\/sub>|!\[[^\]]*\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  const regex = /(<sub>[\s\S]*?<\/sub>|!\[[^\]]*\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\)|https?:\/\/[^\s<>()\]]+)/g;
   let lastIndex = 0;
   let match;
 
@@ -390,7 +390,22 @@ function renderInline(text: string, onOpenFile?: (path: string) => void): React.
 
     const token = match[0];
 
-    if (token.startsWith('<sub>')) {
+    if (/^https?:\/\//.test(token)) {
+      const clean = token.replace(/[.,;:!?]+$/, '');
+      const trailing = token.slice(clean.length);
+      if (/\.(mp4|webm|mov)(\?|$)/i.test(clean)) {
+        tokens.push(
+          <video key={`vid-${match.index}`} src={clean} controls playsInline preload="metadata" className="my-2 block max-h-[420px] max-w-full rounded-xl border border-line/10 bg-black" />
+        );
+      } else {
+        tokens.push(
+          <a key={`url-${match.index}`} href={clean} target="_blank" rel="noopener noreferrer" className="text-brand-soft underline underline-offset-2 break-all hover:text-brand">
+            {clean}
+          </a>
+        );
+      }
+      if (trailing) tokens.push(trailing);
+    } else if (token.startsWith('<sub>')) {
       tokens.push(
         <span key={`sub-${match.index}`} className="text-[11px] text-ink-3 font-mono">
           {token.slice(5, -6)}
