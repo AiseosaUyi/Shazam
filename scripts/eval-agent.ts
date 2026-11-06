@@ -66,7 +66,7 @@ function gitSha(): string {
   try { return execSync('git rev-parse --short HEAD', { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'unknown'; }
 }
 
-interface TaskRun { name: string; pass: boolean; steps: number; seconds: number; error?: string; checker?: string; filesModified: string[] }
+interface TaskRun { name: string; pass: boolean; quota?: boolean; steps: number; seconds: number; error?: string; checker?: string; filesModified: string[] }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -93,43 +93,64 @@ async function main() {
   console.log(`Agent eval: ${tasks.length} task(s) on ${label}, max ${maxSteps} steps each\n`);
 
   const runs: TaskRun[] = [];
+  const pauseSec = typeof args.pause === 'string' ? Math.max(0, parseInt(args.pause, 10) || 0) : 0;
+  const isQuota = (e?: string) => Boolean(e && /quota|rate.?limit|429|resource.?exhausted|too many requests/i.test(e));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   for (const task of tasks) {
-    const t0 = Date.now();
-    const workdir = makeWorkdir();
-    const files = startFiles(task);
-    writeFiles(workdir, files);
-    const runner = makeLocalRunner(workdir, files);
-    const run: TaskRun = { name: task.name, pass: false, steps: 0, seconds: 0, filesModified: [] };
-    try {
-      const result = await runToolAgent({
-        model,
-        prompt: task.instruction,
-        projectName: task.name,
-        files,
-        runCommand: runner.run,
-        maxSteps,
-        signal: AbortSignal.timeout(5 * 60_000),
-      });
-      run.steps = result.steps;
-      run.filesModified = result.filesModified;
-    } catch (err) {
-      run.error = (err instanceof Error ? err.message : String(err)).slice(0, 300);
+    let run!: TaskRun;
+    // Free API tiers allow a few requests a minute. A quota error is not a wrong answer: wait out the
+    // window and retry up to twice, and report tasks that still hit the quota separately.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const t0 = Date.now();
+      const workdir = makeWorkdir();
+      const files = startFiles(task);
+      writeFiles(workdir, files);
+      const runner = makeLocalRunner(workdir, files);
+      run = { name: task.name, pass: false, steps: 0, seconds: 0, filesModified: [] };
+      try {
+        const result = await runToolAgent({
+          model,
+          prompt: task.instruction,
+          projectName: task.name,
+          files,
+          runCommand: runner.run,
+          maxSteps,
+          signal: AbortSignal.timeout(5 * 60_000),
+        });
+        run.steps = result.steps;
+        run.filesModified = result.filesModified;
+      } catch (err) {
+        run.error = (err instanceof Error ? err.message : String(err)).slice(0, 300);
+      }
+      runner.flush();
+      const check = runCheck(task, workdir);
+      run.pass = check.pass;
+      if (!check.pass) run.checker = check.output.split('\n').slice(0, 6).join('\n');
+      run.seconds = Math.round((Date.now() - t0) / 100) / 10;
+      fs.rmSync(workdir, { recursive: true, force: true });
+      if (!run.pass && isQuota(run.error)) {
+        run.quota = true;
+        if (attempt < 2) {
+          console.log(`WAIT  ${task.name.padEnd(26)} hit the API quota; waiting 65s then retrying (${attempt + 1}/2)`);
+          await sleep(65_000);
+          continue;
+        }
+      }
+      break;
     }
-    runner.flush();
-    const check = runCheck(task, workdir);
-    run.pass = check.pass;
-    if (!check.pass) run.checker = check.output.split('\n').slice(0, 6).join('\n');
-    run.seconds = Math.round((Date.now() - t0) / 100) / 10;
-    fs.rmSync(workdir, { recursive: true, force: true });
     runs.push(run);
-    console.log(`${run.pass ? 'PASS' : 'FAIL'}  ${task.name.padEnd(26)} steps=${String(run.steps).padStart(2)}  ${run.seconds}s${run.error ? `  error: ${run.error}` : ''}`);
+    console.log(`${run.pass ? 'PASS' : run.quota ? 'QUOTA' : 'FAIL'}  ${task.name.padEnd(26)} steps=${String(run.steps).padStart(2)}  ${run.seconds}s${run.error ? `  error: ${run.error.slice(0, 120)}` : ''}`);
+    if (pauseSec) await sleep(pauseSec * 1000);
   }
 
   const passed = runs.filter((r) => r.pass).length;
-  const rate = passed / runs.length;
-  console.log(`\nPass rate: ${passed}/${runs.length} = ${(rate * 100).toFixed(0)}%  (target >= 60%)`);
+  const blocked = runs.filter((r) => r.quota && !r.pass).length;
+  const scored = runs.length - blocked;
+  const rate = scored ? passed / scored : 0;
+  console.log(`\nPass rate: ${passed}/${scored} = ${(rate * 100).toFixed(0)}%  (target >= 60%)${blocked ? `  [${blocked} task(s) not scored: API quota]` : ''}`);
 
-  const report = { build: gitSha(), date: new Date().toISOString(), model: label, maxSteps, passed, total: runs.length, passRate: rate, tasks: runs };
+  const report = { build: gitSha(), date: new Date().toISOString(), model: label, maxSteps, passed, total: scored, quotaBlocked: blocked, passRate: rate, tasks: runs };
   const resultsDir = path.join(ROOT, 'evals/agent/results');
   fs.mkdirSync(resultsDir, { recursive: true });
   const auto = path.join(resultsDir, `${report.date.replace(/[:.]/g, '-')}_${report.build}.json`);
