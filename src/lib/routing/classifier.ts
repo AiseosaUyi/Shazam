@@ -134,6 +134,11 @@ export function classifyTask(
     }
   }
 
+  // An explicit task class (the composer sends one for image prompts) must still pick the right
+  // output type, otherwise an image request is answered with SVG code by a text model.
+  if (options?.taskClassOverride === 'image_generation') outputModality = 'image';
+  else if (options?.taskClassOverride === 'video_generation') outputModality = 'video';
+
   // Token estimates
   const estimatedPromptTokens = Math.max(10, Math.ceil(prompt.length / 4));
   const expectedOutputTokens =

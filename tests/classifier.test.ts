@@ -32,3 +32,17 @@ describe('Prompt Classifier & TaskSpec Tests', () => {
     assert.strictEqual(spec.classifierConfidence, 'user_override');
   });
 });
+
+describe('explicit task class override keeps the right output type', () => {
+  it('image_generation override routes to the image pipeline, not a text model', () => {
+    const spec = classifyPrompt('Draw a minimalist app icon', 'image_generation');
+    assert.strictEqual(spec.taskClass, 'image_generation');
+    assert.strictEqual(spec.outputModality, 'image');
+  });
+  it('video_generation override sets video output', () => {
+    assert.strictEqual(classifyPrompt('a short clip of waves', 'video_generation').outputModality, 'video');
+  });
+  it('other overrides stay text', () => {
+    assert.strictEqual(classifyPrompt('hello', 'general_chat').outputModality, 'text');
+  });
+});
