@@ -135,11 +135,11 @@ function digest(run: Run) {
 
 function runToTurns(run: Run): Turn[] {
   const d = digest(run);
-  const done = run.status === 'done' || run.status === 'error';
+  const done = run.status === 'done' || run.status === 'error' || run.status === 'cancelled';
   return [
     { id: `${run.id}-u`, role: 'user', content: run.prompt },
     ...(done
-      ? [{ id: `${run.id}-a`, role: 'assistant' as const, content: run.result || '', steps: d.steps, files: run.filesChanged.length ? run.filesChanged : d.files, commands: d.commands, preview: d.preview, model: run.model || undefined, error: run.error || undefined }]
+      ? [{ id: `${run.id}-a`, role: 'assistant' as const, content: run.status === 'cancelled' ? (run.result || 'Stopped. Here is what it did before you stopped it.') : (run.result || ''), steps: d.steps, files: run.filesChanged.length ? run.filesChanged : d.files, commands: d.commands, preview: d.preview, model: run.model || undefined, error: run.error || undefined }]
       : []),
   ];
 }
@@ -162,6 +162,7 @@ export default function CodePage() {
   const [ready, setReady] = useState(false);
   const [live, setLive] = useState<{ text: string; steps: ToolStep[]; preview: string | null; backend: string | null; model: string | null; plan?: any[]; questions?: any[] }>({ text: '', steps: [], preview: null, backend: null, model: null });
   const abortRef = useRef<AbortController | null>(null);
+  const runIdRef = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -265,6 +266,7 @@ export default function CodePage() {
   }, [workspace, ready, loadThread]);
 
   function follow(runId: string, w: Workspace) {
+    runIdRef.current = runId;
     setBusy(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -275,7 +277,7 @@ export default function CodePage() {
       if (run) {
         const d = digest(run);
         setLive({ text: '', steps: d.steps, preview: d.preview, backend: null, model: run.model, plan: d.plan, questions: d.questions });
-        if (run.status === 'done' || run.status === 'error') {
+        if (run.status === 'done' || run.status === 'error' || run.status === 'cancelled') {
           setBusy(false);
           abortRef.current = null;
           let target = w;
@@ -323,8 +325,12 @@ export default function CodePage() {
   }
 
   async function stop() {
+    // Cancel the run on the server (the runner watches for it), then show what it did so far.
+    const id = runIdRef.current;
+    if (id) await fetch(`/api/v1/runs/${id}`, { method: 'DELETE' }).catch(() => {});
     abortRef.current?.abort();
     setBusy(false);
+    loadThread(workspace);
   }
 
   const where = workspace.kind === 'local' ? `${workspace.root.split('/').pop()} · ${workspace.device}` : workspace.project?.name || 'New cloud project';

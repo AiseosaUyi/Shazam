@@ -87,6 +87,15 @@ export class RunsRepo {
     return r ? toRun(r) : null;
   }
 
+  /** Marks a queued, running or paused run as cancelled. Returns false when it already finished. */
+  async cancel(userId: string, id: string): Promise<boolean> {
+    const cur = await this.get(userId, id);
+    if (!cur || !['queued', 'running', 'paused'].includes(cur.status)) return false;
+    await this.update(userId, id, { status: 'cancelled', events: [...cur.events, { at: new Date().toISOString(), type: 'note', text: 'Stopped by you.' }] });
+    await this.setLease(userId, id, null);
+    return true;
+  }
+
   async setProject(userId: string, id: string, projectId: string): Promise<void> {
     await this.db.prepare('UPDATE agent_runs SET project_id = ? WHERE user_id = ? AND id = ?').bind(projectId, userId, id).run();
   }
@@ -102,7 +111,7 @@ export class RunsRepo {
     await this.db
       .prepare('UPDATE agent_runs SET status = ?, model = ?, events = ?, result = ?, files_changed = ?, error = ?, updated_at = ? WHERE user_id = ? AND id = ?')
       .bind(
-        f.status ?? cur.status,
+        cur.status === 'cancelled' ? 'cancelled' : (f.status ?? cur.status),
         f.model ?? cur.model,
         JSON.stringify((f.events ?? cur.events).slice(-200)),
         f.result ?? cur.result,

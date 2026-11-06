@@ -55,6 +55,12 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
     onCheckpoint: (messages: ModelMessage[]) => runs.saveCheckpoint(user.id, run.id, messages).catch(() => {}),
   };
 
+  // A Stop from the UI sets status 'cancelled' in the database; watch for it and abort the model loop.
+  const stopper = new AbortController();
+  const watcher = setInterval(() => {
+    void runs.get(user.id, run.id).then((r) => { if (r?.status === 'cancelled') stopper.abort(); }).catch(() => {});
+  }, 3000);
+
   try {
     const out = run.agent === 'code'
       ? await runCodeTask({
@@ -66,10 +72,11 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
           pinnedModel: options.pinnedModel,
           maxSteps: stepsLeft,
           runId: run.id,
+          signal: stopper.signal,
           onEvent: rec.sink,
           ...resumable,
         })
-      : await runCoworkTask({ user, runId: run.id, prompt: run.prompt, history: opts.history, timezone: options.timezone, pinnedModel: options.pinnedModel, onEvent: rec.sink, ...resumable });
+      : await runCoworkTask({ user, runId: run.id, prompt: run.prompt, history: opts.history, timezone: options.timezone, pinnedModel: options.pinnedModel, signal: stopper.signal, onEvent: rec.sink, ...resumable });
 
     if (out.paused) {
       await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps });
@@ -129,6 +136,8 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       return;
     }
     await runs.update(user.id, run.id, { status: 'error', error: errMessage(err) || String(err), events: rec.events });
+  } finally {
+    clearInterval(watcher);
   }
 }
 
