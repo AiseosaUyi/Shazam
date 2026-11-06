@@ -22,7 +22,8 @@ export async function buildMediaTools(
   opts: { enhancer?: LanguageModel | null; onAsset?: (asset: { id: string; kind: string; url: string; prompt?: string | null; model?: string | null }) => void } = {}
 ): Promise<{ tools: ToolSet; inventory: string }> {
   const [googleKey, openaiKey] = await Promise.all([userKey(repo, userId, 'google'), userKey(repo, userId, 'openai')]);
-  const canImage = Boolean(googleKey || openaiKey || gatewayAvailable());
+  // A keyless free image route exists as the last fallback, so images are always offered.
+  const canImage = true;
   const canVideo = sandboxAvailable();
   const tools: ToolSet = {};
 
@@ -76,6 +77,27 @@ export async function buildMediaTools(
         }
       },
     });
+    tools.animate_image = tool({
+      description: 'Turn a still image into a short motion video (slow zoom or pan, fades, optional text that fades in) with real ffmpeg. Use for motion graphics, story clips and animated logos: first generate_image, then animate_image with its URL. Returns a playable MP4 URL. Real animation of objects (a bolt "drawing itself") is not possible; be honest about that.',
+      inputSchema: z.object({
+        image_url: z.string().url().describe('Public https URL of the image (e.g. from generate_image).'),
+        motion: z.enum(['zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'none']).optional(),
+        aspect: z.enum(['9:16', '1:1', '16:9', '4:5']).optional().describe('Default 9:16 (stories/reels).'),
+        seconds: z.number().min(2).max(15).optional().describe('Default 6.'),
+        text: z.string().max(80).optional().describe('Overlay text that fades in (no emoji).'),
+        text_position: z.enum(['top', 'middle', 'bottom']).optional(),
+        title: z.string().optional(),
+      }),
+      execute: async ({ image_url, motion, aspect, seconds, text, text_position, title }) => {
+        try {
+          const r = await new VideoEditor(userId).animateImage(image_url, { motion, aspect, seconds, text, textAt: text_position, title }, platform);
+          opts.onAsset?.({ id: r.asset.id, kind: 'video', url: r.asset.url, prompt: title || text, model: r.asset.model });
+          return `Motion clip rendered (${r.durationSeconds.toFixed(1)}s).\nSteps:\n- ${r.log.join('\n- ')}\nURL: ${r.asset.url}`;
+        } catch (err) {
+          return `Error: animation failed: ${errMessage(err)}`;
+        }
+      },
+    });
     tools.transcribe_video = tool({
       description: 'Transcribe a video or audio file and return the transcript with timestamps (for summaries, shot lists, or picking trims).',
       inputSchema: z.object({ source_url: z.string().url() }),
@@ -102,7 +124,7 @@ export async function buildMediaTools(
 
   const inventory = [
     canImage ? 'Images: use generate_image; show the returned markdown image in your reply.' : 'Image generation is unavailable (no image provider configured).',
-    canVideo ? 'Video: use edit_video / transcribe_video with a public video URL (the user uploads files via the paperclip; uploaded files arrive as URLs).' : 'Video editing is unavailable (no sandbox).',
+    canVideo ? 'Video: use edit_video / transcribe_video with a public video URL (the user uploads files via the paperclip; uploaded files arrive as URLs). For motion graphics from nothing: generate_image, then animate_image (zoom/pan, fades, text) — say plainly that this is a camera-move animation, not frame-by-frame animation.' : 'Video editing is unavailable (no sandbox).',
   ].join('\n');
   return { tools, inventory };
 }

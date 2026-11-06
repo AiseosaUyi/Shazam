@@ -103,6 +103,51 @@ export function speechSpans(ffmpegLog: string, duration: number, pad = 0.15): Ar
   return keep;
 }
 
+export type MotionKind = 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'none';
+export type MotionAspect = '9:16' | '1:1' | '16:9' | '4:5';
+
+export const MOTION_SIZES: Record<MotionAspect, [number, number]> = {
+  '9:16': [1080, 1920],
+  '1:1': [1080, 1080],
+  '16:9': [1920, 1080],
+  '4:5': [1080, 1350],
+};
+
+/**
+ * ffmpeg -vf graph that turns one still image into a short motion clip: a slow zoom or pan
+ * (zoompan on a 2x upscale so it stays smooth), fade in and out, and an optional text overlay that
+ * fades in. Text comes from a file so no user text ever reaches the shell or the filter parser.
+ */
+export function buildMotionFilter(o: { motion: MotionKind; aspect: MotionAspect; seconds: number; fps?: number; textFile?: string; fontFile?: string; textAt?: 'top' | 'middle' | 'bottom' }): string {
+  const fps = o.fps ?? 30;
+  const frames = Math.max(1, Math.round(o.seconds * fps));
+  const [w, h] = MOTION_SIZES[o.aspect];
+  const center = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'";
+  const z =
+    o.motion === 'zoom_in' ? `z='min(zoom+${(0.25 / frames).toFixed(6)},1.25)':${center}`
+    : o.motion === 'zoom_out' ? `z='if(eq(on,0),1.25,max(zoom-${(0.25 / frames).toFixed(6)},1.0))':${center}`
+    : o.motion === 'pan_left' ? `z=1.2:x='(iw-iw/zoom)*(1-on/${frames})':y='ih/2-(ih/zoom/2)'`
+    : o.motion === 'pan_right' ? `z=1.2:x='(iw-iw/zoom)*on/${frames}':y='ih/2-(ih/zoom/2)'`
+    : `z=1:${center}`;
+  const fade = Math.min(0.6, o.seconds / 4);
+  const parts = [
+    `scale=${w * 2}:${h * 2}:force_original_aspect_ratio=increase`,
+    `crop=${w * 2}:${h * 2}`,
+    `zoompan=${z}:d=${frames}:s=${w}x${h}:fps=${fps}`,
+    `fade=t=in:st=0:d=${fade.toFixed(2)}`,
+    `fade=t=out:st=${(o.seconds - fade).toFixed(2)}:d=${fade.toFixed(2)}`,
+  ];
+  if (o.textFile) {
+    const y = o.textAt === 'top' ? 'h*0.12' : o.textAt === 'middle' ? '(h-text_h)/2' : 'h*0.78';
+    const start = Math.min(1.2, o.seconds / 3);
+    parts.push(
+      `drawtext=${o.fontFile ? `fontfile=${o.fontFile}:` : ''}textfile=${o.textFile}:fontcolor=white:fontsize=${Math.round(h * 0.05)}:borderw=3:bordercolor=black@0.7:x=(w-text_w)/2:y=${y}:alpha='if(lt(t,${start.toFixed(2)}),0,min(1,(t-${start.toFixed(2)})/0.8))'`
+    );
+  }
+  parts.push('format=yuv420p');
+  return parts.join(',');
+}
+
 export interface VideoEditResult {
   asset: MediaAsset;
   log: string[];
@@ -270,6 +315,44 @@ export class VideoEditor {
       prompt: title,
       model: 'ffmpeg (Vercel Sandbox)',
       meta: { ops, log: this.log, durationSeconds, source: sourceUrl, sizeBytes: bytes.length },
+    });
+    return { asset, log: this.log, durationSeconds };
+  }
+
+  /** Renders a still image into a short motion clip (zoom/pan + fades + optional text). */
+  async animateImage(
+    imageUrl: string,
+    o: { motion?: MotionKind; aspect?: MotionAspect; seconds?: number; text?: string; textAt?: 'top' | 'middle' | 'bottom'; title?: string },
+    platform: PlatformRepo
+  ): Promise<VideoEditResult> {
+    assertPublicHttps(imageUrl);
+    await this.sh(ENSURE_FFMPEG, 280_000);
+    const id = Date.now().toString(36);
+    const seconds = Math.min(15, Math.max(2, Number(o.seconds ?? 6)));
+    const aspect = o.aspect ?? '9:16';
+    const img = `${WORK}/${id}-img`;
+    const out = `${WORK}/${id}-motion.mp4`;
+    await this.sh(`curl -sSfL --max-filesize 30000000 ${q(imageUrl)} -o ${q(img)}`);
+    let textFile: string | undefined;
+    const text = (o.text || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 80);
+    if (text) {
+      textFile = `${WORK}/${id}-text.txt`;
+      await this.sandbox.writeBinary(textFile, new TextEncoder().encode(text));
+    }
+    const vf = buildMotionFilter({ motion: o.motion ?? 'zoom_in', aspect, seconds, textFile, fontFile: `${FONT_DIR}/DejaVuSans-Bold.ttf`, textAt: o.textAt });
+    await this.sh(`${FF} -y -v error -i ${q(img)} -vf ${q(vf)} -t ${seconds} -r 30 -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart ${q(out)}`);
+    this.log.push(`Animated image: ${o.motion ?? 'zoom_in'} · ${aspect} · ${seconds}s${text ? ` · text "${text}"` : ''}`);
+    const durationSeconds = await this.duration(out);
+    const bytes = await this.sandbox.readBinary(out);
+    if (!bytes) throw new Error('Rendered video could not be read back from the sandbox.');
+    const blob = await put(`videos/${this.userId}/${id}.mp4`, bytes, { access: 'public', addRandomSuffix: true, contentType: 'video/mp4' });
+    await this.sh(`rm -f ${WORK}/${id}-*`, 60_000).catch(() => '');
+    const asset = await platform.addMedia(this.userId, {
+      kind: 'video',
+      url: blob.url,
+      prompt: o.title || text || 'Motion clip',
+      model: 'ffmpeg (Vercel Sandbox)',
+      meta: { motion: o.motion ?? 'zoom_in', aspect, seconds, log: this.log, durationSeconds, source: imageUrl, sizeBytes: bytes.length },
     });
     return { asset, log: this.log, durationSeconds };
   }
