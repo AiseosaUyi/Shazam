@@ -111,3 +111,32 @@ export async function buildSkillTools(platform: PlatformRepo, userId: string, mo
 
   return { tools, inventory };
 }
+
+const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'when', 'use', 'user', 'asks', 'your', 'from', 'into', 'about', 'what', 'have', 'will', 'you', 'are', 'was', 'can', 'any', 'all']);
+const words = (t: string) => new Set((t.toLowerCase().match(/[a-z0-9]{4,}/g) || []).filter((w) => !STOP.has(w)));
+
+/**
+ * Plain Chat is a single text completion with no tools, so it cannot call load_skill. Instead
+ * pick the enabled Chat skills whose name or description clearly matches the request (two shared
+ * meaningful words, or the skill name appears in the prompt) and prepend their instructions.
+ */
+export function pickChatSkills(skills: Array<Pick<Skill, 'name' | 'description' | 'instructions' | 'enabled' | 'modes'>>, prompt: string, max = 2): Array<Pick<Skill, 'name' | 'instructions'>> {
+  const promptWords = words(prompt);
+  const lower = prompt.toLowerCase();
+  return skills
+    .filter((s) => s.enabled && s.modes.includes('chat'))
+    .map((s) => {
+      const shared = [...words(`${s.name} ${s.description}`)].filter((w) => promptWords.has(w)).length;
+      const named = lower.includes(s.name.toLowerCase());
+      return { s, score: named ? 99 : shared };
+    })
+    .filter((x) => x.score >= 2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map((x) => ({ name: x.s.name, instructions: x.s.instructions.slice(0, 4000) }));
+}
+
+export function chatSkillBlock(picked: Array<{ name: string; instructions: string }>): string {
+  if (!picked.length) return '';
+  return picked.map((s) => `[Skill: ${s.name}] Follow these instructions for this request:\n${s.instructions}`).join('\n\n');
+}

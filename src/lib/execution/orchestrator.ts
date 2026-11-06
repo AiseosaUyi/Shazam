@@ -120,9 +120,19 @@ export async function runTaskOrchestrator(options: RunTaskOptions): Promise<void
   }
 
   // Prepend project context if not already in prompt
-  const effectivePrompt = projectContextBlock && !prompt.includes('File: ')
+  let effectivePrompt = projectContextBlock && !prompt.includes('File: ')
     ? `${projectContextBlock}\n\n[User Instruction]:\n${prompt}`
     : prompt;
+
+  // Chat has no tools, so matching Chat skills are injected directly (Co-Work and Code load them on demand).
+  try {
+    const { PlatformRepo } = await import('@/lib/db/platform-repo');
+    const { pickChatSkills, chatSkillBlock } = await import('@/lib/skills');
+    const block = chatSkillBlock(pickChatSkills(await new PlatformRepo().listSkills(user.id, 'chat'), prompt));
+    if (block) effectivePrompt = `${block}\n\n[User Instruction]:\n${effectivePrompt}`;
+  } catch {
+    // Skills are optional; never block a chat on them.
+  }
 
   // 2. User preferences & monthly budget calculation
   const preferences = await repo.getUserPreferences(user.id);
