@@ -42,7 +42,7 @@ export async function buildMediaTools(
             platform
           );
           opts.onAsset?.({ id: r.asset.id, kind: 'image', url: r.asset.url, prompt, model: r.asset.model });
-          return `Image created with ${r.provider} (${r.model}).\n![${prompt.replace(/[\[\]]/g, '').slice(0, 80)}](${r.asset.url})\nURL: ${r.asset.url}${r.enhanced ? `\nExpanded prompt: ${r.finalPrompt}` : ''}`;
+          return `Image created with ${r.provider} (${r.model}).\n![${prompt.replace(/[\[\]]/g, '').slice(0, 80)}](${r.asset.url})\nURL: ${r.asset.url}${r.enhanced ? `\nExpanded prompt: ${r.finalPrompt}` : ''}\nNOTE FOR YOU: you cannot see this image. Never claim what it shows or that requested text or details appear in it. Say it was generated from the prompt and ask the user to check it. Free fallback models often miss exact shapes and spelled-out text.`;
         } catch (err) {
           return `Error: image generation failed: ${errMessage(err)}`;
         }
@@ -124,7 +124,7 @@ export async function buildMediaTools(
 
   const inventory = [
     canImage ? 'Images: use generate_image; show the returned markdown image in your reply.' : 'Image generation is unavailable (no image provider configured).',
-    canVideo ? 'Video: use edit_video / transcribe_video with a public video URL (the user uploads files via the paperclip; uploaded files arrive as URLs). For motion graphics from nothing: generate_image, then animate_image (zoom/pan, fades, text) — say plainly that this is a camera-move animation, not frame-by-frame animation.' : 'Video editing is unavailable (no sandbox).',
+    canVideo ? 'Video: use edit_video / transcribe_video with a public video URL (the user uploads files via the paperclip; uploaded files arrive as URLs). For motion graphics from nothing: generate_image with aspect_ratio 9:16 for stories/reels (16:9 for wide), then animate_image (zoom/pan and fades) — say plainly that this is a camera-move animation, not frame-by-frame animation, and that you have not seen the result.' : 'Video editing is unavailable (no sandbox).',
   ].join('\n');
   return { tools, inventory };
 }
