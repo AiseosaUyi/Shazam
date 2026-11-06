@@ -336,7 +336,7 @@ export default function CodePage() {
       {/* Sidebar */}
       <aside className="hidden h-full w-64 shrink-0 flex-col border-r border-line/[0.06] bg-sidebar md:flex">
         <div className="p-3">
-          <button onClick={() => setThreads((p) => ({ ...p, [workspaceKey(workspace)]: [] }))} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium text-ink hover:bg-surface-2">
+          <button onClick={() => { const next = workspace.kind === 'cloud' ? ({ kind: 'cloud', project: null } as typeof workspace) : workspace; setWorkspace(next); setThreads((p) => ({ ...p, [workspaceKey(next)]: [] })); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium text-ink hover:bg-surface-2">
             <Plus className="h-4 w-4 text-brand" /> New task
           </button>
         </div>
