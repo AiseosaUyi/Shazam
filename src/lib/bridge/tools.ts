@@ -13,6 +13,15 @@ import { errMessage } from '@/lib/errors';
  * that cannot run.
  */
 
+/**
+ * Cloud-project runs get the user's computer and browser tools only when the request is about them.
+ * Otherwise a model that hits a snag in the cloud sandbox can quietly write files or start servers on the
+ * user's real machine. Cloud work stays in the cloud unless the user points at their computer, git or browser.
+ */
+export function wantsLocalMachine(prompt: string): boolean {
+  return /\b(my (computer|mac|laptop|machine|desktop|folders?|files?|browser|chrome|repo|project)|on my (mac|computer|machine|laptop|desktop)|locally|local (folder|files?|repo|machine|server|dev)|desktop app|git (push|commit|pull|clone|status|diff)|pull request|push (it|this|that|to|the|my|changes)|commit (it|this|that|the|my|changes)|github|deploy|vercel|open (the |a |my )?(page|site|website|browser|tab|url)|browser|chrome)\b|~\/|\/Users\//i.test(prompt || '');
+}
+
 export function hostsFromPrompt(text: string): string[] {
   const out = new Set<string>();
   const re = /(?<![@\w.-])(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?::\d+)?(?:\/[^\s]*)?/gi;

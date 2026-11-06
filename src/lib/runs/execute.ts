@@ -11,7 +11,7 @@ import { runCoworkAgent } from '@/lib/cowork/agent';
 import { buildMcpToolset } from '@/lib/mcp/tools';
 import { buildSkillTools } from '@/lib/skills';
 import { buildMediaTools } from '@/lib/media/tools';
-import { buildBridgeTools } from '@/lib/bridge/tools';
+import { buildBridgeTools, wantsLocalMachine } from '@/lib/bridge/tools';
 import { RunsRepo, type RunEvent } from './repo';
 import { buildAskTool, QUESTION_GUIDANCE } from '@/lib/agents/ask';
 import type { ResumableRun } from '@/lib/agent/stream';
@@ -93,7 +93,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   const [mcp, skills, bridge, ghCred] = await Promise.all([
     buildMcpToolset(repo, o.user.id, { allowMutations: o.allowExternalWrites, platform, onPendingAction: (a) => send('pending_action', a) }),
     buildSkillTools(platform, o.user.id, 'code'),
-    buildBridgeTools(o.user.id, o.prompt),
+    wantsLocalMachine(o.prompt) ? buildBridgeTools(o.user.id, o.prompt) : Promise.resolve({ tools: {}, inventory: '' }),
     repo.getCredential(o.user.id, 'github'),
   ]);
   const ghToken = ghCred && ghCred.status === 'valid' ? await decryptSecret(ghCred.encryptedKey).catch(() => null) : null;
