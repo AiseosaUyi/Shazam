@@ -13,37 +13,24 @@ import {
   Check,
   ThumbsUp,
   ThumbsDown,
-  Info,
-  ChevronRight,
   ChevronDown,
   Plus,
   MessageSquare,
-  Trash2,
   Sparkles,
   AlertCircle,
   Cpu,
-  Layers,
-  ArrowRightLeft,
   X,
-  Code2,
-  SlidersHorizontal,
-  Compass,
   FileText,
-  Zap,
-  CheckCircle2,
   Folder,
   FolderOpen,
   Paperclip,
-  Clock,
-  Palette,
-  Sliders,
-  Search,
-  Pin,
-  Mic,
 } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import type { CostPolicy, TaskClass, Model } from '@/lib/types';
 import { errMessage } from '@/lib/errors';
+import { ArtifactsModal, type ArtifactItem } from '@/components/home/ArtifactsModal';
+import { ModelDropdown } from '@/components/home/ModelDropdown';
+import { ConversationSidebar, type ConversationItem } from '@/components/home/ConversationSidebar';
 
 interface Message {
   id: string;
@@ -54,12 +41,6 @@ interface Message {
   routeInfo?: any;
 }
 
-interface ConversationItem {
-  id: string;
-  title: string;
-  projectId?: string | null;
-  updatedAt: string;
-}
 
 interface ProjectItem {
   id: string;
@@ -116,7 +97,7 @@ export default function WorkspacePage() {
 
   // Real Workspace Artifacts State
   const [showArtifactsModal, setShowArtifactsModal] = useState(false);
-  const [artifactsList, setArtifactsList] = useState<Array<{ path: string; content: string; updated_at?: string }>>([]);
+  const [artifactsList, setArtifactsList] = useState<ArtifactItem[]>([]);
   const [selectedArtifact, setSelectedArtifact] = useState<{ path: string; content: string } | null>(null);
   const [loadingArtifacts, setLoadingArtifacts] = useState(false);
 
@@ -645,42 +626,6 @@ export default function WorkspacePage() {
     }
   }
 
-  function renderFormattedContent(text: string) {
-    const parts = text.split(/(```[\s\S]*?```)/g);
-    return parts.map((part, index) => {
-      if (part.startsWith('```') && part.endsWith('```')) {
-        const firstLineEnd = part.indexOf('\n');
-        const lang = part.slice(3, firstLineEnd).trim() || 'code';
-        const code = part.slice(firstLineEnd + 1, -3);
-        const codeId = `code_${index}`;
-
-        return (
-          <div key={index} className="my-3 rounded-2xl bg-black/60 border border-line/[0.08] overflow-hidden shadow-lg">
-            <div className="px-4 py-2 bg-line/[0.03] border-b border-line/5 flex items-center justify-between text-[11px] font-mono text-ink-2">
-              <span className="tracking-wider text-[10px] text-ink-3 font-semibold">{lang}</span>
-              <button
-                onClick={() => handleCopy(code, codeId)}
-                className="hover:text-brand flex items-center gap-1.5 transition text-xs"
-              >
-                {copiedId === codeId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedId === codeId ? 'Copied' : 'Copy'}</span>
-              </button>
-            </div>
-            <pre className="p-4 text-xs font-mono text-ink overflow-x-auto leading-relaxed">
-              <code>{code}</code>
-            </pre>
-          </div>
-        );
-      }
-
-      return (
-        <span key={index} className="whitespace-pre-wrap leading-relaxed text-[14px] text-ink">
-          {part}
-        </span>
-      );
-    });
-  }
-
   function getModelButtonLabel() {
     if (!pinnedModelName) {
       return connectedProviders['google'] ? 'Gemini Ready' : 'Auto';
@@ -692,160 +637,6 @@ export default function WorkspacePage() {
       return 'FLUX.1 Schnell';
     }
     return pinnedModelName;
-  }
-
-  function renderModelDropdown() {
-    return (
-      <div className="absolute right-0 bottom-full mb-2 w-72 max-h-80 overflow-y-auto rounded-2xl bg-[#12131a] border border-line/10 shadow-2xl p-2 space-y-1 z-50 text-xs font-sans backdrop-blur-2xl">
-        <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
-          Intelligent Routing
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setPinnedModelName('');
-            try { localStorage.removeItem('shazam_pinned_model'); } catch {}
-            setModelDropdownOpen(false);
-          }}
-          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
-            !pinnedModelName ? 'bg-line/10 text-ink font-medium border border-line/15' : 'text-ink-2 hover:bg-line/5'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Zap className="w-3.5 h-3.5 text-ink-2" />
-            <div>
-              <div className="font-medium text-ink">Auto Routing</div>
-              <div className="text-[10px] text-ink-3">Automatically routes per task</div>
-            </div>
-          </div>
-          <span className="text-[10px] text-ink-2 font-mono shrink-0 ml-1">
-            {connectedProviders['google'] ? 'Gemini Ready' : 'Auto'}
-          </span>
-        </button>
-
-        <div className="border-t border-line/5 my-1" />
-        <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
-          Image Generation
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            const target = 'Google Nano Banana 2.1';
-            setPinnedModelName(target);
-            try { localStorage.setItem('shazam_pinned_model', target); } catch {}
-            setModelDropdownOpen(false);
-          }}
-          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
-            pinnedModelName?.toLowerCase().includes('banana') || pinnedModelName?.toLowerCase().includes('imagen')
-              ? 'bg-line/10 text-ink font-medium border border-line/15'
-              : 'text-ink-2 hover:bg-line/5'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-ink-2 shrink-0" />
-            <div className="truncate">
-              <div className="font-medium text-ink truncate">Google Nano Banana 2.1</div>
-              <div className="text-[10px] text-ink-3 truncate">AI Studio key with billing (no free tier)</div>
-            </div>
-          </div>
-          <span className="text-[10px] text-ink-2 font-mono shrink-0 ml-1">
-            BYOK · paid
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            const target = 'FLUX.1 Schnell (Free)';
-            setPinnedModelName(target);
-            try { localStorage.setItem('shazam_pinned_model', target); } catch {}
-            setModelDropdownOpen(false);
-          }}
-          className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between transition ${
-            pinnedModelName?.toLowerCase().includes('flux')
-              ? 'bg-line/10 text-ink font-medium border border-line/15'
-              : 'text-ink-2 hover:bg-line/5'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Palette className="w-3.5 h-3.5 text-ink-2 shrink-0" />
-            <div className="truncate">
-              <div className="font-medium text-ink truncate">FLUX.1 Schnell</div>
-              <div className="text-[10px] text-ink-3 truncate">Free · Fast · No Key Needed</div>
-            </div>
-          </div>
-          <span className="text-[10px] text-ink-2 font-mono shrink-0 ml-1">
-            Free
-          </span>
-        </button>
-
-        <div className="border-t border-line/5 my-1" />
-        <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
-          Google Gemini
-        </div>
-
-        {models
-          .filter((m) => (m.providerModelId?.includes('gemini') || m.id.includes('gemini') || m.name.toLowerCase().includes('gemini')) && m.outputModality !== 'image')
-          .map((m) => {
-            const isModelConnected = connectedProviders['google'];
-            const isPinned = pinnedModelName === m.name;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => {
-                  setPinnedModelName(m.name);
-                  try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                  setModelDropdownOpen(false);
-                }}
-                className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                  isPinned ? 'bg-line/10 text-ink font-medium border border-line/15' : 'text-ink-2 hover:bg-line/5'
-                }`}
-              >
-                <span className="truncate text-ink">{m.name}</span>
-                {isModelConnected && (
-                  <span className="text-[9px] text-ink-2 font-mono shrink-0 ml-1 flex items-center gap-0.5">
-                    <Check className="w-2.5 h-2.5" /> Connected
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-        {models.some((m) => m.providerId === 'ollama') && (
-          <>
-            <div className="border-t border-line/5 my-1" />
-            <div className="px-2 py-0.5 text-[10px] font-semibold text-ink-3">
-              Local Compute
-            </div>
-            {models
-              .filter((m) => m.providerId === 'ollama')
-              .map((m) => {
-                const isPinned = pinnedModelName === m.name;
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => {
-                      setPinnedModelName(m.name);
-                      try { localStorage.setItem('shazam_pinned_model', m.name); } catch {}
-                      setModelDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition truncate ${
-                      isPinned ? 'bg-line/10 text-ink font-medium border border-line/15' : 'text-ink-2 hover:bg-line/5'
-                    }`}
-                  >
-                    <span className="truncate text-ink">{m.name}</span>
-                    <span className="text-[9px] text-ink-2 font-mono">Local</span>
-                  </button>
-                );
-              })}
-          </>
-        )}
-      </div>
-    );
   }
 
   const activeRoutingLabel = pinnedModelName
@@ -871,91 +662,19 @@ export default function WorkspacePage() {
       {/* ========================================================================= */}
       {/* Left Sidebar (Matching Claude / Cursor Desktop Layout in Screenshot)     */}
       {/* ========================================================================= */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-sidebar border-r border-line/[0.06] flex flex-col transition-transform duration-200 md:static md:translate-x-0 select-none ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        {/* Top: New chat, search, library (Claude-style) */}
-        <div className="space-y-0.5 p-3">
-          <button onClick={handleNewChat} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium text-ink hover:bg-surface-2">
-            <Plus className="h-4 w-4 text-brand" /> New chat
-          </button>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-ink-3" />
-            <input
-              type="text"
-              placeholder="Search chats"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl bg-transparent py-2 pl-9 pr-3 text-[13px] text-ink placeholder:text-ink-2 hover:bg-surface-2/60 focus:bg-surface-2 focus:outline-none"
-            />
-          </div>
-          <button type="button" onClick={loadArtifacts} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[13px] text-ink-2 hover:bg-surface-2/60 hover:text-ink">
-            <Layers className="h-4 w-4" /> Library
-          </button>
-        </div>
-
-        {/* Conversations History: Pinned & Recents */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-3">
-          <div className="px-2 py-1 text-[10px] font-bold text-ink-3">
-            Recents
-          </div>
-
-          <div className="space-y-0.5">
-            {!user ? (
-              <div className="p-3 mx-1 my-2 rounded-xl bg-line/[0.02] border border-line/[0.06] text-center">
-                <Sparkles className="w-4 h-4 text-brand mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-ink">Guest Session</p>
-                <p className="text-[11px] text-ink-2 mt-1 mb-2.5 leading-relaxed">
-                  Sign in to save and sync your conversations across devices.
-                </p>
-                <Link
-                  href="/login"
-                  className="inline-block px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs transition shadow-sm"
-                >
-                  Sign In
-                </Link>
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="px-2 py-4 text-center text-xs text-ink-3">
-                No conversations yet
-              </div>
-            ) : (
-              conversations
-                .filter((c) => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-                .map((conv) => (
-                  <div
-                    key={conv.id}
-                    onClick={() => {
-                      loadConversation(conv.id);
-                      setSidebarOpen(false);
-                    }}
-                    className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer ${
-                      currentConvId === conv.id
-                        ? 'bg-brand/10 text-brand-soft font-medium'
-                        : 'text-ink-2 hover:bg-line/[0.03] hover:text-ink'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <MessageSquare className="w-3.5 h-3.5 shrink-0 opacity-60" />
-                      <span className="truncate">{conv.title}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteConversation(e, conv.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-ink-3 hover:text-red-400 transition rounded"
-                      title="Delete chat"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))
-            )}
-          </div>
-        </div>
-
-      </aside>
+      <ConversationSidebar
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        user={user}
+        conversations={conversations}
+        currentConvId={currentConvId}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onNewChat={handleNewChat}
+        onOpenLibrary={loadArtifacts}
+        onSelectConversation={loadConversation}
+        onDeleteConversation={handleDeleteConversation}
+      />
 
       {/* ========================================================================= */}
       {/* Main Conversational Workspace                                             */}
@@ -1197,7 +916,15 @@ export default function WorkspacePage() {
                         <ChevronDown className="w-3 h-3 text-ink-3" />
                       </button>
 
-                      {modelDropdownOpen && renderModelDropdown()}
+                      {modelDropdownOpen && (
+                        <ModelDropdown
+                          models={models}
+                          connectedProviders={connectedProviders}
+                          pinnedModelName={pinnedModelName}
+                          setPinnedModelName={setPinnedModelName}
+                          onClose={() => setModelDropdownOpen(false)}
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1402,7 +1129,15 @@ export default function WorkspacePage() {
                         <ChevronDown className="w-3 h-3 text-ink-3" />
                       </button>
 
-                      {modelDropdownOpen && renderModelDropdown()}
+                      {modelDropdownOpen && (
+                        <ModelDropdown
+                          models={models}
+                          connectedProviders={connectedProviders}
+                          pinnedModelName={pinnedModelName}
+                          setPinnedModelName={setPinnedModelName}
+                          onClose={() => setModelDropdownOpen(false)}
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -1433,108 +1168,16 @@ export default function WorkspacePage() {
         )}
       </div>
 
-      {/* Real Working Artifacts Modal */}
       {showArtifactsModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-surface border border-line/10 rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="p-4 border-b border-line/[0.06] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-brand/15 border border-brand/30 flex items-center justify-center text-brand">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">Workspace Artifacts</h3>
-                  <p className="text-[11px] text-ink-2">
-                    Files, code proposals, and assets generated in your sessions.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowArtifactsModal(false);
-                  setSelectedArtifact(null);
-                }}
-                className="p-1.5 rounded-lg hover:bg-line/5 text-ink-2 hover:text-ink transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {loadingArtifacts ? (
-                <div className="py-12 text-center text-xs text-ink-3">
-                  <span className="inline-block w-2 h-2 rounded-full bg-brand animate-ping mr-2" />
-                  Loading workspace artifacts...
-                </div>
-              ) : selectedArtifact ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setSelectedArtifact(null)}
-                      className="text-xs text-brand hover:underline flex items-center gap-1"
-                    >
-                      ← Back to Artifacts list
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(selectedArtifact.content);
-                        setCopiedId('artifact-copied');
-                        setTimeout(() => setCopiedId(null), 2000);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-line/5 hover:bg-line/10 text-xs text-ink-2 flex items-center gap-1 transition"
-                    >
-                      {copiedId === 'artifact-copied' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedId === 'artifact-copied' ? 'Copied' : 'Copy Content'}</span>
-                    </button>
-                  </div>
-                  <div className="p-3 bg-black/50 border border-line/5 rounded-xl font-mono text-xs text-ink overflow-x-auto max-h-96 whitespace-pre">
-                    {selectedArtifact.content}
-                  </div>
-                </div>
-              ) : artifactsList.length === 0 ? (
-                <div className="py-12 text-center space-y-3">
-                  <div className="w-10 h-10 rounded-2xl bg-line/[0.03] border border-line/5 flex items-center justify-center mx-auto text-ink-3">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <p className="text-xs font-medium text-ink-2">No workspace artifacts saved yet</p>
-                  <p className="text-[11px] text-ink-3 max-w-sm mx-auto">
-                    When you use Code Studio or Co-Work to write code and generate documents, your saved files will appear here.
-                  </p>
-                  <Link
-                    href="/agent"
-                    onClick={() => setShowArtifactsModal(false)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand-soft text-brand-ink font-semibold text-xs transition shadow-sm"
-                  >
-                    <Folder className="w-3.5 h-3.5" />
-                    <span>Open Code Studio</span>
-                  </Link>
-                </div>
-              ) : (
-                <div className="divide-y divide-line/[0.04]">
-                  {artifactsList.map((art, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => setSelectedArtifact(art)}
-                      className="py-2.5 px-3 rounded-xl hover:bg-line/[0.04] cursor-pointer flex items-center justify-between transition group"
-                    >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <FileText className="w-4 h-4 text-brand shrink-0" />
-                        <span className="text-xs font-mono text-ink group-hover:text-brand-soft truncate">
-                          {art.path}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-ink-3 shrink-0">
-                        {art.content.length} bytes · Click to view →
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <ArtifactsModal
+          artifactsList={artifactsList}
+          selectedArtifact={selectedArtifact}
+          setSelectedArtifact={setSelectedArtifact}
+          loadingArtifacts={loadingArtifacts}
+          copiedId={copiedId}
+          setCopiedId={setCopiedId}
+          onClose={() => setShowArtifactsModal(false)}
+        />
       )}
     </div>
   );
