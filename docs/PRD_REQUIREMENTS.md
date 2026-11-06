@@ -48,6 +48,9 @@ Last QA: 2026-10-30. Score history in §9. Setup steps that need an account owne
   - Flags: `--limit N`, `--task name`, `--json out.json`, `--max-steps N` (default 25), `--min-pass 0.6` (exit 1 below the threshold; otherwise exit 0 unless the harness crashes).
 - Results: every run writes `evals/agent/results/<timestamp>_<git sha>.json` (gitignored except `.gitkeep`) with the build sha, model and per-task outcome, so the score is tracked per build.
 
+
+**Baseline (2026-11-06, commit f55b82d):** `npm run eval:agent -- --local` on `ollama/qwen3.6:35b-a3b` passed 19/20 (95%), 4-9 steps and 11-124 s per task. The one miss, `fix-email-regex`, still accepted `a@b..com`. These are small self-written tasks, so treat the number as a regression baseline, not a SWE-bench score. Re-run on Gemini/Groq/Cerebras once a free key is in `.env.local`.
+
 ## 2. Co-Work ("like Claude Cowork")
 
 | ID | Requirement | Acceptance test |
