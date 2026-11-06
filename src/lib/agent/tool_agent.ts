@@ -56,6 +56,14 @@ export interface ToolAgentResult {
 export const READ_ONLY_TOOLS = ['list_files', 'grep', 'read_file', 'web_fetch', 'web_search'] as const;
 /** Plan mode also keeps the planning helpers and the read-only subagent tool. */
 export const PLAN_MODE_TOOLS = [...READ_ONLY_TOOLS, 'todo_write', 'ask_user', 'task'] as const;
+/** Commands that start a server and never exit. They hang the step; servers go through start_preview. */
+export function startsServer(command: string): boolean {
+  return /\b(http\.server|live-server|nodemon|next (dev|start)|vite(?=\s|$)|webpack serve|npm (run )?(dev|start)(?=\s|$)|pnpm (run )?(dev|start)(?=\s|$)|yarn (dev|start)(?=\s|$)|npx (serve|http-server))\b/i.test(command);
+}
+
+const SERVER_IN_RUN_COMMAND = 'Error: that command starts a long-running server, which cannot run here. Use start_preview for dev servers. Do not retry it with another port.';
+const PREVIEW_GIVE_UP = 'Preview is not available after several attempts. Stop trying: the files are written and checked, so finish by summarizing what was built and say the live preview could not be started.';
+
 export const MAX_SUBAGENTS = 4;
 export const SUBAGENT_MAX_STEPS = 12;
 export const SUBAGENT_TIME_MS = 120_000;
@@ -168,6 +176,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
   const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, local, maxSteps = 40, planMode = false, signal, onEvent } = options;
 
   const filesModified = new Set<string>();
+  let previewAttempts = 0;
   const filesDeleted = new Set<string>();
   const commandsRun: Array<{ command: string; exitCode: number }> = [];
   /** Models often send "/app/x.tsx", "./x" or sandbox-absolute paths; map them all to project paths. */
@@ -276,6 +285,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       description: 'Run a shell command in the project root (e.g. "npm install", "npx tsc --noEmit", "npm test"). Must finish on its own: never start dev servers here, use start_preview. Returns exit code and output.',
       inputSchema: z.object({ command: z.string() }),
       execute: async ({ command }, { abortSignal }) => {
+        if (startsServer(command)) return SERVER_IN_RUN_COMMAND;
         if (!sandbox && !runCommand) {
           return `NOT RUN: no sandbox or local bridge is connected, so "${command}" was not executed. Do not claim it passed.`;
         }
@@ -323,6 +333,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
       description: 'Start the dev server in the background and get a public preview URL to show the user (e.g. command "npm run dev -- --port 3000 --hostname 0.0.0.0", port 3000). Install dependencies first.',
       inputSchema: z.object({ command: z.string(), port: z.union([z.literal(3000), z.literal(5173)]) }),
       execute: async ({ command, port }) => {
+        if (++previewAttempts > 3) return PREVIEW_GIVE_UP;
         try {
           await sandbox.sync(files);
           const r = await sandbox.startPreview(command, port);
@@ -399,6 +410,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         description: `Run a shell command in ${local.root} on the user's computer (installs, tests, builds, git). Must finish on its own: never start servers here, use start_preview. Returns exit code and output.`,
         inputSchema: z.object({ command: z.string() }),
         execute: async ({ command }) => {
+          if (startsServer(command)) return SERVER_IN_RUN_COMMAND;
           const out = await local.call('exec', { cwd: local.root, command, timeoutMs: 300_000 }, 330_000);
           const code = Number(out.match(/exit code: (\d+)/)?.[1] ?? 1);
           commandsRun.push({ command, exitCode: code });
@@ -409,6 +421,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         description: 'Start the dev server on the user\'s computer in the background (e.g. "npm run dev"). Returns the localhost URL to share with the user.',
         inputSchema: z.object({ command: z.string(), port: z.number().int().min(1024).max(65535) }),
         execute: async ({ command, port }) => {
+          if (++previewAttempts > 3) return PREVIEW_GIVE_UP;
           const out = await local.call('spawn', { cwd: local.root, command, waitMs: 9000 }, 40_000);
           onEvent?.('preview', { url: `http://localhost:${port}` });
           return `${out}\nPreview: http://localhost:${port} (on ${local.deviceName})`;
