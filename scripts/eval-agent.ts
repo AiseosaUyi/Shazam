@@ -104,11 +104,19 @@ async function main() {
         const body = await res.text();
         return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
       };
-      try {
-        return await attempt('on', LOCAL_STEP_TIMEOUT_MS);
-      } catch (err) {
-        if (init?.signal?.aborted) throw err;
-        return attempt('off', 90_000);
+      // A step that times out twice is retried, like production's pause-and-resume, instead of ending the run.
+      for (let cycle = 0; ; cycle++) {
+        try {
+          try {
+            return await attempt('on', LOCAL_STEP_TIMEOUT_MS);
+          } catch (err) {
+            if (init?.signal?.aborted) throw err;
+            return await attempt('off', 90_000);
+          }
+        } catch (err) {
+          if (init?.signal?.aborted || cycle >= 2) throw err;
+          console.log(`  step timed out (cycle ${cycle + 1}); retrying`);
+        }
       }
     };
     modelId = picked.modelId;
