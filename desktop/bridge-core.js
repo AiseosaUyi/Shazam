@@ -305,6 +305,13 @@ class BridgeClient {
     this.onStatus = opts.onStatus || (() => {});
     this.running = false;
     this.controller = null;
+    // A Mac that sleeps leaves a dead connection that never errors, so every request has a deadline
+    // and a clock jump (sleep/wake) aborts the poll that was in flight.
+    this.pollTimeoutMs = opts.pollTimeoutMs || 35_000; // the long-poll waits 20s on the server
+    this.resultTimeoutMs = opts.resultTimeoutMs || 30_000;
+    this.resultRetries = opts.resultRetries ?? 4;
+    this.wakeGapMs = opts.wakeGapMs || 30_000;
+    this.watchdog = null;
   }
 
   async handle(cmd) {
@@ -507,7 +514,35 @@ class BridgeClient {
     }
   }
 
-  async post(pathname, body, signal) {
+  async post(pathname, body, signal, timeoutMs) {
+    // Abort when the caller's signal fires or the deadline passes, whichever is first.
+    const guard = new AbortController();
+    const timer = timeoutMs ? setTimeout(() => guard.abort(new Error(`${pathname} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs) : null;
+    const onAbort = () => guard.abort();
+    if (signal) signal.aborted ? guard.abort() : signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      return await this.postOnce(pathname, body, guard.signal);
+    } finally {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  /** Delivers a command result, retrying a few times: after a wake the first attempt often fails. */
+  async postResult(body) {
+    let delay = 500;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.post('/api/v1/bridge/result', body, undefined, this.resultTimeoutMs);
+      } catch (err) {
+        if (err.fatal || attempt >= this.resultRetries) throw err;
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.min(8000, delay * 2);
+      }
+    }
+  }
+
+  async postOnce(pathname, body, signal) {
     const res = await fetch(`${this.cfg.server}${pathname}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.cfg.token}` },
@@ -529,6 +564,19 @@ class BridgeClient {
     let localModels = [];
     let lastProbe = 0;
     this.onStatus('connected');
+    // Timers freeze while the computer sleeps, so a long gap between two ticks means it just woke up:
+    // the connection the poll is waiting on is dead, so drop it and reconnect right away.
+    let tick = Date.now();
+    this.watchdog = setInterval(() => {
+      const now = Date.now();
+      if (now - tick > this.wakeGapMs) {
+        this.log('woke from sleep; reconnecting');
+        backoff = 1000;
+        this.controller?.abort();
+      }
+      tick = now;
+    }, Math.min(5000, Math.max(50, Math.floor(this.wakeGapMs / 4))));
+    this.watchdog.unref?.();
     while (this.running) {
       this.controller = new AbortController();
       try {
@@ -541,7 +589,8 @@ class BridgeClient {
         const data = await this.post(
           '/api/v1/bridge/poll',
           { waitMs: 20_000, capabilities: { workspaces: this.cfg.workspaces || [], platform: process.platform, version: VERSION, hostname: os.hostname(), localModels, localServers: LOCAL_LLM_SERVERS } },
-          this.controller.signal
+          this.controller.signal,
+          this.pollTimeoutMs
         );
         backoff = 1000;
         this.onStatus('connected');
@@ -550,8 +599,8 @@ class BridgeClient {
         for (const cmd of data.commands || []) {
           this.handle(cmd)
             .catch((err) => ({ ok: false, result: err.message || String(err) }))
-            .then((outcome) => this.post('/api/v1/bridge/result', { id: cmd.id, ok: outcome.ok, result: outcome.result }))
-            .catch(() => {});
+            .then((outcome) => this.postResult({ id: cmd.id, ok: outcome.ok, result: outcome.result }))
+            .catch((err) => this.log(`could not deliver the result of a command: ${err.message || err}`));
         }
       } catch (err) {
         if (!this.running) break;
@@ -566,10 +615,12 @@ class BridgeClient {
         backoff = Math.min(30_000, backoff * 2);
       }
     }
+    if (this.watchdog) clearInterval(this.watchdog);
   }
 
   stop() {
     this.running = false;
+    if (this.watchdog) clearInterval(this.watchdog);
     this.controller?.abort();
     this.onStatus('stopped');
   }
