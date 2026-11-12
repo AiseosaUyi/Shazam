@@ -66,7 +66,7 @@ function gitSha(): string {
   try { return execSync('git rev-parse --short HEAD', { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'unknown'; }
 }
 
-interface TaskRun { name: string; pass: boolean; quota?: boolean; steps: number; firstEditStep?: number; seconds: number; error?: string; checker?: string; filesModified: string[] }
+interface TaskRun { name: string; pass: boolean; quota?: boolean; steps: number; firstEditStep?: number; summary?: string; seconds: number; error?: string; checker?: string; filesModified: string[] }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -125,6 +125,7 @@ async function main() {
         });
         run.steps = result.steps;
         run.filesModified = result.filesModified;
+        run.summary = result.text.slice(0, 1200);
       } catch (err) {
         run.error = (err instanceof Error ? err.message : String(err)).slice(0, 300);
       }
