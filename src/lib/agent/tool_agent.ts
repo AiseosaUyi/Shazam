@@ -6,6 +6,7 @@ import { buildProjectIndex } from './indexer';
 import type { ProjectSandbox } from './sandbox';
 import { errMessage } from '@/lib/errors';
 import { webFetchText, webSearch } from './web';
+import { EditFailureTracker, failureAdvice, nearestLines, replaceLineRange, stripLineNumbers } from './edit-hints';
 import { StallGuard, type StallGuardOptions } from './stall-guard';
 import { countLines, parseCommitHash, promptAsksForChanges, type CommandRecord, type EditRecord } from '@/lib/runs/report';
 
@@ -106,11 +107,23 @@ export function sliceNumbered(path: string, numbered: string, offset: number, li
   return `${path} (${lines.length} lines)\n${slice.join('\n')}${rest > 0 ? `\n… ${rest} more lines (read again with offset=${offset + limit}).` : ''}`;
 }
 
+/** Syntax-only parse of one file with the project's typescript. No single quotes: it is wrapped in them for the shell. */
+const TS_PARSE_SCRIPT = [
+  'let ts;try{ts=require("typescript")}catch(e){process.exit(0)}',
+  'const f=process.argv[1];',
+  'const r=ts.transpileModule(require("fs").readFileSync(f,"utf8"),{reportDiagnostics:true,fileName:f,compilerOptions:{jsx:ts.JsxEmit.Preserve,target:ts.ScriptTarget.ESNext}});',
+  'const d=r.diagnostics||[];',
+  'for(const x of d){const p=x.file&&x.start!==undefined?x.file.getLineAndCharacterOfPosition(x.start):null;console.error(f+(p?":"+(p.line+1)+":"+(p.character+1):"")+" "+ts.flattenDiagnosticMessageText(x.messageText," "))}',
+  'process.exit(d.length?1:0)',
+].join('');
+
 /** A fast syntax check for files that can be checked without a build (null = none). */
 export function syntaxCheckCommand(absPath: string): string | null {
   const q = JSON.stringify(absPath);
   if (/\.(c|m)?js$/i.test(absPath)) return `node --check ${q}`;
   if (/\.json$/i.test(absPath)) return `node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" ${q}`;
+  // TS/TSX/JSX: parse with the project's own typescript (syntax only, no type check). Silent when typescript is not installed.
+  if (/\.(c|m)?tsx?$|\.jsx$/i.test(absPath)) return `node -e '${TS_PARSE_SCRIPT}' ${q}`;
   return null;
 }
 
@@ -225,6 +238,13 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
   const filesDeleted = new Set<string>();
   const commandsRun: CommandRecord[] = [];
   const edits: EditRecord[] = [];
+  const editFailures = new EditFailureTracker();
+  /** A failed edit: the nearest real lines, and after 2 failures on a file, the better tool to use. */
+  const failedEdit = (path: string, base: string, content: string, oldString: string): string => {
+    if (!/not found/i.test(base)) return base;
+    const advice = failureAdvice(path, editFailures.record(path), true);
+    return `${base}\n\nNearest matching lines:\n${nearestLines(content, oldString)}${advice ? `\n\n${advice}` : ''}`;
+  };
   /** Models often send "/app/x.tsx", "./x" or sandbox-absolute paths; map them all to project paths. */
   const norm = (p: string) => (p || '').replace(/^\/vercel\/sandbox\//, '').replace(/^\.?\//, '').replace(/^\/+/, '');
   const findFile = (p: string) => files.find((f) => f.path === norm(p));
@@ -289,7 +309,8 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         const f = findFile(path);
         if (!f) return `Error: ${path} does not exist. Use write_file to create it.`;
         const result = applyEdit(f.content, old_string, new_string, replace_all);
-        if (!result.ok) return `Edit failed: ${result.error}`;
+        if (!result.ok) return failedEdit(f.path, `Edit failed: ${result.error}`, f.content, old_string);
+        editFailures.reset(f.path);
         edits.push({ path: f.path, action: 'edit', added: countLines(new_string) * result.count, removed: countLines(old_string) * result.count });
         f.content = result.content;
         filesModified.add(f.path);
@@ -312,6 +333,24 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         filesDeleted.delete(clean);
         onEvent?.('file_changed', { path: clean, action: existing ? 'overwrite' : 'create' });
         return `${existing ? 'Overwrote' : 'Created'} ${clean} (${content.split('\n').length} lines).`;
+      },
+    }),
+    replace_lines: tool({
+      description: 'Replace lines start..end (1-based, inclusive) of an existing file with new_text. Use line numbers from read_file. Safer than edit_file when old_string keeps failing.',
+      inputSchema: z.object({ path: z.string(), start: z.coerce.number().int().min(1), end: z.coerce.number().int().min(1), new_text: z.string() }),
+      execute: async ({ path, start, end, new_text }) => {
+        const blocked = guardPath(path);
+        if (blocked) return blocked;
+        const f = findFile(path);
+        if (!f) return `Error: ${path} does not exist. Use write_file to create it.`;
+        const r = replaceLineRange(f.content, start, end, new_text);
+        if (!r.ok) return r.error;
+        f.content = r.content;
+        edits.push({ path: f.path, action: 'edit', added: r.added, removed: r.removed });
+        filesModified.add(f.path);
+        editFailures.reset(f.path);
+        onEvent?.('file_changed', { path: f.path, action: 'edit' });
+        return `Replaced lines ${start}-${end} of ${f.path} with ${r.added} line${r.added === 1 ? '' : 's'}.`;
       },
     }),
     delete_file: tool({
@@ -436,7 +475,12 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         inputSchema: z.object({ path: z.string(), old_string: z.string(), new_string: z.string() }),
         execute: async ({ path, old_string, new_string }) => {
           const out = await local.call('edit_file', { path: abs(path), old_string, new_string });
-          if (/^Error/.test(out)) return out;
+          if (/^Error/.test(out)) {
+            if (!/not found/i.test(out)) return out;
+            const current = await local.call('read_file', { path: abs(path) });
+            return failedEdit(path, out, /^Error/.test(current) ? '' : stripLineNumbers(current), old_string);
+          }
+          editFailures.reset(path);
           mark(path, 'edit', { added: countLines(new_string), removed: countLines(old_string) });
           return out + (await syntaxNote(path));
         },
@@ -449,6 +493,23 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
           if (/^Error/.test(out)) return out;
           mark(path, 'write', { added: countLines(content), removed: 0 });
           return out + (await syntaxNote(path));
+        },
+      }),
+      replace_lines: tool({
+        description: 'Replace lines start..end (1-based, inclusive) of a file in the user\'s folder with new_text. Use line numbers from read_file. Safer than edit_file when old_string keeps failing.',
+        inputSchema: z.object({ path: z.string(), start: z.coerce.number().int().min(1), end: z.coerce.number().int().min(1), new_text: z.string() }),
+        execute: async ({ path, start, end, new_text }) => {
+          const blocked = guardPath(path);
+          if (blocked) return blocked;
+          const current = await local.call('read_file', { path: abs(path) });
+          if (/^Error/.test(current)) return current;
+          const r = replaceLineRange(stripLineNumbers(current), start, end, new_text);
+          if (!r.ok) return r.error;
+          const out = await local.call('write_file', { path: abs(path), content: r.content });
+          if (/^Error/.test(out)) return out;
+          editFailures.reset(path);
+          mark(path, 'edit', { added: r.added, removed: r.removed });
+          return `Replaced lines ${start}-${end} of ${path} with ${r.added} line${r.added === 1 ? '' : 's'}.${await syntaxNote(path)}`;
         },
       }),
       delete_file: tool({

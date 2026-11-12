@@ -116,7 +116,10 @@ describe('Post-edit syntax checks', () => {
     assert.equal(syntaxCheckCommand('/r/desktop/bridge-core.js'), 'node --check "/r/desktop/bridge-core.js"');
     assert.match(syntaxCheckCommand('/r/a.mjs') || '', /^node --check/);
     assert.match(syntaxCheckCommand('/r/package.json') || '', /JSON\.parse/);
-    assert.equal(syntaxCheckCommand('/r/page.tsx'), null);
+    assert.match(syntaxCheckCommand('/r/page.tsx') || '', /^node -e '.*transpileModule.*' "\/r\/page\.tsx"$/);
+    assert.match(syntaxCheckCommand('/r/a.ts') || '', /transpileModule/);
+    assert.match(syntaxCheckCommand('/r/a.jsx') || '', /transpileModule/);
+    assert.equal(syntaxCheckCommand('/r/readme.md'), null);
     assert.equal(syntaxCheckCommand('/r/a; rm -rf ~.js'), 'node --check "/r/a; rm -rf ~.js"', 'path is quoted');
   });
 });
