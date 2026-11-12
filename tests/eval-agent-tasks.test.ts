@@ -8,9 +8,9 @@ import { validateTask } from '../evals/agent/validate';
 describe('agent eval suite (dry validation)', () => {
   const tasks = loadTasks();
 
-  it('has 21 tasks with unique names', () => {
-    assert.equal(tasks.length, 21);
-    assert.equal(new Set(tasks.map((t) => t.name)).size, 21);
+  it('has 26 tasks with unique names', () => {
+    assert.equal(tasks.length, 26);
+    assert.equal(new Set(tasks.map((t) => t.name)).size, 26);
   });
 
   for (const task of tasks) {

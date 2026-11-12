@@ -1,0 +1,6 @@
+{
+  "name": "hard-refactor-monolith",
+  "instruction": "inventory.js is a 130-line single-file module that parses CSV, prices items, summarizes and formats a report. Refactor it into separate modules WITHOUT changing any behavior (output must stay byte-for-byte identical for every input, including errors and odd CSV):\n\n- parse.js: exports `{ parseCsv, toItems }`.\n- pricing.js: exports `{ TAX_RATES, DISCOUNT_TIERS, roundCents, priceItem, summarize }`.\n- format.js: exports `{ money, pad, formatReport }`.\n- inventory.js: keeps only `run` (same logic) and re-exports so that `require('./inventory')` still exposes exactly `{ run, parseCsv, priceItem, roundCents, money }`. inventory.js must end up at most 40 lines.\n\nRules: every function is defined in exactly one file (no copies), the modules use plain CommonJS `require`, there are no circular requires, parse.js requires nothing, pricing.js requires nothing, and format.js may only require nothing too (formatReport receives everything it needs as arguments). Move code, do not rewrite it, and do not add dependencies or new features.",
+  "maxSteps": 120,
+  "maxMinutes": 25
+}

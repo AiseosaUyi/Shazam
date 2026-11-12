@@ -117,7 +117,7 @@ async function main() {
           files,
           runCommand: runner.run,
           maxSteps: task.maxSteps ?? maxSteps,
-          signal: AbortSignal.timeout(5 * 60_000),
+          signal: AbortSignal.timeout((task.maxMinutes ?? 5) * 60_000),
           onEvent: (event) => {
             if (event === 'react_step') toolCalls++;
             else if (event === 'file_changed' && run.firstEditStep === undefined) run.firstEditStep = toolCalls;
