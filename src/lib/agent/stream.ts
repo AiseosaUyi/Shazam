@@ -34,6 +34,8 @@ export async function streamAgent(opts: {
   deadline?: number;
   /** Called after every step with the whole conversation so far (to resume from). */
   onCheckpoint?: (messages: ModelMessage[]) => void | Promise<void>;
+  /** Checked after every step; true ends the run (e.g. the stall guard). */
+  shouldStop?: () => boolean;
 }): Promise<{ text: string; steps: number; transcript: string; paused: boolean; messages: ModelMessage[] }> {
   const { onEvent } = opts;
   let stepNumber = 0;
@@ -59,7 +61,7 @@ export async function streamAgent(opts: {
       instructions: opts.instructions,
       messages: history.slice(),
       tools: opts.tools,
-      stopWhen: [isStepCount(Math.max(1, opts.maxSteps - stepNumber)), pastDeadline],
+      stopWhen: [isStepCount(Math.max(1, opts.maxSteps - stepNumber)), pastDeadline, () => opts.shouldStop?.() ?? false],
       abortSignal: opts.signal,
       // Long runs stay fast: older tool output is shortened once the conversation is large.
       prepareStep: ({ messages }) => {

@@ -135,7 +135,7 @@ function digest(run: Run) {
 
 function runToTurns(run: Run): Turn[] {
   const d = digest(run);
-  const done = run.status === 'done' || run.status === 'error' || run.status === 'cancelled';
+  const done = ['done', 'no_changes', 'stalled', 'partial', 'error', 'cancelled'].includes(run.status);
   return [
     { id: `${run.id}-u`, role: 'user', content: run.prompt },
     ...(done
@@ -277,7 +277,7 @@ export default function CodePage() {
       if (run) {
         const d = digest(run);
         setLive({ text: '', steps: d.steps, preview: d.preview, backend: null, model: run.model, plan: d.plan, questions: d.questions });
-        if (run.status === 'done' || run.status === 'error' || run.status === 'cancelled') {
+        if (['done', 'no_changes', 'stalled', 'error', 'cancelled'].includes(run.status)) {
           setBusy(false);
           abortRef.current = null;
           let target = w;

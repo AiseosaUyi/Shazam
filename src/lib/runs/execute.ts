@@ -13,6 +13,8 @@ import { buildSkillTools } from '@/lib/skills';
 import { buildMediaTools } from '@/lib/media/tools';
 import { buildBridgeTools, wantsLocalMachine } from '@/lib/bridge/tools';
 import { RunsRepo, type RunEvent } from './repo';
+import type { SubtaskState } from '@/lib/agent/multi-fix';
+import { parseGitStatus, parseHead, type CommandRecord, type EditRecord, type GitState } from './report';
 import { buildAskTool, QUESTION_GUIDANCE } from '@/lib/agents/ask';
 import type { ResumableRun } from '@/lib/agent/stream';
 import { normalizeApprovalMode } from '@/lib/cowork/approval';
@@ -47,6 +49,12 @@ export interface CodeTaskOptions extends ResumableRun {
   allowExternalWrites?: boolean;
   /** Absolute path of an allowed folder on the user's paired computer: work there instead of a cloud project. */
   localRoot?: string | null;
+  /** Git state when the run began (kept across resumed segments). Captured here on the first segment. */
+  gitBaseline?: GitState | null;
+  /** Tool calls with no edit in earlier segments (the stall guard counts across a whole run). */
+  stepsSinceEdit?: number;
+  /** Multi-fix continuation from the previous segment. */
+  subtasks?: SubtaskState;
   /** Background run id (lets ask_user questions be answered from the web or MCP). */
   runId?: string | null;
   /** Per-step budget for a local model (shorter on 300s streaming routes). */
@@ -61,7 +69,22 @@ export interface TaskResult {
   projectId: string | null;
   filesModified: string[];
   filesDeleted: string[];
-  commandsRun: Array<{ command: string; exitCode: number }>;
+  commandsRun: CommandRecord[];
+  /** Successful edits recorded from tool results. */
+  edits?: EditRecord[];
+  /** Git state at the start of the run and when the agent stopped (local runs in a git repo). */
+  gitBaseline?: GitState | null;
+  gitAfter?: GitState | null;
+  /** `git diff --stat` when the agent stopped (local runs), for partial results. */
+  diffStat?: string | null;
+  /** Ended early by the stall guard: too many steps with no edit. */
+  stalled?: boolean;
+  stepsSinceLastEdit?: number;
+  filesRead?: string[];
+  /** Files changed by someone else between the run reading and editing them. */
+  externalChanges?: string[];
+  /** Set when a multi-fix run paused: the remaining sub-tasks. */
+  subtasks?: SubtaskState;
   steps: number;
   /** Stopped at a time limit with a checkpoint saved; the background runner resumes it. */
   paused?: boolean;
@@ -129,6 +152,8 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
     resumeMessages: o.resumeMessages,
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
+    stallGuard: { sinceEdit: o.stepsSinceEdit },
+    subtasks: o.subtasks,
   });
 
   for (const p of out.filesModified) {
@@ -137,7 +162,16 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   }
   for (const p of out.filesDeleted) await repo.deleteProjectFile(o.user.id, projectId, p);
 
-  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, steps: out.steps, paused: out.paused };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
+}
+
+/** HEAD and uncommitted files of a local folder, or null when it is not a git repo or git fails. */
+export async function readGitState(call: (command: string, payload: Record<string, unknown>, timeoutMs?: number) => Promise<string>, root: string): Promise<GitState | null> {
+  const head = await call('exec', { cwd: root, command: 'git rev-parse HEAD', timeoutMs: 15_000 }, 30_000).catch(() => '');
+  if (!/^exit code: 0\b/.test(head)) return null;
+  const status = await call('exec', { cwd: root, command: 'git status --porcelain', timeoutMs: 15_000 }, 30_000).catch(() => '');
+  if (!/^exit code: 0\b/.test(status)) return null;
+  return { head: parseHead(head), dirty: parseGitStatus(status) };
 }
 
 async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: PlatformRepo, send: EventSink): Promise<TaskResult> {
@@ -162,6 +196,8 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
       return `Error: ${errMessage(err) || err} Wait a moment and retry this step.`;
     }
   };
+  // null = captured and not a git repo; undefined = first segment, capture now.
+  const gitBaseline = o.gitBaseline !== undefined ? o.gitBaseline : await readGitState(call, root);
   const { loadProjectMemory } = await import('./project-memory');
   const memory = await loadProjectMemory((p) => call('read_file', { path: p }), root).catch(() => '');
   const [mcp, skills] = await Promise.all([
@@ -184,7 +220,11 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     resumeMessages: o.resumeMessages,
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
+    stallGuard: { sinceEdit: o.stepsSinceEdit },
+    subtasks: o.subtasks,
   });
+  const gitAfter = await readGitState(call, root);
+  const diffStat = out.paused ? await call('exec', { cwd: root, command: 'git diff --stat', timeoutMs: 15_000 }, 30_000).then((t) => t.replace(/^exit code: \d+\n?/, '')).catch(() => null) : null;
   let text = out.text || 'Done.';
   if (!out.paused && (out.filesModified || []).length > 0) {
     const { autoVerify } = await import('./verify');
@@ -195,7 +235,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     ).catch(() => null);
     if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
   }
-  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, steps: out.steps, paused: out.paused };
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {
@@ -279,6 +319,7 @@ export function eventRecorder(runId: string, userId: string, runs = new RunsRepo
     else if (event === 'question_answered') push('answer', JSON.stringify(d));
     else if (event === 'todos') push('plan', JSON.stringify(d.todos || []));
     else if (event === 'file_changed') push('file', d.path);
+    else if (event === 'external_change') push('note', `External change: ${d.path} was modified by someone else after it was read; the edit was held back and the model re-read it.`);
     else if (event === 'project_created') push('project', d.projectId);
     else if (event === 'react_execution') push('note', d.backend === 'local' ? `Working on ${d.device} in ${d.root}` : d.backend === 'vercel-sandbox' ? 'Working in a private cloud sandbox' : 'No sandbox available: commands will not run');
   };

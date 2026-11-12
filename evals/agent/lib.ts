@@ -9,6 +9,10 @@ export interface EvalTask {
   name: string;
   instruction: string;
   dir: string;
+  /** The agent must make its first edit within this many steps (tool calls). */
+  maxStepsToFirstEdit?: number;
+  /** Overrides the runner's default step budget for tasks that need more (e.g. several fixes). */
+  maxSteps?: number;
 }
 
 export interface AgentFile {
@@ -25,8 +29,8 @@ export function loadTasks(dir = TASKS_DIR): EvalTask[] {
     .filter((d) => d.isDirectory())
     .map((d) => {
       const taskDir = path.join(dir, d.name);
-      const meta = JSON.parse(fs.readFileSync(path.join(taskDir, 'task.json'), 'utf8')) as { name: string; instruction: string };
-      return { name: meta.name, instruction: meta.instruction, dir: taskDir };
+      const meta = JSON.parse(fs.readFileSync(path.join(taskDir, 'task.json'), 'utf8')) as { name: string; instruction: string; maxStepsToFirstEdit?: number; maxSteps?: number };
+      return { name: meta.name, instruction: meta.instruction, dir: taskDir, maxStepsToFirstEdit: meta.maxStepsToFirstEdit, maxSteps: meta.maxSteps };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }

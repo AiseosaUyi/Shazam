@@ -12,7 +12,7 @@ import { generateAndStoreImage } from '@/lib/media/image';
 import { executeApprovedAction } from '@/lib/cowork/actions';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { QuestionsRepo } from '@/lib/agents/ask';
-import { ACTIVE, MAX_WAIT_S, summarizeRun } from '@/lib/runs/mcp-summary';
+import { ACTIVE, MAX_WAIT_LONG_S, MAX_WAIT_S, summarizeRun } from '@/lib/runs/mcp-summary';
 import { slugifySkill, parseSkillMarkdown } from '@/lib/skills';
 import { fetchSkillMarkdown } from '@/lib/skills/import-url';
 
@@ -39,7 +39,7 @@ async function userFrom(ctx: any) {
 async function waitForNews(userId: string, taskId: string, waitS: number) {
   const runs = new RunsRepo();
   const questions = new QuestionsRepo();
-  const deadline = Date.now() + Math.min(Math.max(waitS, 0), MAX_WAIT_S) * 1000;
+  const deadline = Date.now() + Math.min(Math.max(waitS, 0), MAX_WAIT_LONG_S) * 1000;
   let run = await runs.get(userId, taskId);
   const startEvents = run?.events.length || 0;
   for (;;) {
@@ -109,7 +109,15 @@ const handler = createMcpHandler(
         const run = await new RunsRepo().create(user.id, { agent: chosen as 'code' | 'cowork', prompt, projectId: local_folder ? `local:${local_folder}` : project_id, source: 'mcp' });
         const pinnedModel = model && model.toLowerCase() !== 'auto' ? model : undefined;
         after(() => executeRun(user, run, { ...(pinnedModel ? { pinnedModel } : {}), ...(max_steps ? { maxSteps: max_steps } : {}) }));
-        return text(`Started ${chosen} task (model: ${pinnedModel || 'auto'}).\ntask_id: ${run.id}\nCall get_task_status(task_id) now; it waits for progress on our side, so keep calling it until the task is done. Watch it live: ${APP_URL}/runs/${run.id}`);
+        let timing = '';
+        if (chosen === 'code') {
+          const { stepsPerMinute, durationNote } = await import('@/lib/runs/estimate');
+          const { MAX_SEGMENTS, SEGMENT_MS, DEFAULT_RUN_STEPS } = await import('@/lib/runs/background');
+          const past = await new RunsRepo().list(user.id, 40).catch(() => []);
+          const rate = stepsPerMinute(past.filter((r) => r.id !== run.id), pinnedModel);
+          timing = `\n${durationNote({ maxSteps: max_steps ?? DEFAULT_RUN_STEPS, capMinutes: Math.round((MAX_SEGMENTS * SEGMENT_MS) / 60_000), maxSegments: MAX_SEGMENTS, rate, model: pinnedModel })}`;
+        }
+        return text(`Started ${chosen} task (model: ${pinnedModel || 'auto'}).\ntask_id: ${run.id}\nCall get_task_status(task_id) now; it waits for progress on our side, so keep calling it until the task is done. Watch it live: ${APP_URL}/runs/${run.id}${timing}`);
       }
     );
 
@@ -157,7 +165,7 @@ const handler = createMcpHandler(
         inputSchema: z.object({
           task_id: z.string(),
           since_event: z.number().int().min(0).optional(),
-          wait_seconds: z.number().int().min(0).max(MAX_WAIT_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, 0 = answer now).`),
+          wait_seconds: z.number().int().min(0).max(MAX_WAIT_LONG_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, up to ${MAX_WAIT_LONG_S} to poll less on long tasks if your client allows long tool calls, 0 = answer now).`),
           detail: z.enum(['summary', 'full']).optional().describe('summary (default) or full.'),
         }),
       },

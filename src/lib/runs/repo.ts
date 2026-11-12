@@ -1,10 +1,21 @@
 import { getDb } from '@/lib/env';
 import type { SqlDatabase } from '@/lib/db/sql';
 import { sha256Hex } from '@/lib/bridge/repo';
+import type { SubtaskState } from '@/lib/agent/multi-fix';
+import type { GitState, RunRecord, RunReport } from './report';
 
 export type RunAgent = 'code' | 'cowork';
-/** paused = stopped at a serverless time limit with a checkpoint; resumes automatically. */
-export type RunStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'cancelled';
+/**
+ * paused = stopped at a serverless time limit with a checkpoint; resumes automatically.
+ * no_changes = the task asked for changes but the run recorded no successful edit or write.
+ * stalled = the run went too many steps without editing and was stopped.
+ * partial = the run hit the time cap; work so far is saved and send_feedback can continue it.
+ */
+export type RunStatus = 'queued' | 'running' | 'paused' | 'done' | 'no_changes' | 'stalled' | 'partial' | 'error' | 'cancelled';
+
+/** Statuses a run never leaves on its own. */
+export const TERMINAL_STATUSES: readonly RunStatus[] = ['done', 'no_changes', 'stalled', 'partial', 'error', 'cancelled'];
+export const isTerminalStatus = (s: string): boolean => (TERMINAL_STATUSES as readonly string[]).includes(s);
 
 /** Settings a run keeps across resumed segments. */
 export interface RunOptions {
@@ -13,6 +24,16 @@ export interface RunOptions {
   maxSteps?: number;
   /** Steps already used by earlier segments (the step budget is for the whole run). */
   stepsUsed?: number;
+  /** Tool calls since the last successful edit, across segments (stall guard). */
+  stepsSinceEdit?: number;
+  /** Multi-fix brief: sub-tasks still to run and finished fix results, across segments. */
+  subtasks?: SubtaskState | null;
+  /** Git state when the run began (null = not a git repo). Set on the first segment. */
+  gitBaseline?: GitState | null;
+  /** Edits and commands recorded so far, across resumed segments. */
+  record?: RunRecord;
+  /** Final report, computed from recorded events when the run ends. */
+  report?: RunReport;
 }
 
 export interface RunEvent {
