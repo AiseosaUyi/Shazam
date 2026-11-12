@@ -22,7 +22,7 @@ export function summarizeRun(run: any, sinceEvent = 0, detail: 'summary' | 'full
     run.projectId ? `project_id: ${run.projectId}` : null,
     run.filesChanged?.length ? `files changed: ${run.filesChanged.join(', ')}` : null,
     shown.length ? `progress${all.length > shown.length ? ` (last ${shown.length} of ${all.length} new)` : ''} (next since_event=${run.events.length}):\n${shown.join('\n')}` : null,
-    run.status === 'done' ? `\nRESULT:\n${cut ? `${result.slice(0, SUMMARY_RESULT_CHARS)}…\n[Shortened. Call get_task_status with detail="full" only if you need the rest.]` : result.slice(0, 8000)}` : null,
+    run.status === 'done' || run.status === 'no_changes' ? `\nRESULT:\n${cut ? `${result.slice(0, SUMMARY_RESULT_CHARS)}…\n[Shortened. Call get_task_status with detail="full" only if you need the rest.]` : result.slice(0, 8000)}` : null,
     run.status === 'error' ? `\nERROR: ${run.error}` : null,
     ACTIVE.has(run.status) ? '\nStill working. Call get_task_status again right away (it waits for news on our side).' : null,
   ].filter(Boolean).join('\n');

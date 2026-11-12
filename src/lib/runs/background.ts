@@ -5,6 +5,7 @@ import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
 import { BridgeOfflineError } from '@/lib/bridge/repo';
 import { isRetryableModelError } from '@/lib/agent/fallback';
 import { errMessage } from '@/lib/errors';
+import { buildReport, formatResult, mergeRecords } from './report';
 
 /**
  * Background runs outlive one serverless invocation. The function hosting a run is killed
@@ -68,6 +69,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
           prompt: run.prompt,
           projectId: run.projectId?.startsWith('local:') ? null : run.projectId,
           localRoot: run.projectId?.startsWith('local:') ? run.projectId.slice(6) : null,
+          gitBaseline: options.gitBaseline,
           history: opts.history,
           pinnedModel: options.pinnedModel,
           maxSteps: stepsLeft,
@@ -79,7 +81,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       : await runCoworkTask({ user, runId: run.id, prompt: run.prompt, history: opts.history, timezone: options.timezone, pinnedModel: options.pinnedModel, signal: stopper.signal, onEvent: rec.sink, ...resumable });
 
     if (out.paused) {
-      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps });
+      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, ...recordFields(options, out) });
       // A first-segment cloud project is linked now, so the resumed segment works in the same files.
       if (out.projectId && out.projectId !== run.projectId) await runs.setProject(user.id, run.id, out.projectId);
       if (run.segment + 1 >= MAX_SEGMENTS) {
@@ -107,9 +109,17 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
     // Out of steps mid-task: say so plainly instead of returning a half-finished sentence as the result.
     const ranOut = run.agent === 'code' && out.steps >= stepsLeft;
     const limitNote = ranOut ? `Stopped at the step limit (${totalSteps} steps) before finishing. Progress is saved; send feedback to continue.\n\nLast message: ` : '';
-    const verified = run.source === 'mcp' && out.commandsRun.length ? `\n\nCommands run: ${out.commandsRun.map((c) => `\`${c.command}\` → exit ${c.exitCode}`).join(', ')}` : '';
     await runs.setLease(user.id, run.id, null);
-    await runs.update(user.id, run.id, { status: 'done', result: `${limitNote}${out.text}${verified}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
+    if (run.agent === 'code') {
+      // Facts come from recorded tool events and git state, never from the model's prose.
+      const fields = recordFields(options, out);
+      const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter });
+      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, ...fields, report });
+      const result = `${limitNote}${formatResult(report, out.text, fields.record)}`;
+      await runs.update(user.id, run.id, { status: report.status, result, filesChanged: report.filesChanged.map((f) => f.path), model: out.model, events: rec.events });
+    } else {
+      await runs.update(user.id, run.id, { status: 'done', result: `${limitNote}${out.text}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
+    }
     if (out.projectId && out.projectId !== run.projectId) {
       // Link the auto-created project so feedback continues in the same files.
       await runs.setProject(user.id, run.id, out.projectId);
@@ -139,6 +149,14 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
   } finally {
     clearInterval(watcher);
   }
+}
+
+/** The edits, commands and git baseline a run has recorded so far, including this segment's. */
+export function recordFields(options: RunOptions, out: { edits?: any[]; commandsRun: any[]; gitBaseline?: any }) {
+  return {
+    record: mergeRecords(options.record, { edits: out.edits || [], commands: out.commandsRun || [] }),
+    gitBaseline: options.gitBaseline !== undefined ? options.gitBaseline : (out.gitBaseline ?? null),
+  };
 }
 
 /** The whole model chain failed on limits, overload or timeouts (not on a real request error). */

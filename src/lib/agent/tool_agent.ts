@@ -6,6 +6,7 @@ import { buildProjectIndex } from './indexer';
 import type { ProjectSandbox } from './sandbox';
 import { errMessage } from '@/lib/errors';
 import { webFetchText, webSearch } from './web';
+import { countLines, parseCommitHash, type CommandRecord, type EditRecord } from '@/lib/runs/report';
 
 /**
  * Native tool-calling coding agent (Claude Code / OpenCode style) on the AI SDK.
@@ -47,7 +48,9 @@ export interface ToolAgentResult {
   filesModified: string[];
   filesDeleted: string[];
   steps: number;
-  commandsRun: Array<{ command: string; exitCode: number }>;
+  commandsRun: CommandRecord[];
+  /** Every successful edit/write/delete, recorded from tool results (not from model prose). */
+  edits: EditRecord[];
   /** Stopped at the time limit before finishing; resume from the saved checkpoint. */
   paused: boolean;
 }
@@ -172,13 +175,21 @@ ${index.slice(0, 6000)}
 ${extra ? `\n${extra}` : ''}`;
 }
 
+/** A successful `git commit` run by the agent: keep its hash so the result can say which commits are the run's own. */
+function commitField(command: string, exitCode: number, output: string): { commit?: string } {
+  if (exitCode !== 0 || !/\bgit\b[^|;&]*\bcommit\b/.test(command)) return {};
+  const commit = parseCommitHash(output);
+  return commit ? { commit } : {};
+}
+
 export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgentResult> {
   const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, local, maxSteps = 40, planMode = false, signal, onEvent } = options;
 
   const filesModified = new Set<string>();
   let previewAttempts = 0;
   const filesDeleted = new Set<string>();
-  const commandsRun: Array<{ command: string; exitCode: number }> = [];
+  const commandsRun: CommandRecord[] = [];
+  const edits: EditRecord[] = [];
   /** Models often send "/app/x.tsx", "./x" or sandbox-absolute paths; map them all to project paths. */
   const norm = (p: string) => (p || '').replace(/^\/vercel\/sandbox\//, '').replace(/^\.?\//, '').replace(/^\/+/, '');
   const findFile = (p: string) => files.find((f) => f.path === norm(p));
@@ -244,6 +255,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         if (!f) return `Error: ${path} does not exist. Use write_file to create it.`;
         const result = applyEdit(f.content, old_string, new_string, replace_all);
         if (!result.ok) return `Edit failed: ${result.error}`;
+        edits.push({ path: f.path, action: 'edit', added: countLines(new_string) * result.count, removed: countLines(old_string) * result.count });
         f.content = result.content;
         filesModified.add(f.path);
         onEvent?.('file_changed', { path: f.path, action: 'edit' });
@@ -258,6 +270,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         if (blocked) return blocked;
         const clean = norm(path);
         const existing = findFile(clean);
+        edits.push({ path: clean, action: existing ? 'write' : 'write', added: countLines(content), removed: existing ? countLines(existing.content) : 0 });
         if (existing) existing.content = content;
         else files.push({ path: clean, content });
         filesModified.add(clean);
@@ -275,6 +288,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         const idx = files.findIndex((f) => f.path === norm(path));
         if (idx === -1) return `Error: ${path} does not exist.`;
         const [removed] = files.splice(idx, 1);
+        edits.push({ path: removed.path, action: 'delete', added: 0, removed: countLines(removed.content) });
         filesModified.delete(removed.path);
         filesDeleted.add(removed.path);
         onEvent?.('file_changed', { path: removed.path, action: 'delete' });
@@ -297,7 +311,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
           } else {
             result = await runCommand!(command, abortSignal);
           }
-          commandsRun.push({ command, exitCode: result.exitCode });
+          commandsRun.push({ command, exitCode: result.exitCode, ...commitField(command, result.exitCode, result.output) });
           const out = result.output.length > 8000 ? `…(truncated)\n${result.output.slice(-8000)}` : result.output;
           return `$ ${command}\nexit code: ${result.exitCode}\n${out || '(no output)'}`;
         } catch (err) {
@@ -350,8 +364,9 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
   if (local) {
     // Same tool names, backed by the user's real folder via the desktop bridge.
     const abs = (p: string) => (p.startsWith('/') ? p : `${local.root.replace(/\/$/, '')}/${p.replace(/^\.\//, '')}`);
-    const mark = (p: string, action: string) => {
+    const mark = (p: string, action: string, delta: { added: number; removed: number } = { added: 0, removed: 0 }) => {
       filesModified.add(p);
+      edits.push({ path: p.replace(/^\.\//, ''), action: action === 'edit' ? 'edit' : 'write', ...delta });
       onEvent?.('file_changed', { path: p, action });
     };
     // Weak models often break syntax; check JS/JSON right after each edit so the model fixes it
@@ -387,7 +402,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         execute: async ({ path, old_string, new_string }) => {
           const out = await local.call('edit_file', { path: abs(path), old_string, new_string });
           if (/^Error/.test(out)) return out;
-          mark(path, 'edit');
+          mark(path, 'edit', { added: countLines(new_string), removed: countLines(old_string) });
           return out + (await syntaxNote(path));
         },
       }),
@@ -397,14 +412,18 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         execute: async ({ path, content }) => {
           const out = await local.call('write_file', { path: abs(path), content });
           if (/^Error/.test(out)) return out;
-          mark(path, 'write');
+          mark(path, 'write', { added: countLines(content), removed: 0 });
           return out + (await syntaxNote(path));
         },
       }),
       delete_file: tool({
         description: 'Delete a file in the user\'s folder.',
         inputSchema: z.object({ path: z.string() }),
-        execute: async ({ path }) => local.call('exec', { cwd: local.root, command: `rm -- ${JSON.stringify(abs(path))}` }),
+        execute: async ({ path }) => {
+          const out = await local.call('exec', { cwd: local.root, command: `rm -- ${JSON.stringify(abs(path))}` });
+          if (/exit code: 0\b/.test(out)) edits.push({ path: path.replace(/^\.\//, ''), action: 'delete', added: 0, removed: 0 });
+          return out;
+        },
       }),
       run_command: tool({
         description: `Run a shell command in ${local.root} on the user's computer (installs, tests, builds, git). Must finish on its own: never start servers here, use start_preview. Returns exit code and output.`,
@@ -413,7 +432,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
           if (startsServer(command)) return SERVER_IN_RUN_COMMAND;
           const out = await local.call('exec', { cwd: local.root, command, timeoutMs: 300_000 }, 330_000);
           const code = Number(out.match(/exit code: (\d+)/)?.[1] ?? 1);
-          commandsRun.push({ command, exitCode: code });
+          commandsRun.push({ command, exitCode: code, ...commitField(command, code, out) });
           return out;
         },
       }),
@@ -496,6 +515,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     filesDeleted: Array.from(filesDeleted),
     steps,
     commandsRun,
+    edits,
     paused,
   };
 }
