@@ -5,7 +5,7 @@ import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
 import { BridgeOfflineError } from '@/lib/bridge/repo';
 import { isRetryableModelError } from '@/lib/agent/fallback';
 import { errMessage } from '@/lib/errors';
-import { buildReport, formatResult, mergeRecords } from './report';
+import { buildReport, formatPartial, formatResult, mergeRecords, promptAsksForChanges, remainingTodos } from './report';
 
 /**
  * Background runs outlive one serverless invocation. The function hosting a run is killed
@@ -22,6 +22,8 @@ export const SEGMENT_MS = Number(process.env.SHAZAM_RUN_SEGMENT_MS || 450_000);
 export const LEASE_MS = 840_000;
 /** Steps a background run may take in total (across resumed segments). */
 export const DEFAULT_RUN_STEPS = Number(process.env.SHAZAM_RUN_MAX_STEPS || 120);
+/** A code run that has made no edit after this many segments (0-based index of the last one) is stopped. */
+export const EARLY_ABORT_SEGMENT = 1;
 export const MAX_SEGMENTS = Number(process.env.SHAZAM_RUN_MAX_SEGMENTS || 8);
 const APP_URL = process.env.APP_URL || 'https://arcwork-ai.vercel.app';
 
@@ -85,12 +87,22 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, ...recordFields(options, out) });
       // A first-segment cloud project is linked now, so the resumed segment works in the same files.
       if (out.projectId && out.projectId !== run.projectId) await runs.setProject(user.id, run.id, out.projectId);
-      if (run.segment + 1 >= MAX_SEGMENTS) {
+      const capMin = Math.round((MAX_SEGMENTS * SEGMENT_MS) / 60_000);
+      const fields = recordFields(options, out);
+      // Two segments with no edit at all: stop now instead of burning the whole time cap.
+      const outcome = pauseOutcome({ agent: run.agent, segment: run.segment, prompt: run.prompt, editsMade: fields.record.edits.length });
+      const noProgress = outcome === 'early_abort';
+      if (outcome !== 'continue') {
         await rec.flush();
         await runs.setLease(user.id, run.id, null);
+        const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter, segmentsUsed: run.segment + 1 });
+        await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, ...fields, report });
+        const reason = noProgress ? `STALLED: ${run.segment + 1} time segments passed with no edit, so the run was stopped early instead of using the full ${capMin} min. Files it read: ${(out.filesRead ?? []).slice(0, 15).join(', ') || '(none)'}. Retry with a smaller brief that names the exact file, line and change.` : undefined;
         await runs.update(user.id, run.id, {
-          status: 'error',
-          error: `Stopped after ${MAX_SEGMENTS} time segments (about ${Math.round((MAX_SEGMENTS * SEGMENT_MS) / 60_000)} min) without finishing. Progress is saved: send feedback to continue.`,
+          status: noProgress ? 'stalled' : 'partial',
+          result: formatPartial(report, { segments: run.segment + 1, capMinutes: capMin, todos: remainingTodos(rec.events), diffStat: out.diffStat, reason }),
+          filesChanged: report.filesChanged.map((f) => f.path),
+          model: out.model,
           events: rec.events,
         });
         return;
@@ -114,7 +126,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
     if (run.agent === 'code') {
       // Facts come from recorded tool events and git state, never from the model's prose.
       const fields = recordFields(options, out);
-      const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter });
+      const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter, segmentsUsed: run.segment + 1 });
       await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, ...fields, report });
       const stalled = out.stalled ? stalledNote(out.stepsSinceLastEdit ?? 0, out.filesRead ?? []) : '';
       const result = `${stalled}${limitNote}${formatResult(report, out.text, fields.record)}`;
@@ -156,6 +168,12 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
 /** Why a stalled run stopped, and what it had read, so the director can retry with a sharper brief. */
 export function stalledNote(steps: number, filesRead: string[]): string {
   return `STALLED: stopped after ${steps} steps with no edit instead of spending the rest of the budget. Files it read: ${filesRead.slice(0, 15).join(', ') || '(none)'}. Retry with a smaller brief that names the exact file, line and change, or send feedback with that detail.\n\n`;
+}
+
+/** After a segment pauses: keep going, stop at the time cap (partial), or stop early because nothing is being edited. */
+export function pauseOutcome(i: { agent: string; segment: number; prompt: string; editsMade: number; maxSegments?: number }): 'continue' | 'partial' | 'early_abort' {
+  if (i.agent === 'code' && i.segment >= EARLY_ABORT_SEGMENT && i.editsMade === 0 && promptAsksForChanges(i.prompt)) return 'early_abort';
+  return i.segment + 1 >= (i.maxSegments ?? MAX_SEGMENTS) ? 'partial' : 'continue';
 }
 
 /** The edits, commands and git baseline a run has recorded so far, including this segment's. */

@@ -27,7 +27,7 @@ export function AgentRunsList({ source, title = 'Agent tasks', blurb = 'Code and
               <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{r.prompt}</span>
               <span className="shz-mono hidden shrink-0 text-[11px] text-ink-3 sm:inline">{r.model?.split(' · ')[0] || ''}</span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${r.status === 'done' ? 'bg-brand/10 text-brand-soft' : r.status === 'error' ? 'bg-red-500/10 text-red-300' : 'bg-surface-2 text-ink-2'}`}>
-                {r.status === 'done' ? 'Done' : r.status === 'no_changes' ? 'No changes' : r.status === 'stalled' ? 'Stalled' : r.status === 'error' ? 'Failed' : 'Running'}
+                {r.status === 'done' ? 'Done' : r.status === 'no_changes' ? 'No changes' : r.status === 'stalled' ? 'Stalled' : r.status === 'partial' ? 'Partial' : r.status === 'error' ? 'Failed' : 'Running'}
               </span>
               <span className="shz-mono hidden w-28 shrink-0 text-right text-[11px] text-ink-3 md:inline">{new Date(r.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
             </Link>

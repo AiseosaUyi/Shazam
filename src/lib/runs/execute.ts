@@ -72,6 +72,8 @@ export interface TaskResult {
   /** Git state at the start of the run and when the agent stopped (local runs in a git repo). */
   gitBaseline?: GitState | null;
   gitAfter?: GitState | null;
+  /** `git diff --stat` when the agent stopped (local runs), for partial results. */
+  diffStat?: string | null;
   /** Ended early by the stall guard: too many steps with no edit. */
   stalled?: boolean;
   stepsSinceLastEdit?: number;
@@ -213,6 +215,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     stallGuard: { sinceEdit: o.stepsSinceEdit },
   });
   const gitAfter = await readGitState(call, root);
+  const diffStat = out.paused ? await call('exec', { cwd: root, command: 'git diff --stat', timeoutMs: 15_000 }, 30_000).then((t) => t.replace(/^exit code: \d+\n?/, '')).catch(() => null) : null;
   let text = out.text || 'Done.';
   if (!out.paused && (out.filesModified || []).length > 0) {
     const { autoVerify } = await import('./verify');
@@ -223,7 +226,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     ).catch(() => null);
     if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
   }
-  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, steps: out.steps, paused: out.paused };
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {

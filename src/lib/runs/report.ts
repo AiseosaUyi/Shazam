@@ -43,6 +43,8 @@ export interface RunReport {
   warnings: string[];
   externalChanges: string[];
   status: FinalStatus;
+  /** Time segments this run has used (each is about 7.5 minutes). */
+  segmentsUsed: number;
 }
 
 export const emptyRecord = (): RunRecord => ({ edits: [], commands: [] });
@@ -141,6 +143,7 @@ export interface BuildReportInput {
   record: RunRecord;
   gitBefore?: GitState | null;
   gitAfter?: GitState | null;
+  segmentsUsed?: number;
 }
 
 export function buildReport(i: BuildReportInput): RunReport {
@@ -165,6 +168,7 @@ export function buildReport(i: BuildReportInput): RunReport {
     warnings,
     externalChanges,
     status,
+    segmentsUsed: i.segmentsUsed ?? 1,
   };
 }
 
@@ -179,4 +183,30 @@ export function formatResult(report: RunReport, summary: string, rec: RunRecord)
   facts.push(`Tests: ${report.testsStatus}`);
   if (report.commandsRun.length) facts.push(`Commands run: ${report.commandsRun.map((c) => `\`${c.command}\` → exit ${c.exitCode}`).join(', ')}`);
   return `${parts.length ? `${parts.join('\n')}\n\n` : ''}${sanitizeSummary(summary, rec)}\n\n${facts.join('\n')}`;
+}
+
+/** Todo items still not completed, from the last todo_write the run recorded. */
+export function remainingTodos(events: Array<{ type: string; text: string }>): string[] {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].type !== 'plan') continue;
+    try {
+      const todos = JSON.parse(events[i].text) as Array<{ content: string; status: string }>;
+      return todos.filter((t) => t.status !== 'completed').map((t) => t.content);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** The result of a run cut off by the time cap: what landed, what is left, and how to continue. */
+export function formatPartial(report: RunReport, o: { segments: number; capMinutes: number; todos: string[]; diffStat?: string | null; reason?: string }): string {
+  const head = o.reason || `PARTIAL: stopped at the time cap (${o.segments} segments, about ${o.capMinutes} min) before finishing. Nothing is lost: the work below is on disk. Send feedback to continue.`;
+  const lines = [head, ''];
+  lines.push(`Files changed so far: ${report.filesChanged.length ? report.filesChanged.map((f) => `${f.path} (+${f.added}/-${f.removed})`).join(', ') : 'none'}`);
+  lines.push(`Remaining todo: ${o.todos.length ? o.todos.join('; ') : '(no todo list recorded)'}`);
+  lines.push(`Tests: ${report.testsStatus}`);
+  if (o.diffStat) lines.push(`Current git diff --stat:\n${o.diffStat.trim()}`);
+  for (const w of report.warnings) if (w !== 'external_changes_detected') lines.push(`WARNING: ${w}`);
+  return lines.join('\n');
 }

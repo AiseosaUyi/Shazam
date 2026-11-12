@@ -8,11 +8,12 @@ export type RunAgent = 'code' | 'cowork';
  * paused = stopped at a serverless time limit with a checkpoint; resumes automatically.
  * no_changes = the task asked for changes but the run recorded no successful edit or write.
  * stalled = the run went too many steps without editing and was stopped.
+ * partial = the run hit the time cap; work so far is saved and send_feedback can continue it.
  */
-export type RunStatus = 'queued' | 'running' | 'paused' | 'done' | 'no_changes' | 'stalled' | 'error' | 'cancelled';
+export type RunStatus = 'queued' | 'running' | 'paused' | 'done' | 'no_changes' | 'stalled' | 'partial' | 'error' | 'cancelled';
 
 /** Statuses a run never leaves on its own. */
-export const TERMINAL_STATUSES: readonly RunStatus[] = ['done', 'no_changes', 'stalled', 'error', 'cancelled'];
+export const TERMINAL_STATUSES: readonly RunStatus[] = ['done', 'no_changes', 'stalled', 'partial', 'error', 'cancelled'];
 export const isTerminalStatus = (s: string): boolean => (TERMINAL_STATUSES as readonly string[]).includes(s);
 
 /** Settings a run keeps across resumed segments. */
