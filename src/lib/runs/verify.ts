@@ -146,7 +146,7 @@ export async function autoVerify(
   }
 
   // Files changed
-  lines.push(`Files changed: ${rows.length}`);
+  lines.push(`Git working-tree diff: ${rows.length} tracked file(s)`);
   lines.push('');
 
   if (warnings.length > 0) {

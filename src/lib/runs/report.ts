@@ -130,7 +130,7 @@ export function sanitizeSummary(text: string, rec: RunRecord): string {
   const changed = new Set(rec.edits.map((e) => e.path.replace(/^\.\//, '')));
   const pathRx = /(?:[\w.-]+\/)*[\w.-]+\.(?:tsx?|jsx?|json|md|css|scss|html|py|go|rs|sql|ya?ml|mjs|cjs)\b/g;
   out = out.split('\n').map((line) => {
-    if (!/\b(chang|modif|edit|updat|creat|add|fix|wrote|written|rewr|renam|delet|remov)\w*/i.test(line)) return line;
+    if (!/\b(changed|modified|edited|updated|created|added|fixed|wrote|written|rewrote|renamed|deleted|removed|touched)\b/i.test(line)) return line;
     return line.replace(pathRx, (p) => {
       const clean = p.replace(/^\.\//, '');
       return [...changed].some((c) => c === clean || c.endsWith(`/${clean}`) || clean.endsWith(`/${c}`)) ? p : '[unverified file]';
