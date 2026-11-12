@@ -1,0 +1,6 @@
+{
+  "name": "multi-fix-8-files",
+  "instruction": "Fix three independent bugs in this small package.\n\nFIX 1: In src/range.js, range(start, end) should include end, but range(1, 3) returns [1, 2]. Fix range.js. Its test is src/range.test.js.\nFIX 2: In src/slug.js, slugify('  Hello World! ') should return 'hello-world' (lowercase, trimmed, no leading or trailing hyphen) but it returns '-Hello-World!-'. Fix slug.js. src/index.js re-exports it and src/slug.test.js tests it.\nFIX 3: In src/stats.js, mean([]) should return 0 but returns NaN. Fix stats.js. src/format.js uses it and src/stats.test.js tests it.\n\nACCEPTANCE: do not change any test file's expectations.",
+  "maxStepsToFirstEdit": 30,
+  "maxSteps": 75
+}

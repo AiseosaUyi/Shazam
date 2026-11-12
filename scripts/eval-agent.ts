@@ -66,7 +66,7 @@ function gitSha(): string {
   try { return execSync('git rev-parse --short HEAD', { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'unknown'; }
 }
 
-interface TaskRun { name: string; pass: boolean; quota?: boolean; steps: number; seconds: number; error?: string; checker?: string; filesModified: string[] }
+interface TaskRun { name: string; pass: boolean; quota?: boolean; steps: number; firstEditStep?: number; seconds: number; error?: string; checker?: string; filesModified: string[] }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -108,6 +108,7 @@ async function main() {
       writeFiles(workdir, files);
       const runner = makeLocalRunner(workdir, files);
       run = { name: task.name, pass: false, steps: 0, seconds: 0, filesModified: [] };
+      let toolCalls = 0;
       try {
         const result = await runToolAgent({
           model,
@@ -115,8 +116,12 @@ async function main() {
           projectName: task.name,
           files,
           runCommand: runner.run,
-          maxSteps,
+          maxSteps: task.maxSteps ?? maxSteps,
           signal: AbortSignal.timeout(5 * 60_000),
+          onEvent: (event) => {
+            if (event === 'react_step') toolCalls++;
+            else if (event === 'file_changed' && run.firstEditStep === undefined) run.firstEditStep = toolCalls;
+          },
         });
         run.steps = result.steps;
         run.filesModified = result.filesModified;
@@ -126,6 +131,11 @@ async function main() {
       runner.flush();
       const check = runCheck(task, workdir);
       run.pass = check.pass;
+      // Some tasks also require the agent to start editing promptly (no endless exploring).
+      if (run.pass && task.maxStepsToFirstEdit && (run.firstEditStep === undefined || run.firstEditStep > task.maxStepsToFirstEdit)) {
+        run.pass = false;
+        run.checker = `first edit at step ${run.firstEditStep ?? 'never'}, limit ${task.maxStepsToFirstEdit}`;
+      }
       if (!check.pass) run.checker = check.output.split('\n').slice(0, 6).join('\n');
       run.seconds = Math.round((Date.now() - t0) / 100) / 10;
       fs.rmSync(workdir, { recursive: true, force: true });

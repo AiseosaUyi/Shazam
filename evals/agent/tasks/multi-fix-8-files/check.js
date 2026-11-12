@@ -1,0 +1,21 @@
+const assert = require('node:assert/strict');
+const path = require('path');
+const fs = require('fs');
+const cp = require('child_process');
+const load = (p) => require(path.join(process.cwd(), p));
+const pkg = load('src/index.js');
+assert.deepEqual(pkg.range(1, 3), [1, 2, 3]);
+assert.deepEqual(pkg.range(2, 2), [2]);
+assert.equal(pkg.slugify('  Hello World! '), 'hello-world');
+assert.equal(pkg.slugify('a  b'), 'a-b');
+assert.equal(pkg.mean([1, 2, 3]), 2);
+assert.equal(pkg.mean([]), 0);
+assert.equal(pkg.formatMean([]), '0.00');
+// Tests must not be weakened.
+assert.match(fs.readFileSync('src/range.test.js', 'utf8'), /\[1, 2, 3\]/);
+assert.match(fs.readFileSync('src/slug.test.js', 'utf8'), /hello-world/);
+assert.match(fs.readFileSync('src/stats.test.js', 'utf8'), /mean\(\[\]\), 0/);
+const env = { ...process.env };
+delete env.NODE_TEST_CONTEXT;
+const r = cp.spawnSync(process.execPath, ['--test', 'src/'], { cwd: process.cwd(), encoding: 'utf8', env });
+assert.equal(r.status, 0, 'node --test failed:\n' + r.stdout + r.stderr);
