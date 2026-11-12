@@ -6,7 +6,8 @@ import { buildProjectIndex } from './indexer';
 import type { ProjectSandbox } from './sandbox';
 import { errMessage } from '@/lib/errors';
 import { webFetchText, webSearch } from './web';
-import { countLines, parseCommitHash, type CommandRecord, type EditRecord } from '@/lib/runs/report';
+import { StallGuard, type StallGuardOptions } from './stall-guard';
+import { countLines, parseCommitHash, promptAsksForChanges, type CommandRecord, type EditRecord } from '@/lib/runs/report';
 
 /**
  * Native tool-calling coding agent (Claude Code / OpenCode style) on the AI SDK.
@@ -39,6 +40,8 @@ export interface ToolAgentOptions extends ResumableRun {
   maxSteps?: number;
   /** Plan mode: only read-only tools are offered, and the run ends with a written plan. */
   planMode?: boolean;
+  /** Stall guard settings. On by default for runs that ask for changes (never in plan mode). */
+  stallGuard?: StallGuardOptions;
   signal?: AbortSignal;
   onEvent?: (event: string, data: unknown) => void;
 }
@@ -53,6 +56,12 @@ export interface ToolAgentResult {
   edits: EditRecord[];
   /** Stopped at the time limit before finishing; resume from the saved checkpoint. */
   paused: boolean;
+  /** Ended early because too many steps passed with no edit. */
+  stalled: boolean;
+  /** Tool calls since the last successful edit (carries across resumed segments). */
+  stepsSinceLastEdit: number;
+  /** Files the run read, for the stalled message and the director. */
+  filesRead: string[];
 }
 
 /** Tools that never change files or run commands. Plan mode and subagents are limited to these. */
@@ -180,6 +189,32 @@ function commitField(command: string, exitCode: number, output: string): { commi
   if (exitCode !== 0 || !/\bgit\b[^|;&]*\bcommit\b/.test(command)) return {};
   const commit = parseCommitHash(output);
   return commit ? { commit } : {};
+}
+
+/**
+ * Wraps every tool so the stall guard sees each call: repeat reads of an unchanged range get a
+ * short note, edits reset the counter, and results carry a firm instruction once the run has gone
+ * too long without editing.
+ */
+export function guardTools(tools: ToolSet, guard: StallGuard, editCount: () => number): ToolSet {
+  const out: ToolSet = {};
+  for (const [name, t] of Object.entries(tools)) {
+    const exec = (t as any).execute;
+    if (!exec) { out[name] = t; continue; }
+    out[name] = {
+      ...(t as any),
+      execute: async (args: any, ctx: any) => {
+        guard.begin();
+        const before = editCount();
+        let result = await exec(args, ctx);
+        if (typeof result === 'string' && name === 'read_file') result = guard.checkRead(String(args?.path || ''), args?.offset, args?.limit, result) ?? result;
+        if (editCount() > before) guard.onEdit();
+        else if (typeof result === 'string') result = guard.annotate(result);
+        return result;
+      },
+    } as any;
+  }
+  return out;
 }
 
 export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgentResult> {
@@ -492,7 +527,8 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
   });
 
   // Plan mode: write/edit/command tools are not even offered to the model.
-  const offered = planMode ? pickTools(tools, PLAN_MODE_TOOLS) : tools;
+  const guard = new StallGuard({ enabled: !planMode && promptAsksForChanges(prompt), ...options.stallGuard });
+  const offered = guardTools(planMode ? pickTools(tools, PLAN_MODE_TOOLS) : tools, guard, () => edits.length);
   const extra = [extraInstructions, planMode ? PLAN_MODE_NOTE : ''].filter(Boolean).join('\n\n') || undefined;
 
   const { text, steps, paused } = await streamAgent({
@@ -507,6 +543,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     onEvent,
     deadline: options.deadline,
     onCheckpoint: options.onCheckpoint,
+    shouldStop: () => guard.stalled,
   });
 
   return {
@@ -517,5 +554,8 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     commandsRun,
     edits,
     paused,
+    stalled: guard.stalled,
+    stepsSinceLastEdit: guard.sinceEdit,
+    filesRead: guard.filesRead,
   };
 }

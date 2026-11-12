@@ -50,6 +50,8 @@ export interface CodeTaskOptions extends ResumableRun {
   localRoot?: string | null;
   /** Git state when the run began (kept across resumed segments). Captured here on the first segment. */
   gitBaseline?: GitState | null;
+  /** Tool calls with no edit in earlier segments (the stall guard counts across a whole run). */
+  stepsSinceEdit?: number;
   /** Background run id (lets ask_user questions be answered from the web or MCP). */
   runId?: string | null;
   /** Per-step budget for a local model (shorter on 300s streaming routes). */
@@ -70,6 +72,10 @@ export interface TaskResult {
   /** Git state at the start of the run and when the agent stopped (local runs in a git repo). */
   gitBaseline?: GitState | null;
   gitAfter?: GitState | null;
+  /** Ended early by the stall guard: too many steps with no edit. */
+  stalled?: boolean;
+  stepsSinceLastEdit?: number;
+  filesRead?: string[];
   steps: number;
   /** Stopped at a time limit with a checkpoint saved; the background runner resumes it. */
   paused?: boolean;
@@ -137,6 +143,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
     resumeMessages: o.resumeMessages,
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
+    stallGuard: { sinceEdit: o.stepsSinceEdit },
   });
 
   for (const p of out.filesModified) {
@@ -145,7 +152,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   }
   for (const p of out.filesDeleted) await repo.deleteProjectFile(o.user.id, projectId, p);
 
-  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, steps: out.steps, paused: out.paused };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, steps: out.steps, paused: out.paused };
 }
 
 /** HEAD and uncommitted files of a local folder, or null when it is not a git repo or git fails. */
@@ -203,6 +210,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     resumeMessages: o.resumeMessages,
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
+    stallGuard: { sinceEdit: o.stepsSinceEdit },
   });
   const gitAfter = await readGitState(call, root);
   let text = out.text || 'Done.';
@@ -215,7 +223,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     ).catch(() => null);
     if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
   }
-  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, steps: out.steps, paused: out.paused };
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {

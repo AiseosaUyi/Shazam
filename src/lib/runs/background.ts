@@ -70,6 +70,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
           projectId: run.projectId?.startsWith('local:') ? null : run.projectId,
           localRoot: run.projectId?.startsWith('local:') ? run.projectId.slice(6) : null,
           gitBaseline: options.gitBaseline,
+          stepsSinceEdit: options.stepsSinceEdit,
           history: opts.history,
           pinnedModel: options.pinnedModel,
           maxSteps: stepsLeft,
@@ -81,7 +82,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       : await runCoworkTask({ user, runId: run.id, prompt: run.prompt, history: opts.history, timezone: options.timezone, pinnedModel: options.pinnedModel, signal: stopper.signal, onEvent: rec.sink, ...resumable });
 
     if (out.paused) {
-      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, ...recordFields(options, out) });
+      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, ...recordFields(options, out) });
       // A first-segment cloud project is linked now, so the resumed segment works in the same files.
       if (out.projectId && out.projectId !== run.projectId) await runs.setProject(user.id, run.id, out.projectId);
       if (run.segment + 1 >= MAX_SEGMENTS) {
@@ -115,8 +116,9 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       const fields = recordFields(options, out);
       const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter });
       await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, ...fields, report });
-      const result = `${limitNote}${formatResult(report, out.text, fields.record)}`;
-      await runs.update(user.id, run.id, { status: report.status, result, filesChanged: report.filesChanged.map((f) => f.path), model: out.model, events: rec.events });
+      const stalled = out.stalled ? stalledNote(out.stepsSinceLastEdit ?? 0, out.filesRead ?? []) : '';
+      const result = `${stalled}${limitNote}${formatResult(report, out.text, fields.record)}`;
+      await runs.update(user.id, run.id, { status: out.stalled ? 'stalled' : report.status, result, filesChanged: report.filesChanged.map((f) => f.path), model: out.model, events: rec.events });
     } else {
       await runs.update(user.id, run.id, { status: 'done', result: `${limitNote}${out.text}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
     }
@@ -149,6 +151,11 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
   } finally {
     clearInterval(watcher);
   }
+}
+
+/** Why a stalled run stopped, and what it had read, so the director can retry with a sharper brief. */
+export function stalledNote(steps: number, filesRead: string[]): string {
+  return `STALLED: stopped after ${steps} steps with no edit instead of spending the rest of the budget. Files it read: ${filesRead.slice(0, 15).join(', ') || '(none)'}. Retry with a smaller brief that names the exact file, line and change, or send feedback with that detail.\n\n`;
 }
 
 /** The edits, commands and git baseline a run has recorded so far, including this segment's. */
