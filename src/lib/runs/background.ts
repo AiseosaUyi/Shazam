@@ -177,9 +177,9 @@ export function pauseOutcome(i: { agent: string; segment: number; prompt: string
 }
 
 /** The edits, commands and git baseline a run has recorded so far, including this segment's. */
-export function recordFields(options: RunOptions, out: { edits?: any[]; commandsRun: any[]; gitBaseline?: any }) {
+export function recordFields(options: RunOptions, out: { edits?: any[]; commandsRun: any[]; externalChanges?: string[]; gitBaseline?: any }) {
   return {
-    record: mergeRecords(options.record, { edits: out.edits || [], commands: out.commandsRun || [] }),
+    record: mergeRecords(options.record, { edits: out.edits || [], commands: out.commandsRun || [], external: out.externalChanges || [] }),
     gitBaseline: options.gitBaseline !== undefined ? options.gitBaseline : (out.gitBaseline ?? null),
   };
 }

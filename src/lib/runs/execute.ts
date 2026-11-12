@@ -78,6 +78,8 @@ export interface TaskResult {
   stalled?: boolean;
   stepsSinceLastEdit?: number;
   filesRead?: string[];
+  /** Files changed by someone else between the run reading and editing them. */
+  externalChanges?: string[];
   steps: number;
   /** Stopped at a time limit with a checkpoint saved; the background runner resumes it. */
   paused?: boolean;
@@ -154,7 +156,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   }
   for (const p of out.filesDeleted) await repo.deleteProjectFile(o.user.id, projectId, p);
 
-  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, steps: out.steps, paused: out.paused };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, steps: out.steps, paused: out.paused };
 }
 
 /** HEAD and uncommitted files of a local folder, or null when it is not a git repo or git fails. */
@@ -226,7 +228,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     ).catch(() => null);
     if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
   }
-  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, steps: out.steps, paused: out.paused };
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {
@@ -310,6 +312,7 @@ export function eventRecorder(runId: string, userId: string, runs = new RunsRepo
     else if (event === 'question_answered') push('answer', JSON.stringify(d));
     else if (event === 'todos') push('plan', JSON.stringify(d.todos || []));
     else if (event === 'file_changed') push('file', d.path);
+    else if (event === 'external_change') push('note', `External change: ${d.path} was modified by someone else after it was read; the edit was held back and the model re-read it.`);
     else if (event === 'project_created') push('project', d.projectId);
     else if (event === 'react_execution') push('note', d.backend === 'local' ? `Working on ${d.device} in ${d.root}` : d.backend === 'vercel-sandbox' ? 'Working in a private cloud sandbox' : 'No sandbox available: commands will not run');
   };

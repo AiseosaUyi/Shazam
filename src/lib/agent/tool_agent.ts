@@ -7,6 +7,7 @@ import type { ProjectSandbox } from './sandbox';
 import { errMessage } from '@/lib/errors';
 import { webFetchText, webSearch } from './web';
 import { EditFailureTracker, failureAdvice, nearestLines, replaceLineRange, stripLineNumbers } from './edit-hints';
+import { createHash } from 'node:crypto';
 import { StallGuard, type StallGuardOptions } from './stall-guard';
 import { countLines, parseCommitHash, promptAsksForChanges, type CommandRecord, type EditRecord } from '@/lib/runs/report';
 
@@ -63,6 +64,8 @@ export interface ToolAgentResult {
   stepsSinceLastEdit: number;
   /** Files the run read, for the stalled message and the director. */
   filesRead: string[];
+  /** Files someone else changed between this run reading them and editing them. */
+  externalChanges: string[];
 }
 
 /** Tools that never change files or run commands. Plan mode and subagents are limited to these. */
@@ -239,6 +242,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
   const commandsRun: CommandRecord[] = [];
   const edits: EditRecord[] = [];
   const editFailures = new EditFailureTracker();
+  const externalChanges = new Set<string>();
   /** A failed edit: the nearest real lines, and after 2 failures on a file, the better tool to use. */
   const failedEdit = (path: string, base: string, content: string, oldString: string): string => {
     if (!/not found/i.test(base)) return base;
@@ -445,6 +449,20 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     };
     // Weak models often break syntax; check JS/JSON right after each edit so the model fixes it
     // in the next step instead of leaving a file that crashes on load.
+    // Hash of each file as last read. If it differs just before this run edits it, the user or another
+    // process changed it: show the fresh view and let the model re-apply its edit instead of overwriting.
+    const sha = (t: string) => createHash('sha1').update(t).digest('hex');
+    const known = new Map<string, string>();
+    const checkExternal = async (path: string): Promise<string | null> => {
+      const before = known.get(abs(path));
+      if (!before) return null;
+      const cur = await local.call('read_file', { path: abs(path) });
+      if (/^Error/.test(cur) || sha(cur) === before) return null;
+      known.set(abs(path), sha(cur));
+      externalChanges.add(path.replace(/^\.\//, ''));
+      onEvent?.('external_change', { path });
+      return `EXTERNAL CHANGE: ${path} was modified by someone else (the user or another process) after you read it, so this edit was NOT applied. Current file, refreshed:\n${sliceNumbered(path, cur, 1, LOCAL_READ_LINES)}\n\nRe-apply your change against this version. Do not undo their changes.`;
+    };
     const syntaxNote = async (p: string): Promise<string> => {
       const cmd = syntaxCheckCommand(abs(p));
       if (!cmd) return '';
@@ -467,13 +485,17 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         inputSchema: z.object({ path: z.string(), offset: z.coerce.number().int().min(0).optional(), limit: z.coerce.number().int().min(1).max(2000).optional() }),
         execute: async ({ path, offset = 1, limit = LOCAL_READ_LINES }) => {
           const start = Math.max(1, offset ?? 1);
-          return sliceNumbered(path, await local.call('read_file', { path: abs(path) }), start, limit);
+          const raw = await local.call('read_file', { path: abs(path) });
+          if (!/^Error/.test(raw)) known.set(abs(path), sha(raw));
+          return sliceNumbered(path, raw, start, limit);
         },
       }),
       edit_file: tool({
         description: 'Replace an exact old_string with new_string in a file in the user\'s folder.',
         inputSchema: z.object({ path: z.string(), old_string: z.string(), new_string: z.string() }),
         execute: async ({ path, old_string, new_string }) => {
+          const ext = await checkExternal(path);
+          if (ext) return ext;
           const out = await local.call('edit_file', { path: abs(path), old_string, new_string });
           if (/^Error/.test(out)) {
             if (!/not found/i.test(out)) return out;
@@ -481,6 +503,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
             return failedEdit(path, out, /^Error/.test(current) ? '' : stripLineNumbers(current), old_string);
           }
           editFailures.reset(path);
+          known.delete(abs(path));
           mark(path, 'edit', { added: countLines(new_string), removed: countLines(old_string) });
           return out + (await syntaxNote(path));
         },
@@ -489,8 +512,11 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         description: 'Create or overwrite a file in the user\'s folder.',
         inputSchema: z.object({ path: z.string(), content: z.string() }),
         execute: async ({ path, content }) => {
+          const ext = await checkExternal(path);
+          if (ext) return ext;
           const out = await local.call('write_file', { path: abs(path), content });
           if (/^Error/.test(out)) return out;
+          known.delete(abs(path));
           mark(path, 'write', { added: countLines(content), removed: 0 });
           return out + (await syntaxNote(path));
         },
@@ -501,6 +527,8 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
         execute: async ({ path, start, end, new_text }) => {
           const blocked = guardPath(path);
           if (blocked) return blocked;
+          const ext = await checkExternal(path);
+          if (ext) return ext;
           const current = await local.call('read_file', { path: abs(path) });
           if (/^Error/.test(current)) return current;
           const r = replaceLineRange(stripLineNumbers(current), start, end, new_text);
@@ -508,6 +536,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
           const out = await local.call('write_file', { path: abs(path), content: r.content });
           if (/^Error/.test(out)) return out;
           editFailures.reset(path);
+          known.delete(abs(path));
           mark(path, 'edit', { added: r.added, removed: r.removed });
           return `Replaced lines ${start}-${end} of ${path} with ${r.added} line${r.added === 1 ? '' : 's'}.${await syntaxNote(path)}`;
         },
@@ -618,5 +647,6 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     stalled: guard.stalled,
     stepsSinceLastEdit: guard.sinceEdit,
     filesRead: guard.filesRead,
+    externalChanges: [...externalChanges],
   };
 }

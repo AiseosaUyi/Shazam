@@ -29,6 +29,8 @@ export interface GitState {
 export interface RunRecord {
   edits: EditRecord[];
   commands: CommandRecord[];
+  /** Files someone else changed between this run reading and editing them. */
+  external?: string[];
 }
 
 export type TestsStatus = 'not_run' | 'passed' | 'failed';
@@ -50,7 +52,7 @@ export interface RunReport {
 export const emptyRecord = (): RunRecord => ({ edits: [], commands: [] });
 
 export function mergeRecords(a: RunRecord | undefined | null, b: Partial<RunRecord> | undefined | null): RunRecord {
-  return { edits: [...(a?.edits || []), ...(b?.edits || [])], commands: [...(a?.commands || []), ...(b?.commands || [])] };
+  return { edits: [...(a?.edits || []), ...(b?.edits || [])], commands: [...(a?.commands || []), ...(b?.commands || [])], external: [...new Set([...(a?.external || []), ...(b?.external || [])])] };
 }
 
 /** Lines in a piece of text (an empty string has none). */
@@ -155,6 +157,7 @@ export function buildReport(i: BuildReportInput): RunReport {
     byPath.set(e.path, cur);
   }
   const externalChanges = detectExternalChanges(i.gitBefore, i.gitAfter, i.record);
+  if (i.record.external?.length) externalChanges.push(`Changed by someone else during the run (detected before an edit, so the edit was held back and redone on their version): ${i.record.external.join(', ')}.`);
   const commits = i.record.commands.map((c) => c.commit).filter((h): h is string => Boolean(h));
   const warnings = [...externalChanges.length ? ['external_changes_detected'] : [], ...externalChanges];
   const noEdits = i.record.edits.length === 0;
