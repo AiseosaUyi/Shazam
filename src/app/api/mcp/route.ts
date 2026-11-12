@@ -12,7 +12,7 @@ import { generateAndStoreImage } from '@/lib/media/image';
 import { executeApprovedAction } from '@/lib/cowork/actions';
 import { decryptSecret } from '@/lib/crypto/vault';
 import { QuestionsRepo } from '@/lib/agents/ask';
-import { ACTIVE, MAX_WAIT_S, summarizeRun } from '@/lib/runs/mcp-summary';
+import { ACTIVE, MAX_WAIT_LONG_S, MAX_WAIT_S, summarizeRun } from '@/lib/runs/mcp-summary';
 import { slugifySkill, parseSkillMarkdown } from '@/lib/skills';
 import { fetchSkillMarkdown } from '@/lib/skills/import-url';
 
@@ -39,7 +39,7 @@ async function userFrom(ctx: any) {
 async function waitForNews(userId: string, taskId: string, waitS: number) {
   const runs = new RunsRepo();
   const questions = new QuestionsRepo();
-  const deadline = Date.now() + Math.min(Math.max(waitS, 0), MAX_WAIT_S) * 1000;
+  const deadline = Date.now() + Math.min(Math.max(waitS, 0), MAX_WAIT_LONG_S) * 1000;
   let run = await runs.get(userId, taskId);
   const startEvents = run?.events.length || 0;
   for (;;) {
@@ -165,7 +165,7 @@ const handler = createMcpHandler(
         inputSchema: z.object({
           task_id: z.string(),
           since_event: z.number().int().min(0).optional(),
-          wait_seconds: z.number().int().min(0).max(MAX_WAIT_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, 0 = answer now).`),
+          wait_seconds: z.number().int().min(0).max(MAX_WAIT_LONG_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, up to ${MAX_WAIT_LONG_S} to poll less on long tasks if your client allows long tool calls, 0 = answer now).`),
           detail: z.enum(['summary', 'full']).optional().describe('summary (default) or full.'),
         }),
       },
