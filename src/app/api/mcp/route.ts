@@ -165,7 +165,7 @@ const handler = createMcpHandler(
         inputSchema: z.object({
           task_id: z.string(),
           since_event: z.number().int().min(0).optional(),
-          wait_seconds: z.number().int().min(0).max(MAX_WAIT_LONG_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, up to ${MAX_WAIT_LONG_S} to poll less on long tasks if your client allows long tool calls, 0 = answer now).`),
+          wait_seconds: z.number().int().min(0).max(MAX_WAIT_LONG_S).optional().describe(`How long to wait for news (default ${MAX_WAIT_S}, up to ${MAX_WAIT_LONG_S}, but many clients cancel tool calls near 60s (Claude Code timed out at 300), so stay at or below 45 unless you know yours allows more; 0 = answer now).`),
           detail: z.enum(['summary', 'full']).optional().describe('summary (default) or full.'),
         }),
       },

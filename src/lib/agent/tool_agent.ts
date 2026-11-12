@@ -538,10 +538,15 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
   if (local) {
     // Same tool names, backed by the user's real folder via the desktop bridge.
     const abs = (p: string) => (p.startsWith('/') ? p : `${local.root.replace(/\/$/, '')}/${p.replace(/^\.\//, '')}`);
+    // Models send relative or absolute paths; every record uses the path relative to the folder, so the
+    // report, the stall counters and git comparisons all agree on one name per file.
+    const root = local.root.replace(/\/$/, '');
+    const rel = (p: string) => (p.startsWith(`${root}/`) ? p.slice(root.length + 1) : p.replace(/^\.\//, ''));
     const mark = (p: string, action: string, delta: { added: number; removed: number } = { added: 0, removed: 0 }) => {
-      filesModified.add(p);
-      edits.push({ path: p.replace(/^\.\//, ''), action: action === 'edit' ? 'edit' : 'write', ...delta });
-      onEvent?.('file_changed', { path: p, action });
+      const path = rel(p);
+      filesModified.add(path);
+      edits.push({ path, action: action === 'edit' ? 'edit' : 'write', ...delta });
+      onEvent?.('file_changed', { path, action });
     };
     // Weak models often break syntax; check JS/JSON right after each edit so the model fixes it
     // in the next step instead of leaving a file that crashes on load.
@@ -555,7 +560,7 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
       const cur = await local.call('read_file', { path: abs(path) });
       if (/^Error/.test(cur) || sha(cur) === before) return null;
       known.set(abs(path), sha(cur));
-      externalChanges.add(path.replace(/^\.\//, ''));
+      externalChanges.add(rel(path));
       onEvent?.('external_change', { path });
       return `EXTERNAL CHANGE: ${path} was modified by someone else (the user or another process) after you read it, so this edit was NOT applied. Current file, refreshed:\n${sliceNumbered(path, cur, 1, LOCAL_READ_LINES)}\n\nRe-apply your change against this version. Do not undo their changes.`;
     };
@@ -626,8 +631,8 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
         description: 'Replace lines start..end (1-based, inclusive) of a file in the user\'s folder with new_text. Use line numbers from read_file. Safer than edit_file when old_string keeps failing.',
         inputSchema: z.object({ path: z.string(), start: z.coerce.number().int().min(1), end: z.coerce.number().int().min(1), new_text: z.string() }),
         execute: async ({ path, start, end, new_text }) => {
-          const blocked = guardPath(path);
-          if (blocked) return blocked;
+          // No guardPath here: like edit_file and write_file in local mode, the bridge enforces folder access
+          // and models legitimately pass absolute paths.
           const ext = await checkExternal(path);
           if (ext) return ext;
           const current = await local.call('read_file', { path: abs(path) });
@@ -647,7 +652,7 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
         inputSchema: z.object({ path: z.string() }),
         execute: async ({ path }) => {
           const out = await local.call('exec', { cwd: local.root, command: `rm -- ${JSON.stringify(abs(path))}` });
-          if (/exit code: 0\b/.test(out)) edits.push({ path: path.replace(/^\.\//, ''), action: 'delete', added: 0, removed: 0 });
+          if (/exit code: 0\b/.test(out)) edits.push({ path: rel(path), action: 'delete', added: 0, removed: 0 });
           return out;
         },
       }),
