@@ -13,6 +13,7 @@ import { buildSkillTools } from '@/lib/skills';
 import { buildMediaTools } from '@/lib/media/tools';
 import { buildBridgeTools, wantsLocalMachine } from '@/lib/bridge/tools';
 import { RunsRepo, type RunEvent } from './repo';
+import type { SubtaskState } from '@/lib/agent/multi-fix';
 import { parseGitStatus, parseHead, type CommandRecord, type EditRecord, type GitState } from './report';
 import { buildAskTool, QUESTION_GUIDANCE } from '@/lib/agents/ask';
 import type { ResumableRun } from '@/lib/agent/stream';
@@ -52,6 +53,8 @@ export interface CodeTaskOptions extends ResumableRun {
   gitBaseline?: GitState | null;
   /** Tool calls with no edit in earlier segments (the stall guard counts across a whole run). */
   stepsSinceEdit?: number;
+  /** Multi-fix continuation from the previous segment. */
+  subtasks?: SubtaskState;
   /** Background run id (lets ask_user questions be answered from the web or MCP). */
   runId?: string | null;
   /** Per-step budget for a local model (shorter on 300s streaming routes). */
@@ -80,6 +83,8 @@ export interface TaskResult {
   filesRead?: string[];
   /** Files changed by someone else between the run reading and editing them. */
   externalChanges?: string[];
+  /** Set when a multi-fix run paused: the remaining sub-tasks. */
+  subtasks?: SubtaskState;
   steps: number;
   /** Stopped at a time limit with a checkpoint saved; the background runner resumes it. */
   paused?: boolean;
@@ -148,6 +153,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
     stallGuard: { sinceEdit: o.stepsSinceEdit },
+    subtasks: o.subtasks,
   });
 
   for (const p of out.filesModified) {
@@ -156,7 +162,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   }
   for (const p of out.filesDeleted) await repo.deleteProjectFile(o.user.id, projectId, p);
 
-  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, steps: out.steps, paused: out.paused };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
 }
 
 /** HEAD and uncommitted files of a local folder, or null when it is not a git repo or git fails. */
@@ -215,6 +221,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     deadline: o.deadline,
     onCheckpoint: o.onCheckpoint,
     stallGuard: { sinceEdit: o.stepsSinceEdit },
+    subtasks: o.subtasks,
   });
   const gitAfter = await readGitState(call, root);
   const diffStat = out.paused ? await call('exec', { cwd: root, command: 'git diff --stat', timeoutMs: 15_000 }, 30_000).then((t) => t.replace(/^exit code: \d+\n?/, '')).catch(() => null) : null;
@@ -228,7 +235,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     ).catch(() => null);
     if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
   }
-  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, steps: out.steps, paused: out.paused };
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {

@@ -1,6 +1,7 @@
 import { getDb } from '@/lib/env';
 import type { SqlDatabase } from '@/lib/db/sql';
 import { sha256Hex } from '@/lib/bridge/repo';
+import type { SubtaskState } from '@/lib/agent/multi-fix';
 import type { GitState, RunRecord, RunReport } from './report';
 
 export type RunAgent = 'code' | 'cowork';
@@ -25,6 +26,8 @@ export interface RunOptions {
   stepsUsed?: number;
   /** Tool calls since the last successful edit, across segments (stall guard). */
   stepsSinceEdit?: number;
+  /** Multi-fix brief: sub-tasks still to run and finished fix results, across segments. */
+  subtasks?: SubtaskState | null;
   /** Git state when the run began (null = not a git repo). Set on the first segment. */
   gitBaseline?: GitState | null;
   /** Edits and commands recorded so far, across resumed segments. */

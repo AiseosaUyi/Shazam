@@ -8,6 +8,7 @@ import { errMessage } from '@/lib/errors';
 import { webFetchText, webSearch } from './web';
 import { EditFailureTracker, failureAdvice, nearestLines, replaceLineRange, stripLineNumbers } from './edit-hints';
 import { createHash } from 'node:crypto';
+import { composeFixPrompt, formatFixResults, splitBrief, type FixItem, type FixResult, type SubtaskState } from './multi-fix';
 import { StallGuard, type StallGuardOptions } from './stall-guard';
 import { countLines, parseCommitHash, promptAsksForChanges, type CommandRecord, type EditRecord } from '@/lib/runs/report';
 
@@ -42,6 +43,8 @@ export interface ToolAgentOptions extends ResumableRun {
   maxSteps?: number;
   /** Plan mode: only read-only tools are offered, and the run ends with a written plan. */
   planMode?: boolean;
+  /** Multi-fix continuation: set on a resumed segment of a run that was split into sub-tasks. */
+  subtasks?: SubtaskState;
   /** Stall guard settings. On by default for runs that ask for changes (never in plan mode). */
   stallGuard?: StallGuardOptions;
   signal?: AbortSignal;
@@ -66,6 +69,8 @@ export interface ToolAgentResult {
   filesRead: string[];
   /** Files someone else changed between this run reading them and editing them. */
   externalChanges: string[];
+  /** Set when a multi-fix run paused: what is still to do, so the next segment continues it. */
+  subtasks?: SubtaskState;
 }
 
 /** Tools that never change files or run commands. Plan mode and subagents are limited to these. */
@@ -233,7 +238,71 @@ export function guardTools(tools: ToolSet, guard: StallGuard, editCount: () => n
   return out;
 }
 
+/**
+ * A brief with 3+ labelled fixes (or 6+ files) runs as sequential sub-tasks, each with its own step
+ * budget and a fresh context; everything else is one run. Plan mode and plain resumes are never split.
+ */
 export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgentResult> {
+  const resuming = Boolean(options.resumeMessages?.length);
+  const state = options.subtasks;
+  if (options.planMode || (!state && resuming)) return runToolAgentOnce(options);
+  const plan = state ? null : splitBrief(options.prompt);
+  if (!state && !plan) return runToolAgentOnce(options);
+  const st: SubtaskState = state ?? { total: plan!.items.length, preamble: plan!.preamble, postamble: plan!.postamble, pending: plan!.items, done: [], kind: plan!.kind };
+  options.onEvent?.('multi_fix', { total: st.total, kind: st.kind });
+
+  const agg: ToolAgentResult = { text: '', filesModified: [], filesDeleted: [], steps: 0, commandsRun: [], edits: [], paused: false, stalled: false, stepsSinceLastEdit: 0, filesRead: [], externalChanges: [] };
+  const done: FixResult[] = [...st.done];
+  let stepsLeft = options.maxSteps ?? 40;
+  const fold = (r: ToolAgentResult, item: FixItem): FixResult => {
+    agg.filesModified = [...new Set([...agg.filesModified, ...r.filesModified])];
+    agg.filesDeleted = [...new Set([...agg.filesDeleted, ...r.filesDeleted])];
+    agg.commandsRun.push(...r.commandsRun);
+    agg.edits.push(...r.edits);
+    agg.steps += r.steps;
+    agg.filesRead = [...new Set([...agg.filesRead, ...r.filesRead])];
+    agg.externalChanges = [...new Set([...agg.externalChanges, ...r.externalChanges])];
+    agg.stepsSinceLastEdit = r.stepsSinceLastEdit;
+    stepsLeft -= r.steps;
+    return { label: item.label, status: r.edits.length ? 'done' : r.stalled ? 'stalled' : 'no_edits', summary: (r.text || '').replace(/\s+/g, ' ').slice(0, 240), steps: r.steps, files: [...new Set(r.edits.map((e) => e.path))] };
+  };
+  const finish = (paused: boolean, current?: FixItem, pending: FixItem[] = []): ToolAgentResult => {
+    agg.text = formatFixResults(done);
+    agg.paused = paused;
+    agg.stalled = !paused && done.length > 0 && done.every((d) => d.status === 'stalled');
+    if (paused) agg.subtasks = { ...st, done, pending, current };
+    return agg;
+  };
+
+  let pending = [...st.pending];
+  // Continue the fix that was in progress when the last segment paused.
+  if (state && resuming && state.current) {
+    const item = state.current;
+    const r = await runToolAgentOnce({ ...options, subtasks: undefined, maxSteps: Math.max(10, stepsLeft) });
+    done.push(fold(r, item));
+    if (r.paused) return finish(true, item, pending);
+  }
+  for (let i = 0; i < pending.length; i++) {
+    const item = pending[i];
+    const index = st.total - pending.length + i;
+    const budget = Math.max(10, Math.floor(stepsLeft / (pending.length - i)));
+    options.onEvent?.('fix_start', { label: item.label, index: index + 1, total: st.total });
+    const r = await runToolAgentOnce({
+      ...options,
+      subtasks: undefined,
+      prompt: composeFixPrompt(st, item, index),
+      history: i === 0 && !state ? options.history : [],
+      resumeMessages: undefined,
+      maxSteps: budget,
+      stallGuard: { ...options.stallGuard, sinceEdit: 0 },
+    });
+    done.push(fold(r, item));
+    if (r.paused) return finish(true, item, pending.slice(i + 1));
+  }
+  return finish(false);
+}
+
+async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentResult> {
   const { model, prompt, history = [], projectName, files, sandbox, runCommand, extraTools = {}, extraInstructions, local, maxSteps = 40, planMode = false, signal, onEvent } = options;
 
   const filesModified = new Set<string>();

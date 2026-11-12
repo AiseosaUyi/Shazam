@@ -73,6 +73,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
           localRoot: run.projectId?.startsWith('local:') ? run.projectId.slice(6) : null,
           gitBaseline: options.gitBaseline,
           stepsSinceEdit: options.stepsSinceEdit,
+          subtasks: options.subtasks ?? undefined,
           history: opts.history,
           pinnedModel: options.pinnedModel,
           maxSteps: stepsLeft,
@@ -84,7 +85,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       : await runCoworkTask({ user, runId: run.id, prompt: run.prompt, history: opts.history, timezone: options.timezone, pinnedModel: options.pinnedModel, signal: stopper.signal, onEvent: rec.sink, ...resumable });
 
     if (out.paused) {
-      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, ...recordFields(options, out) });
+      await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, subtasks: out.subtasks ?? null, ...recordFields(options, out) });
       // A first-segment cloud project is linked now, so the resumed segment works in the same files.
       if (out.projectId && out.projectId !== run.projectId) await runs.setProject(user.id, run.id, out.projectId);
       const capMin = Math.round((MAX_SEGMENTS * SEGMENT_MS) / 60_000);
@@ -96,7 +97,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
         await rec.flush();
         await runs.setLease(user.id, run.id, null);
         const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter, segmentsUsed: run.segment + 1 });
-        await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, ...fields, report });
+        await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, stepsSinceEdit: out.stepsSinceLastEdit ?? 0, subtasks: out.subtasks ?? null, ...fields, report });
         const reason = noProgress ? `STALLED: ${run.segment + 1} time segments passed with no edit, so the run was stopped early instead of using the full ${capMin} min. Files it read: ${(out.filesRead ?? []).slice(0, 15).join(', ') || '(none)'}. Retry with a smaller brief that names the exact file, line and change.` : undefined;
         await runs.update(user.id, run.id, {
           status: noProgress ? 'stalled' : 'partial',
