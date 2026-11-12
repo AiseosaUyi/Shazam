@@ -59,3 +59,51 @@ describe('Live findings', () => {
     assert.equal(sanitizeSummary('I changed add.js and ghost.ts.', rec), 'I changed add.js and [unverified file].');
   });
 });
+
+describe('append_file: write big files in chunks', () => {
+  it('cloud: creates the file, then appends chunks; each is recorded as an edit', async () => {
+    const files: Array<{ path: string; content: string }> = [];
+    const model = new MockLanguageModelV4({
+      doStream: [
+        step([call('1', 'write_file', { path: 'big.js', content: 'part1\n' })], 'tool-calls'),
+        step([call('2', 'append_file', { path: 'big.js', content: 'part2\npart3' })], 'tool-calls'),
+        step([call('3', 'append_file', { path: 'big.js', content: 'part4' })], 'tool-calls'),
+        step(text('done'), 'stop'),
+      ],
+    });
+    const obs: string[] = [];
+    const r = await runToolAgent({ model, prompt: 'Write big.js', projectName: 'P', files, onEvent: (e, x: any) => { if (e === 'react_observation') obs.push(x.observation); } });
+    assert.equal(files[0].content, 'part1\npart2\npart3\npart4');
+    assert.match(obs[1], /Appended 2 lines to big\.js \(now 3 lines\)/);
+    assert.equal(r.edits.length, 3);
+  });
+
+  it('local: appends through the bridge, creating a missing file', async () => {
+    const d = new Map<string, string>();
+    const local = {
+      root: '/r', deviceName: 'T',
+      call: async (command: string, p: any) => {
+        if (command === 'list_files') return '';
+        if (command === 'read_file') return d.has(p.path) ? d.get(p.path)!.split('\n').map((l, i) => `${i + 1}\t${l}`).join('\n') : 'Error: missing';
+        if (command === 'write_file') { d.set(p.path, p.content); return `Wrote ${p.path}`; }
+        return 'exit code: 0\n';
+      },
+    };
+    const model = new MockLanguageModelV4({
+      doStream: [
+        step([call('1', 'append_file', { path: 'new.js', content: 'a\nb\n' })], 'tool-calls'),
+        step([call('2', 'append_file', { path: '/r/new.js', content: 'c' })], 'tool-calls'),
+        step(text('done'), 'stop'),
+      ],
+    });
+    const r = await runToolAgent({ model, prompt: 'Write new.js', projectName: 'P', files: [], local });
+    assert.equal(d.get('/r/new.js'), 'a\nb\nc');
+    assert.deepEqual(r.edits.map((e) => e.path), ['new.js', 'new.js']);
+  });
+
+  it('the system prompt tells the model to write big files in pieces', async () => {
+    const model = new MockLanguageModelV4({ doStream: [step(text('ok'), 'stop')] });
+    await runToolAgent({ model, prompt: 'Write a big module', projectName: 'P', files: [] });
+    assert.match(JSON.stringify(model.doStreamCalls[0].prompt), /Write big files in pieces/);
+  });
+});

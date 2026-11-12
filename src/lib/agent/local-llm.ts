@@ -43,6 +43,9 @@ const FAST_RETRY_MS = 90_000;
 /** Bounds a runaway think while leaving room for long file writes. */
 export const LOCAL_MAX_OUTPUT_TOKENS = 16_384;
 
+/** How hard a local model thinks when thinking is on. Lower = faster steps on big tasks. */
+export const LOCAL_REASONING_EFFORT = process.env.SHAZAM_LOCAL_REASONING || 'high';
+
 export type LocalThinking = 'on' | 'off';
 
 /**
@@ -55,7 +58,7 @@ export function withLocalDefaults(body: string | undefined, thinking: LocalThink
   try {
     const j = JSON.parse(body);
     if (thinking === 'off') j.reasoning_effort = 'none';
-    else if (!j.reasoning_effort || j.reasoning_effort === 'none') j.reasoning_effort = 'high';
+    else if (!j.reasoning_effort || j.reasoning_effort === 'none') j.reasoning_effort = LOCAL_REASONING_EFFORT;
     if (!j.max_tokens && !j.max_completion_tokens) j.max_tokens = LOCAL_MAX_OUTPUT_TOKENS;
     return JSON.stringify(j);
   } catch {

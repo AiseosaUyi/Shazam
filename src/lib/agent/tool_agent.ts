@@ -188,6 +188,7 @@ Rules:
 - Never claim a command, test or build succeeded unless a run_command result in this conversation shows it.
 - Never touch secrets (.env, keys) or paths outside the project.
 - Prefer small, focused edits. Match the project's existing style.
+- Write big files in pieces: put at most about 80 lines in one tool call. For a longer file, write_file the first part, then add the rest with append_file in chunks. A huge single call can time out and lose the work.
 
 Project index:
 ${index.summaryPrompt}
@@ -200,6 +201,7 @@ Work like Claude Code: do the task end to end with tools. Never ask the user to 
 Do not ask clarifying questions for normal requests: choose sensible defaults (e.g. Next.js + Tailwind, or plain HTML/CSS for a simple page) and state them in your summary.
 
 Workflow: explore (list_files, grep, read_file) → change files (edit_file / write_file) → verify with run_command (install, build, test) → fix until it works → for web UIs call start_preview → summarize what changed, how it was verified and the preview URL.
+Write big files in pieces (at most about 80 lines per tool call: write_file the first part, then append_file the rest); a huge single call can time out.
 Never claim something passed unless run_command output shows it. Risky commands (git push, deletes) are confirmed by the user on their computer.
 
 Files in the folder (partial):
@@ -435,6 +437,22 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
         return `${existing ? 'Overwrote' : 'Created'} ${clean} (${content.split('\n').length} lines).`;
       },
     }),
+    append_file: tool({
+      description: 'Add text to the END of a file (creating it if needed). Use it to write a big file in chunks of at most about 80 lines after write_file created the first part.',
+      inputSchema: z.object({ path: z.string(), content: z.string() }),
+      execute: async ({ path, content }) => {
+        const blocked = guardPath(path);
+        if (blocked) return blocked;
+        const clean = norm(path);
+        const f = findFile(clean);
+        if (f) f.content = f.content.endsWith('\n') || f.content === '' ? f.content + content : `${f.content}\n${content}`;
+        else files.push({ path: clean, content });
+        edits.push({ path: clean, action: 'write', added: countLines(content), removed: 0 });
+        filesModified.add(clean);
+        onEvent?.('file_changed', { path: clean, action: 'edit' });
+        return `Appended ${countLines(content)} lines to ${clean} (now ${(f ? f.content : content).split('\n').length} lines).`;
+      },
+    }),
     replace_lines: tool({
       description: 'Replace lines start..end (1-based, inclusive) of an existing file with new_text. Use line numbers from read_file. Safer than edit_file when old_string keeps failing.',
       inputSchema: z.object({ path: z.string(), start: z.coerce.number().int().min(1), end: z.coerce.number().int().min(1), new_text: z.string() }),
@@ -625,6 +643,22 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
           known.delete(abs(path));
           mark(path, 'write', { added: countLines(content), removed: 0 });
           return out + (await syntaxNote(path));
+        },
+      }),
+      append_file: tool({
+        description: 'Add text to the END of a file in the user\'s folder (creating it if needed). Use it to write a big file in chunks of at most about 80 lines after write_file created the first part. Syntax is not checked until you edit or run it.',
+        inputSchema: z.object({ path: z.string(), content: z.string() }),
+        execute: async ({ path, content }) => {
+          const ext = await checkExternal(path);
+          if (ext) return ext;
+          const current = await local.call('read_file', { path: abs(path) });
+          const existing = /^Error/.test(current) ? '' : stripLineNumbers(current);
+          const next = existing === '' || existing.endsWith('\n') ? existing + content : `${existing}\n${content}`;
+          const out = await local.call('write_file', { path: abs(path), content: next });
+          if (/^Error/.test(out)) return out;
+          known.delete(abs(path));
+          mark(path, 'write', { added: countLines(content), removed: 0 });
+          return `Appended ${countLines(content)} lines to ${path} (now ${next.split('\n').length} lines).`;
         },
       }),
       replace_lines: tool({
