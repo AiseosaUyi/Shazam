@@ -5,6 +5,7 @@ import { runCodeTask, runCoworkTask, eventRecorder } from './execute';
 import { BridgeOfflineError } from '@/lib/bridge/repo';
 import { isRetryableModelError } from '@/lib/agent/fallback';
 import { errMessage } from '@/lib/errors';
+import { modelStats, suggestModel } from './estimate';
 import { buildReport, formatPartial, formatResult, mergeRecords, promptAsksForChanges, remainingTodos } from './report';
 
 /**
@@ -101,7 +102,7 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
         const reason = noProgress ? `STALLED: ${run.segment + 1} time segments passed with no edit, so the run was stopped early instead of using the full ${capMin} min. Files it read: ${(out.filesRead ?? []).slice(0, 15).join(', ') || '(none)'}. Retry with a smaller brief that names the exact file, line and change.` : undefined;
         await runs.update(user.id, run.id, {
           status: noProgress ? 'stalled' : 'partial',
-          result: formatPartial(report, { segments: run.segment + 1, capMinutes: capMin, todos: remainingTodos(rec.events), diffStat: out.diffStat, reason }),
+          result: `${noProgress ? await modelHint(runs, user.id, run.id, out.model) : ''}${formatPartial(report, { segments: run.segment + 1, capMinutes: capMin, todos: remainingTodos(rec.events), diffStat: out.diffStat, reason })}`,
           filesChanged: report.filesChanged.map((f) => f.path),
           model: out.model,
           events: rec.events,
@@ -129,8 +130,9 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
       const fields = recordFields(options, out);
       const report = buildReport({ prompt: run.prompt, record: fields.record, gitBefore: fields.gitBaseline, gitAfter: out.gitAfter, segmentsUsed: run.segment + 1 });
       await runs.saveOptions(user.id, run.id, { ...options, stepsUsed: (options.stepsUsed || 0) + out.steps, ...fields, report });
-      const stalled = out.stalled ? stalledNote(out.stepsSinceLastEdit ?? 0, out.filesRead ?? []) : '';
-      const result = `${stalled}${limitNote}${formatResult(report, out.text, fields.record)}`;
+      const stalled = out.stalled ? stalledNote(out.stepsSinceLastEdit ?? 0, out.filesRead ?? [], out.stallReason) : '';
+      const hint = out.stalled ? await modelHint(runs, user.id, run.id, out.model) : '';
+      const result = `${stalled}${hint}${limitNote}${formatResult(report, out.text, fields.record)}`;
       await runs.update(user.id, run.id, { status: out.stalled ? 'stalled' : report.status, result, filesChanged: report.filesChanged.map((f) => f.path), model: out.model, events: rec.events });
     } else {
       await runs.update(user.id, run.id, { status: 'done', result: `${limitNote}${out.text}`, filesChanged: out.filesModified, model: out.model, events: rec.events });
@@ -167,7 +169,8 @@ export async function executeRun(user: User, run: AgentRun, opts: ExecuteRunOpti
 }
 
 /** Why a stalled run stopped, and what it had read, so the director can retry with a sharper brief. */
-export function stalledNote(steps: number, filesRead: string[]): string {
+export function stalledNote(steps: number, filesRead: string[], reason: 'no_edit' | 'repeat_failure' | null = 'no_edit'): string {
+  if (reason === 'repeat_failure') return `STALLED: the same command failed the same way 6 times in a row, so the run was stopped instead of looping. Files it read: ${filesRead.slice(0, 15).join(', ') || '(none)'}. Look at the failing output yourself, then retry with a brief that states what the test expects and where the bug is.\n\n`;
   return `STALLED: stopped after ${steps} steps with no edit instead of spending the rest of the budget. Files it read: ${filesRead.slice(0, 15).join(', ') || '(none)'}. Retry with a smaller brief that names the exact file, line and change, or send feedback with that detail.\n\n`;
 }
 
@@ -175,6 +178,13 @@ export function stalledNote(steps: number, filesRead: string[]): string {
 export function pauseOutcome(i: { agent: string; segment: number; prompt: string; editsMade: number; maxSegments?: number }): 'continue' | 'partial' | 'early_abort' {
   if (i.agent === 'code' && i.segment >= EARLY_ABORT_SEGMENT && i.editsMade === 0 && promptAsksForChanges(i.prompt)) return 'early_abort';
   return i.segment + 1 >= (i.maxSegments ?? MAX_SEGMENTS) ? 'partial' : 'continue';
+}
+
+/** A line offering a better model after a stall, from measured results of past runs (empty when there is no clear winner). */
+export async function modelHint(runs: RunsRepo, userId: string, runId: string, current?: string | null): Promise<string> {
+  const past = await runs.list(userId, 80).catch(() => []);
+  const s = suggestModel(modelStats(past.filter((r) => r.id !== runId)), current);
+  return s ? `${s}\n\n` : '';
 }
 
 /** The edits, commands and git baseline a run has recorded so far, including this segment's. */

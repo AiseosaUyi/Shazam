@@ -61,3 +61,31 @@ export function replaceLineRange(content: string, start: number, end: number, ne
   const insert = newText === '' ? [] : newText.split('\n');
   return { ok: true, content: [...lines.slice(0, start - 1), ...insert, ...lines.slice(end)].join('\n'), added: insert.length, removed: end - start + 1 };
 }
+
+/** Lines of a file are "the same" when they appear in both (as a multiset): cheap and good enough to spot a small change. */
+export function lineSimilarity(a: string, b: string): number {
+  const counts = new Map<string, number>();
+  const al = a.split('\n');
+  const bl = b.split('\n');
+  for (const l of al) counts.set(l, (counts.get(l) || 0) + 1);
+  let common = 0;
+  for (const l of bl) {
+    const n = counts.get(l) || 0;
+    if (n > 0) { common++; counts.set(l, n - 1); }
+  }
+  return common / Math.max(al.length, bl.length, 1);
+}
+
+export const REWRITE_MIN_LINES = 30;
+
+/** A write_file over a big existing file that is almost the same (an edit would do) or much shorter (likely truncated). */
+export function rewriteVerdict(oldContent: string, newContent: string): { hold: false } | { hold: true; reason: string } {
+  if (oldContent === newContent) return { hold: false };
+  const oldN = oldContent.split('\n').length;
+  const newN = newContent.split('\n').length;
+  if (oldN < REWRITE_MIN_LINES) return { hold: false };
+  const sim = lineSimilarity(oldContent, newContent);
+  if (sim >= 0.8) return { hold: true, reason: `Only about ${Math.max(1, Math.round((1 - sim) * Math.max(oldN, newN)))} of ${oldN} lines differ, so this is a small change. Use edit_file or replace_lines: a whole-file rewrite can drop or mangle code.` };
+  if (newN < oldN * 0.5) return { hold: true, reason: `This would cut the file from ${oldN} to ${newN} lines, which usually means the content was truncated.` };
+  return { hold: false };
+}
