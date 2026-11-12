@@ -14,6 +14,8 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { runToolAgent } from '../src/lib/agent/tool_agent';
 import { createLanguageModel } from '../src/lib/agent/models';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { LOCAL_STEP_TIMEOUT_MS, withLocalDefaults } from '../src/lib/agent/local-llm';
 import { loadEnvFile, loadTasks, makeLocalRunner, makeWorkdir, runCheck, startFiles, writeFiles } from '../evals/agent/lib';
 import { validateAll } from '../evals/agent/validate';
 
@@ -87,7 +89,27 @@ async function main() {
   const picked = pickModel(args);
   if ('error' in picked) { console.error(picked.error); process.exit(2); }
 
-  const { model, modelId } = await createLanguageModel(picked.provider, picked.modelId, picked.apiKey);
+  // A local Ollama model gets the same treatment as in production (src/lib/agent/local-llm.ts): thinking on
+  // with an output cap, a per-step time limit, and one quick no-thinking retry when a step runs away.
+  // Without this the eval hangs for the whole task limit on a single runaway generation.
+  let model: any;
+  let modelId: string;
+  if (picked.provider === 'ollama') {
+    const base = `${process.env.OLLAMA_HOST || 'http://localhost:11434'}/v1`;
+    const stepFetch: typeof fetch = async (url, init) => {
+      const attempt = (thinking: 'on' | 'off', ms: number) => fetch(url, { ...init, body: withLocalDefaults(init?.body as string | undefined, thinking), signal: AbortSignal.any([...(init?.signal ? [init.signal as AbortSignal] : []), AbortSignal.timeout(ms)]) });
+      try {
+        return await attempt('on', LOCAL_STEP_TIMEOUT_MS);
+      } catch (err) {
+        if (init?.signal?.aborted) throw err;
+        return attempt('off', 90_000);
+      }
+    };
+    modelId = picked.modelId;
+    model = createOpenAICompatible({ name: 'ollama', baseURL: base, fetch: stepFetch })(modelId);
+  } else {
+    ({ model, modelId } = await createLanguageModel(picked.provider, picked.modelId, picked.apiKey));
+  }
   const label = `${picked.provider}/${modelId}`;
   const maxSteps = typeof args['max-steps'] === 'string' ? parseInt(args['max-steps'], 10) : 25;
   console.log(`Agent eval: ${tasks.length} task(s) on ${label}, max ${maxSteps} steps each\n`);
