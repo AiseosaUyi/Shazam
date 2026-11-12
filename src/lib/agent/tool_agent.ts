@@ -6,10 +6,10 @@ import { buildProjectIndex } from './indexer';
 import type { ProjectSandbox } from './sandbox';
 import { errMessage } from '@/lib/errors';
 import { webFetchText, webSearch } from './web';
-import { EditFailureTracker, failureAdvice, nearestLines, replaceLineRange, stripLineNumbers } from './edit-hints';
+import { EditFailureTracker, failureAdvice, nearestLines, replaceLineRange, rewriteVerdict, stripLineNumbers } from './edit-hints';
 import { createHash } from 'node:crypto';
 import { composeFixPrompt, formatFixResults, splitBrief, type FixItem, type FixResult, type SubtaskState } from './multi-fix';
-import { StallGuard, type StallGuardOptions } from './stall-guard';
+import { StallGuard, isTestPath, type StallGuardOptions } from './stall-guard';
 import { countLines, parseCommitHash, promptAsksForChanges, type CommandRecord, type EditRecord } from '@/lib/runs/report';
 
 /**
@@ -63,6 +63,8 @@ export interface ToolAgentResult {
   paused: boolean;
   /** Ended early because too many steps passed with no edit. */
   stalled: boolean;
+  /** Why the run was stopped as stalled. */
+  stallReason?: 'no_edit' | 'repeat_failure' | null;
   /** Tool calls since the last successful edit (carries across resumed segments). */
   stepsSinceLastEdit: number;
   /** Files the run read, for the stalled message and the director. */
@@ -229,8 +231,16 @@ export function guardTools(tools: ToolSet, guard: StallGuard, editCount: () => n
         const before = editCount();
         let result = await exec(args, ctx);
         if (typeof result === 'string' && name === 'read_file') result = guard.checkRead(String(args?.path || ''), args?.offset, args?.limit, result) ?? result;
-        if (editCount() > before) guard.onEdit();
-        else if (typeof result === 'string') result = guard.annotate(result);
+        if (typeof result === 'string' && name === 'run_command') {
+          guard.onCommand(result);
+          result = guard.annotateCommand(result);
+        }
+        if (editCount() > before) {
+          guard.onEdit();
+          if (typeof result === 'string' && guard.repeatFailures >= 2 && isTestPath(String(args?.path || ''))) {
+            result += '\n\nWARNING: you edited a test file while the same test failure keeps repeating. Do not weaken or change expectations to make it pass; fix the code under test unless the brief says the test is wrong.';
+          }
+        } else if (typeof result === 'string') result = guard.annotate(result);
         return result;
       },
     } as any;
@@ -253,6 +263,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
 
   const agg: ToolAgentResult = { text: '', filesModified: [], filesDeleted: [], steps: 0, commandsRun: [], edits: [], paused: false, stalled: false, stepsSinceLastEdit: 0, filesRead: [], externalChanges: [] };
   const done: FixResult[] = [...st.done];
+  let lastStallReason: ToolAgentResult['stallReason'] = null;
   let stepsLeft = options.maxSteps ?? 40;
   const fold = (r: ToolAgentResult, item: FixItem): FixResult => {
     agg.filesModified = [...new Set([...agg.filesModified, ...r.filesModified])];
@@ -263,6 +274,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     agg.filesRead = [...new Set([...agg.filesRead, ...r.filesRead])];
     agg.externalChanges = [...new Set([...agg.externalChanges, ...r.externalChanges])];
     agg.stepsSinceLastEdit = r.stepsSinceLastEdit;
+    if (r.stalled) lastStallReason = r.stallReason ?? null;
     stepsLeft -= r.steps;
     return { label: item.label, status: r.edits.length ? 'done' : r.stalled ? 'stalled' : 'no_edits', summary: (r.text || '').replace(/\s+/g, ' ').slice(0, 240), steps: r.steps, files: [...new Set(r.edits.map((e) => e.path))] };
   };
@@ -270,6 +282,7 @@ export async function runToolAgent(options: ToolAgentOptions): Promise<ToolAgent
     agg.text = formatFixResults(done);
     agg.paused = paused;
     agg.stalled = !paused && done.length > 0 && done.every((d) => d.status === 'stalled');
+    agg.stallReason = agg.stalled ? lastStallReason : null;
     if (paused) agg.subtasks = { ...st, done, pending, current };
     return agg;
   };
@@ -312,6 +325,16 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
   const edits: EditRecord[] = [];
   const editFailures = new EditFailureTracker();
   const externalChanges = new Set<string>();
+  /** A big near-identical rewrite is held once; the same write_file again confirms it. */
+  const heldRewrites = new Map<string, string>();
+  const rewriteHold = (path: string, oldContent: string, newContent: string): string | null => {
+    const v = rewriteVerdict(oldContent, newContent);
+    if (!v.hold) { heldRewrites.delete(path); return null; }
+    const h = createHash('sha1').update(newContent).digest('hex');
+    if (heldRewrites.get(path) === h) { heldRewrites.delete(path); return null; }
+    heldRewrites.set(path, h);
+    return `Error: rewrite held, nothing was written. ${v.reason} If you really mean to replace the whole file, call write_file again with the same content.`;
+  };
   /** A failed edit: the nearest real lines, and after 2 failures on a file, the better tool to use. */
   const failedEdit = (path: string, base: string, content: string, oldString: string): string => {
     if (!/not found/i.test(base)) return base;
@@ -399,6 +422,10 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
         if (blocked) return blocked;
         const clean = norm(path);
         const existing = findFile(clean);
+        if (existing) {
+          const held = rewriteHold(clean, existing.content, content);
+          if (held) return held;
+        }
         edits.push({ path: clean, action: existing ? 'write' : 'write', added: countLines(content), removed: existing ? countLines(existing.content) : 0 });
         if (existing) existing.content = content;
         else files.push({ path: clean, content });
@@ -583,6 +610,11 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
         execute: async ({ path, content }) => {
           const ext = await checkExternal(path);
           if (ext) return ext;
+          const current = await local.call('read_file', { path: abs(path) });
+          if (!/^Error/.test(current)) {
+            const held = rewriteHold(path, stripLineNumbers(current), content);
+            if (held) return held;
+          }
           const out = await local.call('write_file', { path: abs(path), content });
           if (/^Error/.test(out)) return out;
           known.delete(abs(path));
@@ -714,6 +746,7 @@ async function runToolAgentOnce(options: ToolAgentOptions): Promise<ToolAgentRes
     edits,
     paused,
     stalled: guard.stalled,
+    stallReason: guard.stallReason,
     stepsSinceLastEdit: guard.sinceEdit,
     filesRead: guard.filesRead,
     externalChanges: [...externalChanges],

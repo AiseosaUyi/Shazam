@@ -79,6 +79,7 @@ export interface TaskResult {
   diffStat?: string | null;
   /** Ended early by the stall guard: too many steps with no edit. */
   stalled?: boolean;
+  stallReason?: 'no_edit' | 'repeat_failure' | null;
   stepsSinceLastEdit?: number;
   filesRead?: string[];
   /** Files changed by someone else between the run reading and editing them. */
@@ -162,7 +163,7 @@ export async function runCodeTask(o: CodeTaskOptions): Promise<TaskResult> {
   }
   for (const p of out.filesDeleted) await repo.deleteProjectFile(o.user.id, projectId, p);
 
-  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
+  return { text: out.text || 'Done.', model: agentModel.label, projectId, filesModified: out.filesModified, filesDeleted: out.filesDeleted, commandsRun: out.commandsRun, edits: out.edits, stalled: out.stalled, stallReason: out.stallReason, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
 }
 
 /** HEAD and uncommitted files of a local folder, or null when it is not a git repo or git fails. */
@@ -235,7 +236,7 @@ async function runLocalCodeTask(o: CodeTaskOptions, repo: DbRepo, platform: Plat
     ).catch(() => null);
     if (v) { send('verification', { ok: v.ok, summary: v.summary }); text = `${text}\n\n${v.summary}`; }
   }
-  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
+  return { text, model: agentModel.label, projectId: null, filesModified: out.filesModified, filesDeleted: [], commandsRun: out.commandsRun, edits: out.edits, gitBaseline, gitAfter, diffStat, stalled: out.stalled, stallReason: out.stallReason, stepsSinceLastEdit: out.stepsSinceLastEdit, filesRead: out.filesRead, externalChanges: out.externalChanges, subtasks: out.subtasks, steps: out.steps, paused: out.paused };
 }
 
 export interface CoworkTaskOptions extends ResumableRun {
