@@ -96,8 +96,14 @@ async function main() {
   let modelId: string;
   if (picked.provider === 'ollama') {
     const base = `${process.env.OLLAMA_HOST || 'http://localhost:11434'}/v1`;
+    // Like the bridge in production, buffer the whole reply: the time limit then covers the full step
+    // (a streamed reply would only time out mid-stream, with no chance to retry without thinking).
     const stepFetch: typeof fetch = async (url, init) => {
-      const attempt = (thinking: 'on' | 'off', ms: number) => fetch(url, { ...init, body: withLocalDefaults(init?.body as string | undefined, thinking), signal: AbortSignal.any([...(init?.signal ? [init.signal as AbortSignal] : []), AbortSignal.timeout(ms)]) });
+      const attempt = async (thinking: 'on' | 'off', ms: number) => {
+        const res = await fetch(url, { ...init, body: withLocalDefaults(init?.body as string | undefined, thinking), signal: AbortSignal.any([...(init?.signal ? [init.signal as AbortSignal] : []), AbortSignal.timeout(ms)]) });
+        const body = await res.text();
+        return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      };
       try {
         return await attempt('on', LOCAL_STEP_TIMEOUT_MS);
       } catch (err) {
