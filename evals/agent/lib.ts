@@ -13,6 +13,8 @@ export interface EvalTask {
   maxStepsToFirstEdit?: number;
   /** Overrides the runner's default step budget for tasks that need more (e.g. several fixes). */
   maxSteps?: number;
+  /** Overrides the default 5-minute wall-clock limit (hard tasks on a slow local model need more). */
+  maxMinutes?: number;
 }
 
 export interface AgentFile {
@@ -29,8 +31,8 @@ export function loadTasks(dir = TASKS_DIR): EvalTask[] {
     .filter((d) => d.isDirectory())
     .map((d) => {
       const taskDir = path.join(dir, d.name);
-      const meta = JSON.parse(fs.readFileSync(path.join(taskDir, 'task.json'), 'utf8')) as { name: string; instruction: string; maxStepsToFirstEdit?: number; maxSteps?: number };
-      return { name: meta.name, instruction: meta.instruction, dir: taskDir, maxStepsToFirstEdit: meta.maxStepsToFirstEdit, maxSteps: meta.maxSteps };
+      const meta = JSON.parse(fs.readFileSync(path.join(taskDir, 'task.json'), 'utf8')) as { name: string; instruction: string; maxStepsToFirstEdit?: number; maxSteps?: number; maxMinutes?: number };
+      return { name: meta.name, instruction: meta.instruction, dir: taskDir, maxStepsToFirstEdit: meta.maxStepsToFirstEdit, maxSteps: meta.maxSteps, maxMinutes: meta.maxMinutes };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }

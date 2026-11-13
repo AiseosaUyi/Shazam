@@ -37,6 +37,25 @@ describe('Multi-fix briefs (P1-D)', () => {
     assert.equal(splitBrief('Fix the bug in src/a.ts'), null);
   });
 
+  it('does not split a numbered spec or rules list (the fix-by-fix split must not hijack one coherent task)', () => {
+    const spec = 'Implement the scheduler in scheduler.js.\n\nRules:\n1. A task starts after its deps finish.\n2. At most N tasks run at once.\n3. Failed tasks are retried.\n4. Cycles are rejected.\n\nAPI:\n1. add(id, fn)\n2. run()\n3. results';
+    assert.equal(splitBrief(spec), null);
+    const sameFile = 'Implement in diff.js:\n1) diff(a, b) returns edits\n2) patch(a, ops) applies them\n3) unifiedDiff formats output (all in diff.js)';
+    assert.equal(splitBrief(sameFile), null, 'items that share one file are parts of one job');
+    assert.equal(splitBrief('Do:\nSTEP 1: read a.ts\nSTEP 2: edit b.ts\nSTEP 3: run tests in c.ts'), null, 'steps are sequential, not independent');
+  });
+
+  it('a bare numbered list still splits when each item names its own file', () => {
+    const plan = splitBrief('Fix these:\n1. a.ts: off by one\n2. b.ts: wrong sign\n3. c.ts: missing await')!;
+    assert.equal(plan.items.length, 3);
+    assert.equal(splitBrief('Do:\n1) edit a.ts\n2) edit a.ts again\n3) edit b.ts'), null, 'item 2 has no file of its own');
+  });
+
+  it('word-labelled parts always split, even without files', () => {
+    assert.equal(splitBrief('FIX 1: handle null\nFIX 2: handle empty\nFIX 3: handle NaN')?.items.length, 3);
+    assert.equal(splitBrief('PART 1: a\nPART 2: b\nPART 3: c')?.items.length, 3);
+  });
+
   it('a brief naming 6+ files is split into passes of 3 files', () => {
     const plan = splitBrief('Rename foo to bar in a.ts b.ts c.ts d.ts e.ts f.ts g.ts')!;
     assert.equal(plan.kind, 'files');

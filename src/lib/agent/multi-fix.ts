@@ -44,7 +44,8 @@ export const MIN_FIXES = 3;
 export const MIN_FILES = 6;
 export const FILES_PER_GROUP = 3;
 
-const LABEL = /^[ \t]*(?:(?:FIX|Fix|TASK|Task|ITEM|Item|STEP|Step|P\d)[ \t]*[#-]?[ \t]*(\d+)[ \t]*[:.)\]-]|(\d+)[.)][ \t]+)/;
+// Word labels (FIX 1:, TASK 2.) say "independent part". A bare "1." / "1)" is ambiguous (it is also how specs and rules are numbered), so it only counts when each item names its own file. STEP is excluded: steps depend on each other.
+const LABEL = /^[ \t]*(?:(?:FIX|Fix|TASK|Task|PART|Part|ITEM|Item|P\d)[ \t]*[#-]?[ \t]*(\d+)[ \t]*[:.)\]-]|(\d+)[.)][ \t]+)/;
 const TAIL = /^[ \t]*(?:#+[ \t]*)?(?:ACCEPTANCE|CONSTRAINTS|RULES|CHECKS|VERIFY|VERIFICATION|NOTES?|DONE WHEN)\b/i;
 const FILE_RX = /(?:[\w.-]+\/)*[\w.-]+\.(?:tsx?|jsx?|mjs|cjs|json|md|css|scss|html|py|go|rs|sql|ya?ml|sh)\b/g;
 
@@ -52,20 +53,26 @@ export function filesIn(text: string): string[] {
   return [...new Set((text.match(FILE_RX) || []).filter((f) => !/^\d+\.\d+/.test(f) && !/^(e\.g|i\.e)\./i.test(f)))];
 }
 
+/** For bare numbered lists: every item must name at least one file that no other item names. */
+function eachNamesOwnFile(lines: string[], run: Array<{ at: number }>): boolean {
+  const per = run.map((m, k) => new Set(filesIn(lines.slice(m.at, k + 1 < run.length ? run[k + 1].at : lines.length).join('\n'))));
+  return per.every((files, k) => [...files].some((f) => per.every((other, j) => j === k || !other.has(f))));
+}
+
 /** Splits a brief into sequential sub-tasks, or returns null when it is small enough to run as one. */
 export function splitBrief(prompt: string): BriefPlan | null {
   const lines = prompt.split('\n');
-  const marks: Array<{ at: number; n: number }> = [];
+  const marks: Array<{ at: number; n: number; bare: boolean }> = [];
   lines.forEach((l, i) => {
     const m = l.match(LABEL);
-    if (m) marks.push({ at: i, n: Number(m[1] ?? m[2]) });
+    if (m) marks.push({ at: i, n: Number(m[1] ?? m[2]), bare: m[1] === undefined });
   });
   // Keep an ascending run of labels (1, 2, 3 …); anything else in the text is not a fix list.
   const run: typeof marks = [];
   for (const m of marks) {
     if (!run.length ? m.n === 1 : m.n === run[run.length - 1].n + 1) run.push(m);
   }
-  if (run.length >= MIN_FIXES) {
+  if (run.length >= MIN_FIXES && (!run.every((m) => m.bare) || eachNamesOwnFile(lines, run))) {
     let end = lines.length;
     let postamble = '';
     for (let i = run[run.length - 1].at + 1; i < lines.length; i++) {

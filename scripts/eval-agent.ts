@@ -14,6 +14,8 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { runToolAgent } from '../src/lib/agent/tool_agent';
 import { createLanguageModel } from '../src/lib/agent/models';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { LOCAL_STEP_TIMEOUT_MS, withLocalDefaults } from '../src/lib/agent/local-llm';
 import { loadEnvFile, loadTasks, makeLocalRunner, makeWorkdir, runCheck, startFiles, writeFiles } from '../evals/agent/lib';
 import { validateAll } from '../evals/agent/validate';
 
@@ -87,7 +89,41 @@ async function main() {
   const picked = pickModel(args);
   if ('error' in picked) { console.error(picked.error); process.exit(2); }
 
-  const { model, modelId } = await createLanguageModel(picked.provider, picked.modelId, picked.apiKey);
+  // A local Ollama model gets the same treatment as in production (src/lib/agent/local-llm.ts): thinking on
+  // with an output cap, a per-step time limit, and one quick no-thinking retry when a step runs away.
+  // Without this the eval hangs for the whole task limit on a single runaway generation.
+  let model: any;
+  let modelId: string;
+  if (picked.provider === 'ollama') {
+    const base = `${process.env.OLLAMA_HOST || 'http://localhost:11434'}/v1`;
+    // Like the bridge in production, buffer the whole reply: the time limit then covers the full step
+    // (a streamed reply would only time out mid-stream, with no chance to retry without thinking).
+    const stepFetch: typeof fetch = async (url, init) => {
+      const attempt = async (thinking: 'on' | 'off', ms: number) => {
+        const res = await fetch(url, { ...init, body: withLocalDefaults(init?.body as string | undefined, thinking), signal: AbortSignal.any([...(init?.signal ? [init.signal as AbortSignal] : []), AbortSignal.timeout(ms)]) });
+        const body = await res.text();
+        return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      };
+      // A step that times out twice is retried, like production's pause-and-resume, instead of ending the run.
+      for (let cycle = 0; ; cycle++) {
+        try {
+          try {
+            return await attempt('on', LOCAL_STEP_TIMEOUT_MS);
+          } catch (err) {
+            if (init?.signal?.aborted) throw err;
+            return await attempt('off', 90_000);
+          }
+        } catch (err) {
+          if (init?.signal?.aborted || cycle >= 2) throw err;
+          console.log(`  step timed out (cycle ${cycle + 1}); retrying`);
+        }
+      }
+    };
+    modelId = picked.modelId;
+    model = createOpenAICompatible({ name: 'ollama', baseURL: base, fetch: stepFetch })(modelId);
+  } else {
+    ({ model, modelId } = await createLanguageModel(picked.provider, picked.modelId, picked.apiKey));
+  }
   const label = `${picked.provider}/${modelId}`;
   const maxSteps = typeof args['max-steps'] === 'string' ? parseInt(args['max-steps'], 10) : 25;
   console.log(`Agent eval: ${tasks.length} task(s) on ${label}, max ${maxSteps} steps each\n`);
@@ -117,7 +153,7 @@ async function main() {
           files,
           runCommand: runner.run,
           maxSteps: task.maxSteps ?? maxSteps,
-          signal: AbortSignal.timeout(5 * 60_000),
+          signal: AbortSignal.timeout((task.maxMinutes ?? 5) * 60_000),
           onEvent: (event) => {
             if (event === 'react_step') toolCalls++;
             else if (event === 'file_changed' && run.firstEditStep === undefined) run.firstEditStep = toolCalls;
